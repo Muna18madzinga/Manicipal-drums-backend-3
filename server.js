@@ -18,6 +18,25 @@ const ogcServicesRoutes = require('./src/routes/ogcServices')
 // Import Auth Routes
 const { authRoutes } = require('./src/routes/auth')
 
+// Import Stands + Planning Assistant routes (Turn A foundation).
+// These power: citizens picking stands on the public map, and the
+// planner's "what can be developed here" assistant. Both endpoints read
+// from the existing zone_land_use_controls + planning_assistant_templates.
+const { standsRoutes } = require('./src/routes/stands')
+const { planningAssistantRoutes } = require('./src/routes/planning-assistant')
+
+// Turn B: inspection bookings + photos + status notifications.
+// These plug into the existing development_applications table.
+const { inspectionRoutes } = require('./src/routes/inspections')
+const { applicationStatusRoutes } = require('./src/routes/application-status')
+
+// Turn C: payments (USD/ZiG) + citizen-document verification.
+const { paymentRoutes } = require('./src/routes/payments')
+const { documentRoutes } = require('./src/routes/documents')
+
+// Turn D: plan auto-review (PDF + CAD upload + deterministic checks).
+const { planReviewRoutes } = require('./src/routes/plan-review')
+
 // Import Public Routes
 const { publicRoutes } = require('./src/routes/public')
 
@@ -130,10 +149,27 @@ async function build() {
     connectionString: process.env.DATABASE_URL || 'postgresql://postgres:cairo2025@localhost:5432/vungu_master_db_v1'
   })
 
-  // Debug: Log all routes - MUST be added BEFORE route registrations
-  server.addHook('onRoute', (routeOptions) => {
-    console.log(`[Route] 🛣️ Registered: ${routeOptions.method} ${routeOptions.url}`)
+  // Multipart form support — required by the inspection-photo upload
+  // route (and any future file uploads). Hard-cap files at 10 MB.
+  const path = require('node:path')
+  await server.register(require('@fastify/multipart'), {
+    limits: { fileSize: 10 * 1024 * 1024, files: 1 },
   })
+
+  // Static serving for uploaded photos. Mounted at /uploads — the same
+  // path the inspection-photos route hands back as `storage_url`.
+  // The directory is created on demand by the route handler if missing.
+  const uploadsRoot = path.resolve(process.cwd(), 'uploads')
+  try { require('node:fs').mkdirSync(uploadsRoot, { recursive: true }) } catch { /* noop */ }
+  await server.register(require('@fastify/static'), {
+    root: uploadsRoot,
+    prefix: '/uploads/',
+    decorateReply: false,
+  })
+
+  // (Removed) onRoute debug log — was extremely noisy at startup and
+  // leaked the entire route surface to stdout. Use `server.printRoutes()`
+  // (already called below) for a one-shot summary.
 
   // Health check - register first
   server.get('/health', async (request, reply) => {
@@ -146,47 +182,21 @@ async function build() {
   })
 
   // Test route
-  server.get('/api/test', async (request, reply) => {
-    return { message: 'Unified backend server working!', timestamp: new Date().toISOString() }
+  server.get('/api/test', async () => {
+    return { message: 'Unified backend server working', timestamp: new Date().toISOString() }
   })
 
-  // Simple test route
-  server.get('/simple-test', async (request, reply) => {
-    console.log('🔐 Simple test route called!')
-    return { message: 'Simple test working', timestamp: new Date().toISOString() }
-  })
-
-  // Auth test route
-  server.get('/api/auth/test', async (request, reply) => {
-    console.log('🔐 Auth test route called!')
-    return { message: 'Auth routes working', timestamp: new Date().toISOString() }
-  })
-
-  // Direct register endpoint (bypass stale auth module)
-  server.post('/api/auth/register-direct', async (request, reply) => {
-    console.log('[DIRECT-REG] Hit! Body:', JSON.stringify(request.body))
-    try {
-      const { name, email, phone, organization, role, password } = request.body || {}
-      if (!name || !email || !password) {
-        return reply.code(400).send({ success: false, message: 'Name, email, and password are required' })
-      }
-      const existing = await server.pg.query('SELECT id FROM users WHERE email = $1', [email])
-      if (existing.rows.length > 0) {
-        return reply.code(409).send({ success: false, message: 'User with this email already exists' })
-      }
-      const { rows } = await server.pg.query(
-        `INSERT INTO users (email, full_name, role, organization, phone, password_hash, status, active, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 'active', true, NOW(), NOW())
-         RETURNING id, email, full_name, role, organization`,
-        [email, name, role || 'registered', organization || null, phone || null, 'hashed_' + password]
-      )
-      console.log('[DIRECT-REG] User created:', rows[0].email)
-      return reply.send({ success: true, data: { user: rows[0] }, message: 'Account created' })
-    } catch (err) {
-      console.error('[DIRECT-REG] ERROR:', err.message, err.detail)
-      return reply.code(500).send({ success: false, message: String(err.message), detail: String(err.detail || ''), _v: 'direct' })
-    }
-  })
+  /*
+    REMOVED:
+      - /simple-test (debug only)
+      - /api/auth/test (debug only)
+      - /api/auth/register-direct
+          The previous 'direct' register endpoint stored passwords as the
+          string `'hashed_' + password` and accepted any role from the body,
+          allowing unauthenticated role escalation. The proper /api/auth/register
+          (registered below) replaces it with bcrypt + a hard-pinned customer
+          role allow-list.
+  */
 
   // Register Public Routes
   try {
@@ -196,13 +206,56 @@ async function build() {
     console.error('❌ Failed to register public routes:', error.message)
   }
 
-  // Register Auth Routes
+  // Register Auth Routes — hardened JWT + bcrypt; see src/routes/auth.js.
+  // The auth scope gets a tighter rate limit than the rest of the API.
+  // Default global limit (100/min) is fine for read endpoints; bursts on
+  // /auth/login or /auth/register are almost always abusive.
   try {
-    console.log('[Debug] authRoutes type:', typeof authRoutes)
-    await server.register(authRoutes, { prefix: '/api' })
-    console.log('✅ Auth routes registered')
+    await server.register(async (scope) => {
+      scope.addHook('onRequest', server.rateLimit({
+        max: 10,
+        timeWindow: '1 minute',
+      }))
+      await scope.register(authRoutes)
+    }, { prefix: '/api' })
   } catch (authError) {
-    console.error('❌ Failed to register auth routes:', authError.message)
+    server.log.error({ err: authError }, 'Failed to register auth routes')
+  }
+
+  // Register Stands + Planning Assistant routes (Turn A).
+  // These mount under /api and respect the global rate-limit.
+  try {
+    await server.register(standsRoutes,            { prefix: '/api' })
+    await server.register(planningAssistantRoutes, { prefix: '/api' })
+    console.log('✅ Stands + Planning Assistant routes registered')
+  } catch (error) {
+    server.log.error({ err: error }, 'Failed to register stands/planning routes')
+  }
+
+  // Register Inspection routes (Turn B): bookings, photos, notifications.
+  try {
+    await server.register(inspectionRoutes,         { prefix: '/api' })
+    await server.register(applicationStatusRoutes,  { prefix: '/api' })
+    console.log('✅ Inspection + status-change routes registered')
+  } catch (error) {
+    server.log.error({ err: error }, 'Failed to register inspection routes')
+  }
+
+  // Register Payments + Documents (Turn C).
+  try {
+    await server.register(paymentRoutes,   { prefix: '/api' })
+    await server.register(documentRoutes,  { prefix: '/api' })
+    console.log('✅ Payment + document routes registered')
+  } catch (error) {
+    server.log.error({ err: error }, 'Failed to register payment/document routes')
+  }
+
+  // Register Plan Review (Turn D).
+  try {
+    await server.register(planReviewRoutes, { prefix: '/api' })
+    console.log('✅ Plan review routes registered')
+  } catch (error) {
+    server.log.error({ err: error }, 'Failed to register plan review routes')
   }
 
   // Register Spatial Routes
@@ -287,10 +340,12 @@ async function build() {
   }
 
 
-  // All routes registered, print summary
-  console.log('\n📋 Registered Routes:')
-  const routes = server.printRoutes()
-  console.log(routes)
+  // Print the route summary in development only — useful when adding new
+  // route plugins, but it shouldn't surface in production logs.
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('\n📋 Registered Routes:')
+    console.log(server.printRoutes())
+  }
 
   // 404 handler
   server.setNotFoundHandler(async (request, reply) => {
@@ -318,17 +373,29 @@ async function build() {
 
 async function start() {
   console.log('🚀 Starting Vungu Unified Backend Server...')
-  
+
   try {
     const server = await build()
     const port = parseInt(process.env.PORT || '3000')
     console.log('🚀 About to listen on port:', port)
-    
-    await server.listen({ 
-      port, 
-      host: '0.0.0.0' 
+
+    await server.listen({
+      port,
+      host: '0.0.0.0'
     })
-    
+
+    // Optional in-process email worker — keeps the dev experience simple
+    // (no second daemon needed). For multi-instance deploys, run
+    // `node src/workers/emailWorker.js` separately and leave this off.
+    if (process.env.MAIL_WORKER_INPROC === '1') {
+      try {
+        const { startEmailWorker } = require('./src/workers/emailWorker')
+        startEmailWorker(server.pg.pool || server.pg, { log: server.log })
+      } catch (err) {
+        server.log.warn({ err }, 'Failed to start in-process email worker')
+      }
+    }
+
     console.log(`\n🎉 Vungu Unified Backend Server running successfully!`)
     console.log(`📡 Server: http://localhost:${port}`)
     console.log(`🏥 Health Check: http://localhost:${port}/health`)
