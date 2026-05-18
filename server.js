@@ -37,6 +37,10 @@ const { documentRoutes } = require('./src/routes/documents')
 // Turn D: plan auto-review (PDF + CAD upload + deterministic checks).
 const { planReviewRoutes } = require('./src/routes/plan-review')
 
+// Turn E: DM Handbook 2021 v1.2 — permit applications, enforcement, building plans,
+// stage inspections, and certificates of occupation (spatial_planning schema).
+const { developmentManagementRoutes } = require('./src/routes/development-management')
+
 // Import Public Routes
 const { publicRoutes } = require('./src/routes/public')
 
@@ -256,6 +260,17 @@ async function build() {
     console.log('✅ Plan review routes registered')
   } catch (error) {
     server.log.error({ err: error }, 'Failed to register plan review routes')
+  }
+
+  // Register Development Management — DM Handbook 2021 v1.2 (Turn E).
+  // Covers: permit applications, consultations, objections, appeals,
+  // enforcement orders, prohibition orders, building plans,
+  // stage inspections (Annexures 12/14), and certificates of occupation.
+  try {
+    await server.register(developmentManagementRoutes, { prefix: '/api' })
+    console.log('✅ Development Management (DM Handbook v1.2) routes registered')
+  } catch (error) {
+    server.log.error({ err: error }, 'Failed to register development management routes')
   }
 
   // Register Spatial Routes
