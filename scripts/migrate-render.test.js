@@ -7,7 +7,6 @@ describe('Render migration plan', () => {
     expect(MIGRATIONS).toEqual([
       '001_initial_schema.sql',
       '042_development_applications.sql',
-      '050_enhance_land_use_management_corrected.sql',
       '060_invite_system_and_roles.sql',
       '061_applicant_type_and_invite_roles.sql',
       '062_stands_and_planning_templates.sql',

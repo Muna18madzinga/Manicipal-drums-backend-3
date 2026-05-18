@@ -5,7 +5,9 @@ const { Pool } = require('pg')
 const MIGRATIONS = [
   '001_initial_schema.sql',
   '042_development_applications.sql',
-  '050_enhance_land_use_management_corrected.sql',
+  // '050_enhance_land_use_management_corrected.sql' skipped: ALTER/INSERTs into
+  // land_use_groups + land_zones tables that no migration creates. Re-enable
+  // once a prerequisite migration that CREATEs those tables exists.
   '060_invite_system_and_roles.sql',
   '061_applicant_type_and_invite_roles.sql',
   '062_stands_and_planning_templates.sql',
