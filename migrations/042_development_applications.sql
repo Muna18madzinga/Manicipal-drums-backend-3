@@ -1,6 +1,20 @@
 -- Development Application Schema Migration
 -- Creates tables for the map-centric development application system
 
+-- Ensure Supabase-style roles referenced by the RLS/GRANT block below exist
+-- on vanilla Postgres (Render). NOLOGIN since auth is enforced at the app
+-- layer via JWT; these roles exist only so GRANTs and RLS policies parse.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated_users') THEN
+        CREATE ROLE authenticated_users NOLOGIN;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'admin_users') THEN
+        CREATE ROLE admin_users NOLOGIN;
+    END IF;
+END
+$$;
+
 -- Main development applications table
 CREATE TABLE IF NOT EXISTS development_applications (
     id VARCHAR(20) PRIMARY KEY,                    -- Format: DEV-123456
