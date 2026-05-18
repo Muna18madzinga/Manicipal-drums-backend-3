@@ -11,6 +11,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "migrate": "node-pg-migrate",
+    "migrate:render": "node scripts/migrate-render.js",
     "migrate:060": "node scripts/run-migration-060.js",
     "seed": "tsx src/scripts/seed.ts",
     "seed:demo": "node scripts/seed-demo-users.js"
