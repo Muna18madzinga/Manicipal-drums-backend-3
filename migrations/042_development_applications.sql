@@ -15,6 +15,13 @@ BEGIN
 END
 $$;
 
+-- Stub for the Supabase-style current_user_id() referenced by the RLS
+-- policies below. Returns NULL on vanilla PG; the policies are never
+-- enforced for the connection owner (vungu) anyway. Auth is JWT/app-layer.
+CREATE OR REPLACE FUNCTION current_user_id() RETURNS TEXT AS $$
+    SELECT NULL::TEXT;
+$$ LANGUAGE sql STABLE;
+
 -- Main development applications table
 CREATE TABLE IF NOT EXISTS development_applications (
     id VARCHAR(20) PRIMARY KEY,                    -- Format: DEV-123456
