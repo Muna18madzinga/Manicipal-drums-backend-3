@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: manicipal-drums-backend
+    runtime: node
+    buildCommand: npm ci
+    startCommand: npm run migrate && npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: manicipal-drums-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: MAIL_TRANSPORT
+        value: console
+      - key: QGIS_SERVER_URL
+        sync: false
+      - key: QGIS_PROJECT
+        sync: false
+
+databases:
+  - name: manicipal-drums-db
+    databaseName: vungu_master_db_v1
+    user: vungu
