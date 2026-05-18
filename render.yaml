@@ -3,7 +3,7 @@ services:
     name: manicipal-drums-backend
     runtime: node
     buildCommand: npm ci
-    startCommand: npm run migrate && npm run seed:demo && npm start
+    startCommand: npm run migrate:render && npm run seed:demo && npm start
     healthCheckPath: /health
     autoDeploy: true
     envVars:
