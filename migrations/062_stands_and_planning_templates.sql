@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS stands (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   stand_number  VARCHAR(64)  NOT NULL,
   ward          VARCHAR(64)  NOT NULL,
-  zone_id       UUID         REFERENCES proposed_peri_urban_zones(id) ON DELETE SET NULL,
+  zone_id       UUID,         -- FK to proposed_peri_urban_zones omitted: table not in migration chain (bootstrapped from dump only)
   zone_type     VARCHAR(64),                   -- denormalised for fast filtering
   use_scale     VARCHAR(20),                   -- small_scale | large_scale | mixed_scale
   area_sqm      NUMERIC(12, 2) NOT NULL CHECK (area_sqm > 0),
