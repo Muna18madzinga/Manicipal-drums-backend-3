@@ -609,7 +609,7 @@ ON CONFLICT (code) DO NOTHING;
 -- Checklist items (Annexure 14 — 38 items).
 INSERT INTO spatial_planning.checklist_item
   (category_id, applicable_stages, code, description, is_mandatory, sort_order)
-SELECT c.id, item.stages, item.code, item.desc, item.mandatory, item.sort
+SELECT c.id, item.stages, item.code, item.descr, item.mandatory, item.sort
 FROM (VALUES
   ('SITE',   '{1}'::INT[],   'SITE-01', 'Boundary pegs correctly positioned per approved plan',                    TRUE, 1),
   ('SITE',   '{1}'::INT[],   'SITE-02', 'Building line setback complies with zone controls',                       TRUE, 2),
@@ -650,7 +650,7 @@ FROM (VALUES
   ('FINISH', '{8}'::INT[],   'FINISH-01','All surfaces rendered or painted per specification',                   FALSE,1),
   ('FINISH', '{8}'::INT[],   'FINISH-02','Site debris and construction waste removed',                          TRUE, 2),
   ('FINISH', '{8}'::INT[],   'FINISH-03','Access for persons with disability provided where required',          TRUE, 3)
-) AS item(cat_code, stages, code, desc, mandatory, sort)
+) AS item(cat_code, stages, code, descr, mandatory, sort)
 JOIN spatial_planning.checklist_category c ON c.code = item.cat_code
 ON CONFLICT (code) DO NOTHING;
 
