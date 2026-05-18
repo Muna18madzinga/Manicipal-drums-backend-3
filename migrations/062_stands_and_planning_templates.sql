@@ -118,8 +118,7 @@ CREATE INDEX IF NOT EXISTS idx_pat_ward
   ON planning_assistant_templates(ward) WHERE ward IS NOT NULL AND is_active = true;
 
 COMMENT ON TABLE planning_assistant_templates IS
-  'Typical layout & envelope constants used by the planning-assistant rules engine. ' ||
-  'Authority: Development Management Control Manual 2021.';
+  'Typical layout & envelope constants used by the planning-assistant rules engine. Authority: Development Management Control Manual 2021.';
 
 -- ────────────────────────────────────────────────────────────────────
 -- Seed: representative templates per zone type. These are sober defaults
