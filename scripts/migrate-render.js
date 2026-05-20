@@ -18,6 +18,7 @@ const MIGRATIONS = [
   '071_stage_inspection_photos_and_flags.sql',
   '072_per_item_inspection_scoring.sql',
   '073_score_includes_na_as_zero.sql',
+  '074_spatial_tile_indexes.sql',
 ]
 
 function createPool(env = process.env) {
