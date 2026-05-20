@@ -20,6 +20,7 @@ CREATE INDEX IF NOT EXISTS idx_buildings_geom            ON buildings           
 CREATE INDEX IF NOT EXISTS idx_traffic_areas_geom        ON traffic_areas        USING GIST (geom);
 CREATE INDEX IF NOT EXISTS idx_transport_areas_geom      ON transport_areas      USING GIST (geom);
 CREATE INDEX IF NOT EXISTS idx_pois_areas_geom           ON pois_areas           USING GIST (geom);
+-- "pow" abbreviates "places_of_worship" to keep the index identifier within PostgreSQL's 63-character limit.
 CREATE INDEX IF NOT EXISTS idx_pow_areas_geom            ON places_of_worship_areas USING GIST (geom);
 CREATE INDEX IF NOT EXISTS idx_places_points_geom        ON places_points        USING GIST (geom);
 CREATE INDEX IF NOT EXISTS idx_pois_points_geom          ON pois_points          USING GIST (geom);
