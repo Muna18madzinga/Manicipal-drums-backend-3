@@ -12,6 +12,11 @@ const cache = new TileCache(2000)
  */
 async function tilesRoutes(fastify) {
   // Layer catalog — drives frontend layer panels.
+  // IMPORTANT: this static route MUST be declared before the parametric
+  // /tiles/:layer/:id route below; otherwise Fastify would treat the literal
+  // segment "layers" as a value for :layer and shadow this handler entirely.
+  // A non-numeric :id (e.g. a stray path segment) reaching that route is
+  // intentionally rejected with 400 via the Number.isInteger check.
   fastify.get('/tiles/layers', async () => ({
     success: true,
     data: allLayers().map((l) => ({
@@ -86,6 +91,7 @@ async function tilesRoutes(fastify) {
     }
     try {
       const attrs = layer.attributes.map((a) => `"${a}"`).join(', ')
+      // fid is the GeoPackage primary key on every imported table, so this lookup is index-backed.
       const { rows } = await fastify.pg.query(
         `SELECT ${attrs}, ST_AsGeoJSON(geom) AS geometry
          FROM "${layer.table}" WHERE fid = $1`,
