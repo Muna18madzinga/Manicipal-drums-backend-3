@@ -47,6 +47,9 @@ const { publicRoutes } = require('./src/routes/public')
 // Import Spatial Routes
 const { spatialRoutes } = require('./src/routes/spatial')
 
+// Vector tile service — serves zimbabwe.gpkg PostGIS layers as MVT.
+const { tilesRoutes } = require('./src/routes/tiles')
+
 // Import Spatial Data Routes
 let spatialDataRoutes
 try {
@@ -294,6 +297,13 @@ async function build() {
     console.log('✅ Spatial routes registered')
   } catch (error) {
     console.error('❌ Failed to register spatial routes:', error.message)
+  }
+
+  try {
+    await server.register(tilesRoutes, { prefix: '/api' })
+    console.log('✅ Vector tile routes registered')
+  } catch (error) {
+    server.log.error({ err: error }, 'Failed to register tile routes')
   }
 
   // Register Spatial Data Routes
