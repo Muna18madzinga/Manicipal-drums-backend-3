@@ -3,7 +3,11 @@
 // `id` is also the MVT source-layer name used by the frontend.
 
 const GEOM_COLUMN = 'geom'   // change if Task 1 reported a different column
-const GEOM_SRID = 4326       // change if Task 1 reported a different SRID
+// ogr2ogr imported zimbabwe.gpkg under SRS 900914 — that SRS row is literally
+// WGS 84 (CRS84): "+proj=longlat +datum=WGS84 +no_defs", same coords as EPSG:4326,
+// just a non-standard SRID assigned because the GeoPackage's source CRS lacked
+// an EPSG code. We honour the actual stored SRID rather than rewrite 5.7M rows.
+const GEOM_SRID = 900914
 
 /**
  * @typedef {Object} SpatialLayer
