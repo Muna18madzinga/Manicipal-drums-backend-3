@@ -3,6 +3,10 @@
  * Single consolidated server for all API endpoints
  */
 
+// Load .env so DATABASE_URL / JWT_SECRET / etc. reach process.env before any
+// route module reads them. The dotenv dependency was installed but never wired.
+require('dotenv').config()
+
 const Fastify = require('fastify')
 
 // Clear require cache for OGC services to force reload of .env configuration
