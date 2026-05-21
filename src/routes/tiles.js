@@ -92,8 +92,13 @@ async function tilesRoutes(fastify) {
     try {
       const attrs = layer.attributes.map((a) => `"${a}"`).join(', ')
       // fid is the GeoPackage primary key on every imported table, so this lookup is index-backed.
+      // ST_AsGeoJSON validates the geometry SRID against spatial_ref_sys and
+      // refuses non-EPSG entries (the GeoPackage import landed under SRID
+      // 900914 = WGS 84 CRS84 with auth_name=NULL). ST_SetSRID just relabels
+      // the metadata; the coordinates are already WGS84 lon/lat so no actual
+      // reprojection is needed.
       const { rows } = await fastify.pg.query(
-        `SELECT ${attrs}, ST_AsGeoJSON(geom) AS geometry
+        `SELECT ${attrs}, ST_AsGeoJSON(ST_SetSRID(geom, 4326)) AS geometry
          FROM "${layer.table}" WHERE fid = $1`,
         [fid]
       )
