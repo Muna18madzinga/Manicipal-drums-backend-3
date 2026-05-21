@@ -1,6 +1,6 @@
 // src/lib/tileQuery.js
 // Pure helpers for building PostGIS vector-tile (MVT) queries.
-const { GEOM_COLUMN } = require('../config/spatialLayers')
+const { GEOM_COLUMN, GEOM_SRID } = require('../config/spatialLayers')
 
 /**
  * Validates a slippy-map tile coordinate.
@@ -40,7 +40,7 @@ function buildTileQuery(layer, z, x, y) {
         ) AS geom,
         ${attrs}
       FROM "${layer.table}"
-      WHERE "${GEOM_COLUMN}" && ST_Transform(ST_TileEnvelope($1, $2, $3), 4326)${filter}
+      WHERE "${GEOM_COLUMN}" && ST_Transform(ST_TileEnvelope($1, $2, $3), ${GEOM_SRID})${filter}
     ) AS t
     WHERE t.geom IS NOT NULL
   `
