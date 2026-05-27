@@ -30,6 +30,11 @@ function buildTileQuery(layer, z, x, y) {
   if (layer.lowZoomFilter && z < layer.lowZoomFilter.maxZoom) {
     filter = ` AND (${layer.lowZoomFilter.where})`
   }
+  // Storage SRID is per-layer. OSM-derived tables share GEOM_SRID (900914,
+  // legacy CRS84 import); Vungu master-plan tables are stored as real
+  // EPSG:4326. The && operator requires matching SRIDs on both sides, so
+  // we transform the tile envelope into the layer's own SRID.
+  const layerSrid = layer.srid || GEOM_SRID
   const sql = `
     SELECT ST_AsMVT(t, $4) AS tile FROM (
       SELECT
@@ -40,7 +45,7 @@ function buildTileQuery(layer, z, x, y) {
         ) AS geom,
         ${attrs}
       FROM "${layer.table}"
-      WHERE "${GEOM_COLUMN}" && ST_Transform(ST_TileEnvelope($1, $2, $3), ${GEOM_SRID})${filter}
+      WHERE "${GEOM_COLUMN}" && ST_Transform(ST_TileEnvelope($1, $2, $3), ${layerSrid})${filter}
     ) AS t
     WHERE t.geom IS NOT NULL
   `
