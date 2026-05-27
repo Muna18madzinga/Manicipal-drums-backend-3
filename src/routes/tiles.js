@@ -33,10 +33,17 @@ async function tilesRoutes(fastify) {
   // and any "fly to ward" affordance. The GeoPackage stored ward labels as
   // bare numbers, so we join districts on the pcode prefix (ZW{PP}{DD}{WW},
   // first 6 chars = district) and compose a human-readable label like
-  // "Ward 18 — Beitbridge". Centroid is WGS84 [lon, lat]. Ordered by district
-  // then ward so the dropdown reads as a geographic outline.
+  // "Ward 18 — Beitbridge". Centroid is WGS84 [lon, lat].
+  //
+  // Scope: defaults to the council's district (Vungu RDC = Gweru Rural,
+  // pcode ZW1704). Override via env COUNCIL_DISTRICT_PCODE, or pass
+  // ?scope=country to fetch every ward in Zimbabwe (used by admin tools).
+  const COUNCIL_DISTRICT_PCODE = process.env.COUNCIL_DISTRICT_PCODE || 'ZW1704'
   fastify.get('/wards', async (request, reply) => {
     try {
+      const scope = request.query?.scope === 'country' ? 'country' : 'council'
+      const filter = scope === 'council' ? 'AND w.pcode LIKE $1' : ''
+      const params = scope === 'council' ? [`${COUNCIL_DISTRICT_PCODE}%`] : []
       const { rows } = await fastify.pg.query(
         `SELECT w.fid,
                 w.name_en AS ward_label,
@@ -46,11 +53,12 @@ async function tilesRoutes(fastify) {
                 ST_Y(ST_Centroid(ST_SetSRID(w.geom, 4326))) AS lat
          FROM wards w
          LEFT JOIN districts d ON d.pcode = LEFT(w.pcode, 6)
-         WHERE w.geom IS NOT NULL
+         WHERE w.geom IS NOT NULL ${filter}
          ORDER BY d.name_en NULLS LAST,
                   -- numeric ward labels sort naturally
                   CASE WHEN w.name_en ~ '^[0-9]+$' THEN LPAD(w.name_en, 4, '0') ELSE w.name_en END,
-                  w.fid`
+                  w.fid`,
+        params
       )
       reply
         .header('Cache-Control', 'public, max-age=3600')
