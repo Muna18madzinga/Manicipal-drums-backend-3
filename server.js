@@ -28,6 +28,7 @@ const { authRoutes } = require('./src/routes/auth')
 // from the existing zone_land_use_controls + planning_assistant_templates.
 const { standsRoutes } = require('./src/routes/stands')
 const { planningAssistantRoutes } = require('./src/routes/planning-assistant')
+const plannerRoutes = require('./src/routes/planner')
 
 // Turn B: inspection bookings + photos + status notifications.
 // These plug into the existing development_applications table.
@@ -262,7 +263,8 @@ async function build() {
   try {
     await server.register(standsRoutes,            { prefix: '/api' })
     await server.register(planningAssistantRoutes, { prefix: '/api' })
-    console.log('✅ Stands + Planning Assistant routes registered')
+    await server.register(plannerRoutes,           { prefix: '/api' })
+    console.log('✅ Stands + Planning Assistant + Planner notifications routes registered')
   } catch (error) {
     server.log.error({ err: error }, 'Failed to register stands/planning routes')
   }

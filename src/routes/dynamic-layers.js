@@ -202,38 +202,61 @@ async function dynamicLayerRoutes(fastify) {
         })
       }
       
+      // Filter out NULL and invalid geometries. Some legacy tables
+      // (e.g. gweru_rivers) contain self-intersecting or otherwise broken
+      // geometries that serialise to [NaN, NaN] and break JSON.parse below.
+      // ST_MakeValid attempts to repair them; rows that can't be repaired
+      // still slip through, so we also try/catch the JSON.parse per-row.
       let query = `
-        SELECT 
+        SELECT
           ${idColumn},
           ${attributeColumns.join(', ')},
-          ST_AsGeoJSON(ST_Transform(${geometryColumn}, 4326)) as geometry
+          ST_AsGeoJSON(ST_Transform(ST_MakeValid(${geometryColumn}), 4326)) as geometry
         FROM ${tableName}
         WHERE ${geometryColumn} IS NOT NULL
+          AND NOT ST_IsEmpty(${geometryColumn})
       `
-      
+
       const params = []
-      
+
       if (where) {
         query += ` AND ${where}`
       }
-      
+
       if (bbox) {
         const [minX, minY, maxX, maxY] = bbox.split(',').map(Number)
         query += ` AND ST_Intersects(${geometryColumn}, ST_MakeEnvelope($1, $2, $3, $4, 4326))`
         params.push(minX, minY, maxX, maxY)
       }
-      
+
       query += ` LIMIT $${params.length + 1}`
       params.push(limit)
-      
+
       const { rows } = await fastify.pg.query(query, params)
-      
-      // Convert to GeoJSON features
-      const features = rows.map(row => ({
-        type: 'Feature',
-        geometry: JSON.parse(row.geometry),
-        properties: getFeatureProperties(row, tableName, idColumn)
-      }))
+
+      // Per-row parse: skip any rows where the JSON has NaN/Infinity (PostGIS
+      // can emit those for unsalvageable geometries) rather than failing
+      // the whole request.
+      let skipped = 0
+      const features = []
+      for (const row of rows) {
+        try {
+          if (!row.geometry || row.geometry.includes('NaN') || row.geometry.includes('Infinity')) {
+            skipped++
+            continue
+          }
+          features.push({
+            type: 'Feature',
+            geometry: JSON.parse(row.geometry),
+            properties: getFeatureProperties(row, tableName, idColumn),
+          })
+        } catch (parseErr) {
+          skipped++
+        }
+      }
+      if (skipped > 0) {
+        fastify.log.warn({ tableName, skipped, kept: features.length }, 'dynamic-layers: dropped rows with invalid geometry')
+      }
       
       // Convert to TopoJSON for compression
       const geojson = {
