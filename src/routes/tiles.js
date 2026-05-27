@@ -29,6 +29,39 @@ async function tilesRoutes(fastify) {
     })),
   }))
 
+  // Ward list — flat JSON with centroids, used by the planner ward selector
+  // and any "fly to ward" affordance. Returns fid (numeric, stable), name_en
+  // (display label), pcode (Zimbabwe administrative code), and the WGS84
+  // centroid as [lon, lat]. Ordered by name for a predictable dropdown.
+  fastify.get('/wards', async (request, reply) => {
+    try {
+      const { rows } = await fastify.pg.query(
+        `SELECT fid,
+                name_en,
+                pcode,
+                ST_X(ST_Centroid(ST_SetSRID(geom, 4326))) AS lon,
+                ST_Y(ST_Centroid(ST_SetSRID(geom, 4326))) AS lat
+         FROM wards
+         WHERE geom IS NOT NULL
+         ORDER BY name_en NULLS LAST, fid`
+      )
+      reply
+        .header('Cache-Control', 'public, max-age=3600')
+        .send({
+          success: true,
+          data: rows.map((r) => ({
+            fid: r.fid,
+            name: r.name_en || `Ward ${r.fid}`,
+            pcode: r.pcode || null,
+            center: [Number(r.lon), Number(r.lat)],
+          })),
+        })
+    } catch (err) {
+      fastify.log.error({ err }, 'ward list query failed')
+      return reply.code(500).send({ error: 'Ward lookup failed' })
+    }
+  })
+
   // One MVT tile.
   fastify.get('/tiles/:layer/:z/:x/:y.pbf', async (request, reply) => {
     const { layer: layerId } = request.params
