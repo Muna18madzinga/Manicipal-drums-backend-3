@@ -164,10 +164,19 @@ async function build() {
   // Register Compression
   await server.register(require('@fastify/compress'))
 
-  // Register Rate Limiting
+  // Register Rate Limiting.
+  // - Global cap bumped from 100/min to 1000/min: a map app legitimately
+  //   issues bursts of tile + feature requests when the user pans, zooms,
+  //   or clicks across many overlapping layers.
+  // - Skip /api/tiles/* and /api/wards entirely. They are read-only,
+  //   already cache-controlled (1d on tiles, 1h on wards), and a single
+  //   viewport easily blows past any sane per-IP cap on slow networks.
+  //   Write endpoints (auth, applications, etc.) keep the global limit.
   await server.register(require('@fastify/rate-limit'), {
-    max: 100,
-    timeWindow: '1 minute'
+    max: 1000,
+    timeWindow: '1 minute',
+    allowList: (req) =>
+      req.url.startsWith('/api/tiles/') || req.url.startsWith('/api/wards'),
   })
 
   // Register PostgreSQL
