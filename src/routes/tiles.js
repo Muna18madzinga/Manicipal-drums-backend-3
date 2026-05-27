@@ -30,31 +30,42 @@ async function tilesRoutes(fastify) {
   }))
 
   // Ward list — flat JSON with centroids, used by the planner ward selector
-  // and any "fly to ward" affordance. Returns fid (numeric, stable), name_en
-  // (display label), pcode (Zimbabwe administrative code), and the WGS84
-  // centroid as [lon, lat]. Ordered by name for a predictable dropdown.
+  // and any "fly to ward" affordance. The GeoPackage stored ward labels as
+  // bare numbers, so we join districts on the pcode prefix (ZW{PP}{DD}{WW},
+  // first 6 chars = district) and compose a human-readable label like
+  // "Ward 18 — Beitbridge". Centroid is WGS84 [lon, lat]. Ordered by district
+  // then ward so the dropdown reads as a geographic outline.
   fastify.get('/wards', async (request, reply) => {
     try {
       const { rows } = await fastify.pg.query(
-        `SELECT fid,
-                name_en,
-                pcode,
-                ST_X(ST_Centroid(ST_SetSRID(geom, 4326))) AS lon,
-                ST_Y(ST_Centroid(ST_SetSRID(geom, 4326))) AS lat
-         FROM wards
-         WHERE geom IS NOT NULL
-         ORDER BY name_en NULLS LAST, fid`
+        `SELECT w.fid,
+                w.name_en AS ward_label,
+                w.pcode,
+                d.name_en AS district_name,
+                ST_X(ST_Centroid(ST_SetSRID(w.geom, 4326))) AS lon,
+                ST_Y(ST_Centroid(ST_SetSRID(w.geom, 4326))) AS lat
+         FROM wards w
+         LEFT JOIN districts d ON d.pcode = LEFT(w.pcode, 6)
+         WHERE w.geom IS NOT NULL
+         ORDER BY d.name_en NULLS LAST,
+                  -- numeric ward labels sort naturally
+                  CASE WHEN w.name_en ~ '^[0-9]+$' THEN LPAD(w.name_en, 4, '0') ELSE w.name_en END,
+                  w.fid`
       )
       reply
         .header('Cache-Control', 'public, max-age=3600')
         .send({
           success: true,
-          data: rows.map((r) => ({
-            fid: r.fid,
-            name: r.name_en || `Ward ${r.fid}`,
-            pcode: r.pcode || null,
-            center: [Number(r.lon), Number(r.lat)],
-          })),
+          data: rows.map((r) => {
+            const wardLabel = r.ward_label ? `Ward ${r.ward_label}` : `Ward ${r.fid}`
+            const name = r.district_name ? `${wardLabel} — ${r.district_name}` : wardLabel
+            return {
+              fid: r.fid,
+              name,
+              pcode: r.pcode || null,
+              center: [Number(r.lon), Number(r.lat)],
+            }
+          }),
         })
     } catch (err) {
       fastify.log.error({ err }, 'ward list query failed')
