@@ -6,6 +6,9 @@ const { TileCache } = require('../lib/tileCache')
 
 const cache = new TileCache(2000)
 
+/** Capitalise the first letter of a string for tidy result subtitles. */
+const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
+
 /**
  * Fastify plugin. Register with prefix '/api'; routes live under /api/tiles.
  * @param {import('fastify').FastifyInstance} fastify
@@ -114,7 +117,8 @@ async function tilesRoutes(fastify) {
       for (const r of wards.rows) {
         out.push({
           type: 'ward',
-          label: `Ward ${r.ward}${r.district ? ` — ${r.district}` : ''}`,
+          label: `Ward ${r.ward}`,
+          subtitle: r.district ? `${r.district} Rural District` : 'Ward',
           center: [Number(r.lon), Number(r.lat)],
         })
       }
@@ -132,7 +136,8 @@ async function tilesRoutes(fastify) {
       for (const r of parcels.rows) {
         out.push({
           type: 'parcel',
-          label: `${r.label}${r.district ? ` (${r.district})` : ''}`,
+          label: r.label,
+          subtitle: r.district ? `Parcel · ${r.district}` : 'Parcel',
           center: [Number(r.lon), Number(r.lat)],
         })
       }
@@ -147,7 +152,7 @@ async function tilesRoutes(fastify) {
         [like]
       )
       for (const r of farms.rows) {
-        out.push({ type: 'farm', label: r.label, center: [Number(r.lon), Number(r.lat)] })
+        out.push({ type: 'farm', label: r.label, subtitle: 'Farm cadastre', center: [Number(r.lon), Number(r.lat)] })
       }
 
       // Named places (towns / villages) inside the council district.
@@ -164,7 +169,8 @@ async function tilesRoutes(fastify) {
       for (const r of places.rows) {
         out.push({
           type: 'place',
-          label: `${r.label}${r.fclass ? ` · ${r.fclass}` : ''}`,
+          label: r.label,
+          subtitle: r.fclass ? cap(r.fclass.replace(/_/g, ' ')) : 'Place',
           center: [Number(r.lon), Number(r.lat)],
         })
       }
@@ -184,7 +190,8 @@ async function tilesRoutes(fastify) {
       for (const r of pois.rows) {
         out.push({
           type: 'poi',
-          label: `${r.label}${r.fclass ? ` · ${r.fclass.replace(/_/g, ' ')}` : ''}`,
+          label: r.label,
+          subtitle: r.fclass ? cap(r.fclass.replace(/_/g, ' ')) : 'Facility',
           center: [Number(r.lon), Number(r.lat)],
         })
       }
@@ -199,7 +206,7 @@ async function tilesRoutes(fastify) {
         [like]
       )
       for (const r of zones.rows) {
-        out.push({ type: 'zone', label: r.label, center: [Number(r.lon), Number(r.lat)] })
+        out.push({ type: 'zone', label: r.label, subtitle: 'Proposed peri-urban zone', center: [Number(r.lon), Number(r.lat)] })
       }
 
       // Beyond peri-urban zones by settlement / tenure name (EPSG:4326).
@@ -213,7 +220,7 @@ async function tilesRoutes(fastify) {
       )
       for (const r of beyond.rows) {
         if (!r.label) continue
-        out.push({ type: 'zone', label: r.label, center: [Number(r.lon), Number(r.lat)] })
+        out.push({ type: 'zone', label: r.label, subtitle: 'Land tenure zone', center: [Number(r.lon), Number(r.lat)] })
       }
 
       // Drop rows with missing or null-island (0,0) centroids — those come
