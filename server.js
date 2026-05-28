@@ -177,7 +177,9 @@ async function build() {
     max: 1000,
     timeWindow: '1 minute',
     allowList: (req) =>
-      req.url.startsWith('/api/tiles/') || req.url.startsWith('/api/wards'),
+      req.url.startsWith('/api/tiles/') ||
+      req.url.startsWith('/api/wards') ||
+      req.url.startsWith('/api/map-search'),
   })
 
   // Register PostgreSQL
