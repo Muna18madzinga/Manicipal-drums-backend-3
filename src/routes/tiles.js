@@ -169,6 +169,53 @@ async function tilesRoutes(fastify) {
         })
       }
 
+      // Points of interest (schools, clinics, business centres, shops, …)
+      // inside the council district — searched by name.
+      const pois = await fastify.pg.query(
+        `SELECT p.name AS label, p.fclass,
+                ST_X(ST_Centroid(ST_SetSRID(p.geom, 4326))) AS lon,
+                ST_Y(ST_Centroid(ST_SetSRID(p.geom, 4326))) AS lat
+         FROM pois_points p
+         JOIN districts d ON d.pcode = $2
+         WHERE p.name ILIKE $1 AND ST_Within(p.geom, d.geom)
+         LIMIT 8`,
+        [like, councilPcode]
+      )
+      for (const r of pois.rows) {
+        out.push({
+          type: 'poi',
+          label: `${r.label}${r.fclass ? ` · ${r.fclass.replace(/_/g, ' ')}` : ''}`,
+          center: [Number(r.lon), Number(r.lat)],
+        })
+      }
+
+      // Master-plan proposed peri-urban zones by zone name (EPSG:4326).
+      const zones = await fastify.pg.query(
+        `SELECT zone AS label,
+                ST_X(ST_Centroid(geom)) AS lon, ST_Y(ST_Centroid(geom)) AS lat
+         FROM vungu_proposed_peri_urban_zones
+         WHERE geom IS NOT NULL AND zone ILIKE $1
+         LIMIT 8`,
+        [like]
+      )
+      for (const r of zones.rows) {
+        out.push({ type: 'zone', label: r.label, center: [Number(r.lon), Number(r.lat)] })
+      }
+
+      // Beyond peri-urban zones by settlement / tenure name (EPSG:4326).
+      const beyond = await fastify.pg.query(
+        `SELECT COALESCE(settlement, zone_code) AS label,
+                ST_X(ST_Centroid(geom)) AS lon, ST_Y(ST_Centroid(geom)) AS lat
+         FROM vungu_beyond_peri_urban_zones
+         WHERE geom IS NOT NULL AND (settlement ILIKE $1 OR zone_code ILIKE $1 OR adm3_en ILIKE $1)
+         LIMIT 8`,
+        [like]
+      )
+      for (const r of beyond.rows) {
+        if (!r.label) continue
+        out.push({ type: 'zone', label: r.label, center: [Number(r.lon), Number(r.lat)] })
+      }
+
       // Drop rows with missing or null-island (0,0) centroids — those come
       // from broken geometries and would fly the map into the ocean.
       const data = out.filter((r) =>
