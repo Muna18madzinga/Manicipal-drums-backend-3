@@ -81,6 +81,108 @@ async function tilesRoutes(fastify) {
     }
   })
 
+  // Map search — powers the planner search box. Looks across wards (council
+  // district), Vungu parcels + farm cadastre (by name), and named places
+  // inside the council district. Returns a flat list of {type, label,
+  // center:[lon,lat]} so the frontend can fly the map straight to a hit.
+  // Each source is capped so one common term can't return thousands of rows.
+  // Named /map-search to avoid colliding with public.js's legacy /search
+  // (which queries the old flat `places` table).
+  fastify.get('/map-search', async (request, reply) => {
+    const q = String(request.query?.q || '').trim()
+    // Min 1 char so single-digit ward numbers (1-9) are searchable.
+    if (q.length < 1) return { success: true, data: [] }
+    const like = `%${q}%`
+    const councilPcode = process.env.COUNCIL_DISTRICT_PCODE || 'ZW1704'
+    try {
+      const out = []
+
+      // Wards in the council district. name_en is a bare number, so match
+      // both "5" and "Ward 5".
+      const wards = await fastify.pg.query(
+        `SELECT w.name_en AS ward, d.name_en AS district,
+                ST_X(ST_Centroid(ST_SetSRID(w.geom, 4326))) AS lon,
+                ST_Y(ST_Centroid(ST_SetSRID(w.geom, 4326))) AS lat
+         FROM wards w
+         LEFT JOIN districts d ON d.pcode = LEFT(w.pcode, 6)
+         WHERE w.pcode LIKE $1
+           AND (w.name_en ILIKE $2 OR ('ward ' || w.name_en) ILIKE $2)
+         ORDER BY (CASE WHEN w.name_en ~ '^[0-9]+$' THEN LPAD(w.name_en, 4, '0') ELSE w.name_en END)
+         LIMIT 8`,
+        [`${councilPcode}%`, like]
+      )
+      for (const r of wards.rows) {
+        out.push({
+          type: 'ward',
+          label: `Ward ${r.ward}${r.district ? ` — ${r.district}` : ''}`,
+          center: [Number(r.lon), Number(r.lat)],
+        })
+      }
+
+      // Vungu parcels by name (stored as real EPSG:4326).
+      const parcels = await fastify.pg.query(
+        `SELECT COALESCE(NULLIF(name, ''), name_cfu, 'Parcel ' || fid) AS label,
+                district,
+                ST_X(ST_Centroid(geom)) AS lon, ST_Y(ST_Centroid(geom)) AS lat
+         FROM vungu_parcels
+         WHERE geom IS NOT NULL AND (name ILIKE $1 OR name_cfu ILIKE $1)
+         LIMIT 8`,
+        [like]
+      )
+      for (const r of parcels.rows) {
+        out.push({
+          type: 'parcel',
+          label: `${r.label}${r.district ? ` (${r.district})` : ''}`,
+          center: [Number(r.lon), Number(r.lat)],
+        })
+      }
+
+      // Vungu farm cadastre by name.
+      const farms = await fastify.pg.query(
+        `SELECT COALESCE(NULLIF(name, ''), name_cfu, 'Farm ' || fid) AS label,
+                ST_X(ST_Centroid(geom)) AS lon, ST_Y(ST_Centroid(geom)) AS lat
+         FROM vungu_farm_cadastre
+         WHERE geom IS NOT NULL AND (name ILIKE $1 OR name_cfu ILIKE $1)
+         LIMIT 8`,
+        [like]
+      )
+      for (const r of farms.rows) {
+        out.push({ type: 'farm', label: r.label, center: [Number(r.lon), Number(r.lat)] })
+      }
+
+      // Named places (towns / villages) inside the council district.
+      const places = await fastify.pg.query(
+        `SELECT p.name AS label, p.fclass,
+                ST_X(ST_Centroid(ST_SetSRID(p.geom, 4326))) AS lon,
+                ST_Y(ST_Centroid(ST_SetSRID(p.geom, 4326))) AS lat
+         FROM places_points p
+         JOIN districts d ON d.pcode = $2
+         WHERE p.name ILIKE $1 AND ST_Within(p.geom, d.geom)
+         LIMIT 8`,
+        [like, councilPcode]
+      )
+      for (const r of places.rows) {
+        out.push({
+          type: 'place',
+          label: `${r.label}${r.fclass ? ` · ${r.fclass}` : ''}`,
+          center: [Number(r.lon), Number(r.lat)],
+        })
+      }
+
+      // Drop rows with missing or null-island (0,0) centroids — those come
+      // from broken geometries and would fly the map into the ocean.
+      const data = out.filter((r) =>
+        r.label &&
+        Number.isFinite(r.center[0]) && Number.isFinite(r.center[1]) &&
+        !(r.center[0] === 0 && r.center[1] === 0)
+      )
+      reply.header('Cache-Control', 'public, max-age=120').send({ success: true, data })
+    } catch (err) {
+      fastify.log.error({ err, q }, 'map search failed')
+      return reply.code(500).send({ error: 'Search failed' })
+    }
+  })
+
   // One MVT tile.
   fastify.get('/tiles/:layer/:z/:x/:y.pbf', async (request, reply) => {
     const { layer: layerId } = request.params
