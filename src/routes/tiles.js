@@ -123,6 +123,22 @@ async function tilesRoutes(fastify) {
         })
       }
 
+      // Districts country-wide — lets the planner jump to any district.
+      const districts = await fastify.pg.query(
+        `SELECT name_en AS label,
+                ST_X(ST_Centroid(ST_SetSRID(geom, 4326))) AS lon,
+                ST_Y(ST_Centroid(ST_SetSRID(geom, 4326))) AS lat
+         FROM districts
+         WHERE level = 2 AND name_en ILIKE $1
+         ORDER BY name_en
+         LIMIT 8`,
+        [like]
+      )
+      for (const r of districts.rows) {
+        out.push({ type: 'place', label: r.label, subtitle: 'District',
+          center: [Number(r.lon), Number(r.lat)] })
+      }
+
       // Vungu parcels by name (stored as real EPSG:4326).
       const parcels = await fastify.pg.query(
         `SELECT COALESCE(NULLIF(name, ''), name_cfu, 'Parcel ' || fid) AS label,
@@ -155,37 +171,41 @@ async function tilesRoutes(fastify) {
         out.push({ type: 'farm', label: r.label, subtitle: 'Farm cadastre', center: [Number(r.lon), Number(r.lat)] })
       }
 
-      // Named places (towns / villages) inside the council district.
+      // Named places (towns / villages) country-wide, labelled by district.
       const places = await fastify.pg.query(
         `SELECT p.name AS label, p.fclass,
+                d.name_en AS district,
                 ST_X(ST_Centroid(ST_SetSRID(p.geom, 4326))) AS lon,
                 ST_Y(ST_Centroid(ST_SetSRID(p.geom, 4326))) AS lat
          FROM places_points p
-         JOIN districts d ON d.pcode = $2
-         WHERE p.name ILIKE $1 AND ST_Within(p.geom, d.geom)
+         LEFT JOIN districts d
+           ON d.level = 2 AND ST_Contains(d.geom, ST_SetSRID(p.geom, ST_SRID(d.geom)))
+         WHERE p.name ILIKE $1
+         ORDER BY p.name
          LIMIT 8`,
-        [like, councilPcode]
+        [like]
       )
       for (const r of places.rows) {
         out.push({
           type: 'place',
           label: r.label,
-          subtitle: r.fclass ? cap(r.fclass.replace(/_/g, ' ')) : 'Place',
+          subtitle: r.district
+            ? `${cap((r.fclass || 'place').replace(/_/g, ' '))} · ${r.district}`
+            : (r.fclass ? cap(r.fclass.replace(/_/g, ' ')) : 'Place'),
           center: [Number(r.lon), Number(r.lat)],
         })
       }
 
-      // Points of interest (schools, clinics, business centres, shops, …)
-      // inside the council district — searched by name.
+      // Points of interest country-wide, searched by name.
       const pois = await fastify.pg.query(
         `SELECT p.name AS label, p.fclass,
                 ST_X(ST_Centroid(ST_SetSRID(p.geom, 4326))) AS lon,
                 ST_Y(ST_Centroid(ST_SetSRID(p.geom, 4326))) AS lat
          FROM pois_points p
-         JOIN districts d ON d.pcode = $2
-         WHERE p.name ILIKE $1 AND ST_Within(p.geom, d.geom)
+         WHERE p.name ILIKE $1
+         ORDER BY p.name
          LIMIT 8`,
-        [like, councilPcode]
+        [like]
       )
       for (const r of pois.rows) {
         out.push({
