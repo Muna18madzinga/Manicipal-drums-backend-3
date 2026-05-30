@@ -50,6 +50,10 @@ const { requireAuth, requireRole } = require('../middleware/jwtAuth')
 
 const STAFF_ROLES = ['admin', 'planner', 'planning_clerk', 'building_inspector', 'eo']
 
+// Citizens (user / viewer / registered) can read their own rows and create
+// new applications; only staff can change status or add internal records.
+const PERMIT_READERS = [...STAFF_ROLES, 'user', 'viewer', 'registered']
+
 // ════════════════════════════════════════════════════════════════════
 // Photo storage (DM Handbook Phase 4 — Stage Inspection Photos)
 // ════════════════════════════════════════════════════════════════════
@@ -88,7 +92,7 @@ async function developmentManagementRoutes(fastify) {
   // ══════════════════════════════════════════════════════════════════
 
   fastify.post('/permit-applications', {
-    preHandler: requireRole(fastify, ['planning_clerk', 'planner', 'admin']),
+    preHandler: requireRole(fastify, ['planning_clerk', 'planner', 'admin', 'user', 'viewer', 'registered']),
   }, async (request, reply) => {
     const b = request.body || {}
     if (!isStr(b.applicant_name, 255)) {
@@ -135,9 +139,11 @@ async function developmentManagementRoutes(fastify) {
   })
 
   fastify.get('/permit-applications', {
-    preHandler: requireRole(fastify, STAFF_ROLES),
+    preHandler: requireRole(fastify, PERMIT_READERS),
   }, async (request, reply) => {
     const { status, development_type, search, limit = 50, offset = 0 } = request.query
+    const isStaff = STAFF_ROLES.includes(request.user.role)
+    const ownerFilter = isStaff ? null : request.user.id
     try {
       const { rows } = await pg.query(
         `SELECT * FROM spatial_planning.v_application_summary
@@ -148,10 +154,12 @@ async function developmentManagementRoutes(fastify) {
                  OR tpd_reference ILIKE '%' || $3 || '%'
                  OR stand_number  ILIKE '%' || $3 || '%'
                ))
+           AND ($6::uuid IS NULL OR created_by = $6)
          ORDER BY received_at DESC
          LIMIT $4 OFFSET $5`,
         [status || null, development_type || null, search || null,
-         Math.min(Number(limit) || 50, 200), Number(offset) || 0],
+         Math.min(Number(limit) || 50, 200), Number(offset) || 0,
+         ownerFilter],
       )
       return reply.send({ success: true, data: rows })
     } catch (err) {
@@ -161,30 +169,25 @@ async function developmentManagementRoutes(fastify) {
   })
 
   fastify.get('/permit-applications/:id', {
-    preHandler: requireAuth(fastify),
+    preHandler: requireRole(fastify, PERMIT_READERS),
   }, async (request, reply) => {
     if (!isUuid(request.params.id)) {
       return reply.code(400).send({ success: false, error: 'bad_id' })
     }
     try {
       const { rows } = await pg.query(
-        `SELECT * FROM spatial_planning.permit_application WHERE id = $1`,
+        'SELECT * FROM spatial_planning.permit_application WHERE id = $1',
         [request.params.id],
       )
-      if (!rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
-      const pa = rows[0]
-      const u = request.user
-      const isStaff = STAFF_ROLES.includes(u.role)
-      if (!isStaff) {
-        if (!pa.dev_app_id) return reply.code(403).send({ success: false, error: 'forbidden' })
-        const { rows: appRows } = await pg.query(
-          `SELECT user_id FROM public.development_applications WHERE id = $1`, [pa.dev_app_id],
-        )
-        if (!appRows[0] || appRows[0].user_id !== u.id) {
-          return reply.code(403).send({ success: false, error: 'forbidden' })
-        }
+      if (!rows[0]) {
+        return reply.code(404).send({ success: false, error: 'not_found' })
       }
-      return reply.send({ success: true, data: pa })
+      const isStaff = STAFF_ROLES.includes(request.user.role)
+      if (!isStaff && rows[0].created_by !== request.user.id) {
+        // 404 not 403 so we don't leak the existence of someone else's row.
+        return reply.code(404).send({ success: false, error: 'not_found' })
+      }
+      return reply.send({ success: true, data: rows[0] })
     } catch (err) {
       request.log.error({ err }, 'get permit-application failed')
       return reply.code(500).send({ success: false, error: 'internal' })
