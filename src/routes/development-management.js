@@ -259,9 +259,17 @@ async function developmentManagementRoutes(fastify) {
   })
 
   fastify.get('/permit-applications/:id/consultations', {
-    preHandler: requireRole(fastify, STAFF_ROLES),
+    preHandler: requireRole(fastify, PERMIT_READERS),
   }, async (request, reply) => {
     if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
+    const ownRow = await pg.query(
+      'SELECT created_by FROM spatial_planning.permit_application WHERE id = $1',
+      [request.params.id])
+    if (!ownRow.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
+    const isStaff = STAFF_ROLES.includes(request.user.role)
+    if (!isStaff && ownRow.rows[0].created_by !== request.user.id) {
+      return reply.code(404).send({ success: false, error: 'not_found' })
+    }
     const { rows } = await pg.query(
       `SELECT * FROM spatial_planning.application_consultation
        WHERE permit_app_id = $1 ORDER BY created_at ASC`,
@@ -333,9 +341,17 @@ async function developmentManagementRoutes(fastify) {
   })
 
   fastify.get('/permit-applications/:id/objections', {
-    preHandler: requireRole(fastify, STAFF_ROLES),
+    preHandler: requireRole(fastify, PERMIT_READERS),
   }, async (request, reply) => {
     if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
+    const ownRow = await pg.query(
+      'SELECT created_by FROM spatial_planning.permit_application WHERE id = $1',
+      [request.params.id])
+    if (!ownRow.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
+    const isStaff = STAFF_ROLES.includes(request.user.role)
+    if (!isStaff && ownRow.rows[0].created_by !== request.user.id) {
+      return reply.code(404).send({ success: false, error: 'not_found' })
+    }
     const { rows } = await pg.query(
       `SELECT * FROM spatial_planning.application_objection
        WHERE permit_app_id = $1 ORDER BY received_at ASC`,
@@ -585,9 +601,17 @@ async function developmentManagementRoutes(fastify) {
   })
 
   fastify.get('/permit-applications/:id/building-plans', {
-    preHandler: requireRole(fastify, STAFF_ROLES),
+    preHandler: requireRole(fastify, PERMIT_READERS),
   }, async (request, reply) => {
     if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
+    const ownRow = await pg.query(
+      'SELECT created_by FROM spatial_planning.permit_application WHERE id = $1',
+      [request.params.id])
+    if (!ownRow.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
+    const isStaff = STAFF_ROLES.includes(request.user.role)
+    if (!isStaff && ownRow.rows[0].created_by !== request.user.id) {
+      return reply.code(404).send({ success: false, error: 'not_found' })
+    }
     const { rows } = await pg.query(
       `SELECT * FROM spatial_planning.building_plan WHERE permit_app_id = $1 ORDER BY revision ASC`,
       [request.params.id],
@@ -717,27 +741,16 @@ async function developmentManagementRoutes(fastify) {
   })
 
   fastify.get('/permit-applications/:id/stage-inspections', {
-    preHandler: requireAuth(fastify),
+    preHandler: requireRole(fastify, PERMIT_READERS),
   }, async (request, reply) => {
     if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
-    const u = request.user
-    const isStaff = STAFF_ROLES.includes(u.role)
-    if (!isStaff) {
-      const { rows: paRows } = await pg.query(
-        `SELECT dev_app_id FROM spatial_planning.permit_application WHERE id = $1`,
-        [request.params.id],
-      )
-      if (!paRows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
-      if (paRows[0].dev_app_id) {
-        const { rows: appRows } = await pg.query(
-          `SELECT user_id FROM public.development_applications WHERE id = $1`, [paRows[0].dev_app_id],
-        )
-        if (!appRows[0] || appRows[0].user_id !== u.id) {
-          return reply.code(403).send({ success: false, error: 'forbidden' })
-        }
-      } else {
-        return reply.code(403).send({ success: false, error: 'forbidden' })
-      }
+    const ownRow = await pg.query(
+      'SELECT created_by FROM spatial_planning.permit_application WHERE id = $1',
+      [request.params.id])
+    if (!ownRow.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
+    const isStaff = STAFF_ROLES.includes(request.user.role)
+    if (!isStaff && ownRow.rows[0].created_by !== request.user.id) {
+      return reply.code(404).send({ success: false, error: 'not_found' })
     }
     const { rows } = await pg.query(
       `SELECT * FROM spatial_planning.v_inspection_progress
