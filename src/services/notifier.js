@@ -106,6 +106,22 @@ const TEMPLATES = {
     }
   },
 
+  application_fee_paid({ permitId, name, receipt }) {
+    const greeting = name ? `Hello ${name},` : 'Hello,'
+    return {
+      subject: `${COUNCIL}: application fee received — ${permitId}`,
+      text: [
+        greeting,
+        '',
+        `We have received your application fee for permit application ${permitId}.`,
+        `Receipt number: ${receipt}.`,
+        `Your application has been registered and will be reviewed shortly.`,
+        '',
+        `— ${COUNCIL}`,
+      ].join('\n'),
+    }
+  },
+
   inspection_completed({ applicationId, stageNumber, stageName, passed, notes, name }) {
     const greeting = name ? `Hello ${name},` : 'Hello,'
     const verdict = passed ? 'PASSED' : 'FAILED'
