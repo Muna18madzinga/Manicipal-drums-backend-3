@@ -1,0 +1,41 @@
+const nock = require('nock')
+const { getDriver } = require('../paymentDriver')
+
+beforeAll(() => {
+  process.env.PAYNOW_INTEGRATION_ID  = '12345'
+  process.env.PAYNOW_INTEGRATION_KEY = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+  process.env.PAYNOW_RESULT_URL      = 'https://example.test/api/payments/webhook/paynow'
+  process.env.PAYNOW_RETURN_URL      = 'https://example.test/payment/return'
+  process.env.PAYNOW_API_BASE        = 'https://www.paynow.co.zw'
+})
+afterEach(() => nock.cleanAll())
+
+describe('paynowDriver.initPayment', () => {
+  it('POSTs Express Checkout with the wallet method and parses the poll URL', async () => {
+    nock('https://www.paynow.co.zw')
+      .post('/interface/remotetransaction', body => {
+        // nock parses application/x-www-form-urlencoded into a plain object
+        return /^ecocash$/i.test(body.method)
+          && body.phone === '263771234567'
+          && body.amount === '25.00'
+          && /^[A-F0-9]{128}$/.test(body.hash)
+      })
+      .reply(200,
+        'status=Ok&pollurl=https%3A%2F%2Fwww.paynow.co.zw%2FInterface%2FCheckPayment%2F%3Fguid%3DAAA&hash=DEADBEEF')
+
+    const driver = getDriver('paynow')
+    const result = await driver.initPayment({
+      payment: {
+        id:           'b8b3a9e0-1111-2222-3333-444444444444',
+        amount_usd:   '25.00',
+        wallet_ccy:   'USD',
+        payer_email:  'demo.viewer@vungu.test',
+        metadata:     { phone: '+263771234567', wallet: 'ecocash' },
+      },
+    })
+
+    expect(result.providerRef).toBe('https://www.paynow.co.zw/Interface/CheckPayment/?guid=AAA')
+    expect(result.providerStatus).toBe('sent')
+    expect(result.redirectUrl).toBeNull()
+  })
+})
