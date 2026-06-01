@@ -103,14 +103,17 @@ async function developmentManagementRoutes(fastify) {
     if (!VALID_TYPES.includes(b.development_type)) {
       return reply.code(400).send({ success: false, error: 'bad_development_type' })
     }
+    const initialStatus = (b.pay_intent && typeof b.pay_intent === 'object')
+      ? 'pending_payment'
+      : 'registered'
     try {
       const { rows } = await pg.query(
         `INSERT INTO spatial_planning.permit_application
            (dev_app_id, tpd_reference, dev_register_no, stand_number, suburb_ward,
             street_address, stand_area_sqm, applicant_name, applicant_id_number,
             applicant_phone, applicant_email, development_type, description,
-            site_plan_url, received_at, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+            site_plan_url, received_at, created_by, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
          RETURNING *`,
         [
           b.dev_app_id || null,
@@ -129,6 +132,7 @@ async function developmentManagementRoutes(fastify) {
           b.site_plan_url || null,
           isDate(b.received_at) ? b.received_at : new Date().toISOString().slice(0, 10),
           request.user.id,
+          initialStatus,
         ],
       )
       return reply.code(201).send({ success: true, data: rows[0] })
@@ -144,6 +148,7 @@ async function developmentManagementRoutes(fastify) {
     const { status, development_type, search, limit = 50, offset = 0 } = request.query
     const isStaff = STAFF_ROLES.includes(request.user.role)
     const ownerFilter = isStaff ? null : request.user.id
+    const includePending = isStaff && request.query.includePendingPayment === 'true'
     try {
       const { rows } = await pg.query(
         `SELECT * FROM spatial_planning.v_application_summary
@@ -155,11 +160,14 @@ async function developmentManagementRoutes(fastify) {
                  OR stand_number  ILIKE '%' || $3 || '%'
                ))
            AND ($6::uuid IS NULL OR created_by = $6)
+           AND ($7::boolean = true
+                OR created_by = COALESCE($6, '00000000-0000-0000-0000-000000000000'::uuid)
+                OR status <> 'pending_payment')
          ORDER BY received_at DESC
          LIMIT $4 OFFSET $5`,
         [status || null, development_type || null, search || null,
          Math.min(Number(limit) || 50, 200), Number(offset) || 0,
-         ownerFilter],
+         ownerFilter, includePending],
       )
       return reply.send({ success: true, data: rows })
     } catch (err) {
