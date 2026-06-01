@@ -27,6 +27,8 @@
  */
 
 const crypto = require('node:crypto')
+const https  = require('node:https')
+const http   = require('node:http')
 
 const NOT_IMPLEMENTED = (driver) => {
   const e = new Error(`Payment driver ${driver} is not implemented yet.`)
@@ -84,10 +86,114 @@ function makeStubDriver(name) {
   }
 }
 
-const paynowDriver   = makeStubDriver('paynow')
 const stripeDriver   = makeStubDriver('stripe')
 const ecocashDriver  = makeStubDriver('ecocash')
 const onemoneyDriver = makeStubDriver('onemoney')
+
+// ════════════════════════════════════════════════════════════════════
+// Shared HTTP helper — uses node:https so nock can intercept in tests.
+// ════════════════════════════════════════════════════════════════════
+function httpPost(url, body) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url)
+    const lib    = parsed.protocol === 'https:' ? https : http
+    const opts   = {
+      hostname: parsed.hostname,
+      port:     parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+      path:     parsed.pathname + parsed.search,
+      method:   'POST',
+      headers:  {
+        'Content-Type':   'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(body),
+      },
+    }
+    const req = lib.request(opts, (res) => {
+      let data = ''
+      res.setEncoding('utf8')
+      res.on('data', chunk => { data += chunk })
+      res.on('end', () => resolve(data))
+    })
+    req.on('error', reject)
+    req.write(body)
+    req.end()
+  })
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Paynow driver — Express Checkout (mobile money) + future Web Initiate.
+// ════════════════════════════════════════════════════════════════════
+const PAYNOW_API_BASE = () => process.env.PAYNOW_API_BASE || 'https://www.paynow.co.zw'
+const PAYNOW_ID       = () => process.env.PAYNOW_INTEGRATION_ID
+const PAYNOW_KEY      = () => process.env.PAYNOW_INTEGRATION_KEY
+const PAYNOW_RETURN   = () => process.env.PAYNOW_RETURN_URL
+const PAYNOW_RESULT   = () => process.env.PAYNOW_RESULT_URL
+
+function paynowHash(fields, integrationKey) {
+  const concat = Object.values(fields).join('') + integrationKey
+  return crypto.createHash('sha512').update(concat, 'utf8').digest('hex').toUpperCase()
+}
+
+function paynowParse(body) {
+  const out = {}
+  for (const pair of String(body).split('&')) {
+    const [k, v] = pair.split('=')
+    if (k) out[k.toLowerCase()] = decodeURIComponent((v || '').replace(/\+/g, ' '))
+  }
+  return out
+}
+
+const paynowDriver = {
+  name: 'paynow',
+
+  async initPayment({ payment }) {
+    const wallet = String(payment?.metadata?.wallet || '').toLowerCase()
+    const phone  = String(payment?.metadata?.phone  || '').replace(/^\+/, '')
+    if (!['ecocash', 'onemoney', 'innbucks'].includes(wallet)) {
+      throw Object.assign(new Error('paynow: unsupported wallet'), { code: 'bad_wallet' })
+    }
+    if (!/^263(71|73|77|78|86)\d{7}$/.test(phone)) {
+      throw Object.assign(new Error('paynow: bad phone for wallet'), { code: 'bad_phone' })
+    }
+
+    const amount = payment.wallet_ccy === 'USD'
+      ? Number(payment.amount_usd).toFixed(2)
+      : Number(payment.amount_zwg).toFixed(2)
+
+    const fields = {
+      id:             PAYNOW_ID(),
+      reference:      String(payment.id),
+      amount:         amount,
+      additionalinfo: `Vungu RDC application fee ${payment.id}`,
+      returnurl:      PAYNOW_RETURN(),
+      resulturl:      PAYNOW_RESULT(),
+      authemail:      payment.payer_email || '',
+      phone:          phone,
+      method:         wallet,
+      status:         'Message',
+    }
+    fields.hash = paynowHash(fields, PAYNOW_KEY())
+
+    const body = new URLSearchParams(fields).toString()
+    const text = await httpPost(`${PAYNOW_API_BASE()}/interface/remotetransaction`, body)
+    const parsed = paynowParse(text)
+
+    if (String(parsed.status || '').toLowerCase() !== 'ok' || !parsed.pollurl) {
+      const e = new Error(`paynow init failed: ${parsed.error || parsed.status || text}`)
+      e.code = 'paynow_init_failed'
+      throw e
+    }
+
+    return {
+      providerRef:    parsed.pollurl,
+      providerStatus: 'sent',
+      redirectUrl:    null,
+    }
+  },
+
+  async pollPayment({ payment }) { throw NOT_IMPLEMENTED('paynow.pollPayment') },
+  async verifyWebhook()          { throw NOT_IMPLEMENTED('paynow.verifyWebhook') },
+  async refund()                 { throw NOT_IMPLEMENTED('paynow.refund') },
+}
 
 const DRIVERS = {
   manual:   manualDriver,
