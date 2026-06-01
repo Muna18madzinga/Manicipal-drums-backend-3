@@ -119,6 +119,27 @@ function httpPost(url, body) {
   })
 }
 
+function httpGet(url) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url)
+    const lib    = parsed.protocol === 'https:' ? https : http
+    const opts   = {
+      hostname: parsed.hostname,
+      port:     parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+      path:     parsed.pathname + parsed.search,
+      method:   'GET',
+    }
+    const req = lib.request(opts, (res) => {
+      let data = ''
+      res.setEncoding('utf8')
+      res.on('data', chunk => { data += chunk })
+      res.on('end', () => resolve(data))
+    })
+    req.on('error', reject)
+    req.end()
+  })
+}
+
 // ════════════════════════════════════════════════════════════════════
 // Paynow driver — Express Checkout (mobile money) + future Web Initiate.
 // ════════════════════════════════════════════════════════════════════
@@ -190,7 +211,20 @@ const paynowDriver = {
     }
   },
 
-  async pollPayment({ payment }) { throw NOT_IMPLEMENTED('paynow.pollPayment') },
+  async pollPayment({ payment }) {
+    if (!payment?.provider_ref) {
+      throw Object.assign(new Error('paynow: missing provider_ref'), { code: 'no_provider_ref' })
+    }
+    const text = await httpGet(payment.provider_ref)
+    const parsed = paynowParse(text)
+    const status = String(parsed.status || '')
+    const paidish = ['Paid', 'Awaiting Delivery', 'Delivered']
+    return {
+      providerStatus: status,
+      paid:           paidish.includes(status),
+      paidAt:         paidish.includes(status) ? new Date().toISOString() : null,
+    }
+  },
   async verifyWebhook()          { throw NOT_IMPLEMENTED('paynow.verifyWebhook') },
   async refund()                 { throw NOT_IMPLEMENTED('paynow.refund') },
 }

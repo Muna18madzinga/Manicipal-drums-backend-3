@@ -10,6 +10,45 @@ beforeAll(() => {
 })
 afterEach(() => nock.cleanAll())
 
+describe('paynowDriver.pollPayment', () => {
+  it('maps Paid → { paid:true }', async () => {
+    nock('https://www.paynow.co.zw')
+      .get('/Interface/CheckPayment/').query(true)
+      .reply(200,
+        'reference=ref&paynowreference=PN1&amount=25.00&status=Paid&pollurl=https%3A%2F%2Fwww.paynow.co.zw%2FInterface%2FCheckPayment%2F%3Fguid%3DAAA&hash=ZZ')
+    const driver = getDriver('paynow')
+    const r = await driver.pollPayment({
+      payment: { provider_ref: 'https://www.paynow.co.zw/Interface/CheckPayment/?guid=AAA' },
+    })
+    expect(r.paid).toBe(true)
+    expect(r.providerStatus).toBe('Paid')
+  })
+
+  it('maps Sent → { paid:false }', async () => {
+    nock('https://www.paynow.co.zw')
+      .get('/Interface/CheckPayment/').query(true)
+      .reply(200, 'reference=ref&status=Sent&hash=ZZ')
+    const driver = getDriver('paynow')
+    const r = await driver.pollPayment({
+      payment: { provider_ref: 'https://www.paynow.co.zw/Interface/CheckPayment/?guid=AAA' },
+    })
+    expect(r.paid).toBe(false)
+    expect(r.providerStatus).toBe('Sent')
+  })
+
+  it('maps Cancelled → { paid:false }', async () => {
+    nock('https://www.paynow.co.zw')
+      .get('/Interface/CheckPayment/').query(true)
+      .reply(200, 'reference=ref&status=Cancelled&hash=ZZ')
+    const driver = getDriver('paynow')
+    const r = await driver.pollPayment({
+      payment: { provider_ref: 'https://www.paynow.co.zw/Interface/CheckPayment/?guid=AAA' },
+    })
+    expect(r.paid).toBe(false)
+    expect(r.providerStatus).toBe('Cancelled')
+  })
+})
+
 describe('paynowDriver.initPayment', () => {
   it('POSTs Express Checkout with the wallet method and parses the poll URL', async () => {
     nock('https://www.paynow.co.zw')
