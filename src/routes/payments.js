@@ -454,6 +454,34 @@ async function applyPaid(fastify, row, actorUserId) {
       }
     }
 
+    if (updated.purpose === 'application_fee' && updated.related_kind === 'permit') {
+      const { rows: permitRows } = await client.query(
+        `UPDATE spatial_planning.permit_application
+            SET status      = CASE WHEN status = 'pending_payment'
+                                  THEN 'registered'
+                                  ELSE status END,
+                fee_paid_at = COALESCE(fee_paid_at, NOW()),
+                updated_at  = NOW()
+          WHERE id = $1
+          RETURNING id, applicant_email, applicant_name`,
+        [updated.related_id],
+      )
+      const permit = permitRows[0]
+      if (permit?.applicant_email) {
+        await notifier.enqueue(client, {
+          userId: updated.payer_id,
+          email:  permit.applicant_email,
+          kind:   'application_fee_paid',
+          templateData: {
+            permitId: permit.id,
+            name:     permit.applicant_name,
+            receipt:  updated.issued_receipt_no,
+          },
+          payload: { permitId: permit.id, paymentId: updated.id },
+        })
+      }
+    }
+
     await client.query('COMMIT')
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {})
