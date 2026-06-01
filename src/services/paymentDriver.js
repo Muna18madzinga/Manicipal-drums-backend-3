@@ -225,7 +225,39 @@ const paynowDriver = {
       paidAt:         paidish.includes(status) ? new Date().toISOString() : null,
     }
   },
-  async verifyWebhook()          { throw NOT_IMPLEMENTED('paynow.verifyWebhook') },
+  async verifyWebhook({ body, rawBody }) {
+    const incoming = (body && typeof body === 'object' && Object.keys(body).length)
+      ? body
+      : paynowParse(rawBody || '')
+    const claimed = String(incoming.hash || '').toUpperCase()
+    if (!claimed) return { ok: false }
+
+    const fields = { ...incoming }
+    delete fields.hash
+    // Paynow hashes the values in the order they appear in the request.
+    // URLSearchParams preserves insertion order; rebuild from raw body so
+    // we honour the caller's order rather than JS object-key order.
+    const ordered = {}
+    for (const pair of String(rawBody || '').split('&')) {
+      const [k] = pair.split('=')
+      if (k && k !== 'hash' && k in fields) ordered[k] = fields[k]
+    }
+    const recomputed = paynowHash(ordered, PAYNOW_KEY())
+
+    const a = Buffer.from(recomputed, 'utf8')
+    const b = Buffer.from(claimed, 'utf8')
+    const ok = a.length === b.length && crypto.timingSafeEqual(a, b)
+    if (!ok) return { ok: false }
+
+    const status = String(incoming.status || '')
+    const paidish = ['Paid', 'Awaiting Delivery', 'Delivered']
+    return {
+      ok:             true,
+      providerRef:    incoming.pollurl || null,
+      providerStatus: status,
+      paid:           paidish.includes(status),
+    }
+  },
   async refund()                 { throw NOT_IMPLEMENTED('paynow.refund') },
 }
 

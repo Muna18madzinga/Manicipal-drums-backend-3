@@ -78,3 +78,52 @@ describe('paynowDriver.initPayment', () => {
     expect(result.redirectUrl).toBeNull()
   })
 })
+
+describe('paynowDriver.verifyWebhook', () => {
+  function signedBody(fields) {
+    const concat = Object.values(fields).join('')
+      + process.env.PAYNOW_INTEGRATION_KEY
+    const hash = require('crypto').createHash('sha512')
+      .update(concat, 'utf8').digest('hex').toUpperCase()
+    return new URLSearchParams({ ...fields, hash }).toString()
+  }
+
+  it('accepts a correctly-hashed Paid callback', async () => {
+    const fields = {
+      reference:       'ref',
+      paynowreference: 'PN1',
+      amount:          '25.00',
+      additionalinfo:  'fee',
+      status:          'Paid',
+      pollurl:         'https://www.paynow.co.zw/Interface/CheckPayment/?guid=AAA',
+    }
+    const raw = signedBody(fields)
+    const driver = getDriver('paynow')
+    const v = await driver.verifyWebhook({
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body:    Object.fromEntries(new URLSearchParams(raw)),
+      rawBody: raw,
+    })
+    expect(v.ok).toBe(true)
+    expect(v.paid).toBe(true)
+    expect(v.providerRef).toBe(fields.pollurl)
+    expect(v.providerStatus).toBe('Paid')
+  })
+
+  it('rejects a tampered Paid callback', async () => {
+    const fields = {
+      reference: 'ref', paynowreference: 'PN1', amount: '25.00',
+      additionalinfo: 'fee', status: 'Paid',
+      pollurl: 'https://www.paynow.co.zw/Interface/CheckPayment/?guid=AAA',
+    }
+    const raw = signedBody(fields)
+    const tampered = raw.replace('amount=25.00', 'amount=0.01')
+    const driver = getDriver('paynow')
+    const v = await driver.verifyWebhook({
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body:    Object.fromEntries(new URLSearchParams(tampered)),
+      rawBody: tampered,
+    })
+    expect(v.ok).toBe(false)
+  })
+})
