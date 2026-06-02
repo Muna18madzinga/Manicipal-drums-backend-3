@@ -11,8 +11,6 @@ const { allLayers, getLayer } = require('../config/spatialLayers')
 const { isValidTileCoord, buildTileQuery } = require('../lib/tileQuery')
 const { TileCache } = require('../lib/tileCache')
 
-const cache = new TileCache(2000)
-
 /** Capitalise the first letter of a string for tidy result subtitles. */
 const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
 
@@ -21,6 +19,12 @@ const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
  * @param {import('fastify').FastifyInstance} fastify
  */
 async function tilesRoutes(fastify) {
+  // Two-tier MVT cache: L1 in-process LRU (capacity 2000 tiles) + L2 Redis
+  // when @fastify/redis is registered. Redis decoration is added on app
+  // startup if REDIS_URL is set; otherwise the cache silently degrades to
+  // L1-only and the route code is unaffected.
+  const cache = new TileCache({ capacity: 2000, redis: fastify.redis || null })
+
   // Layer catalog — drives frontend layer panels.
   // IMPORTANT: this static route MUST be declared before the parametric
   // /tiles/:layer/:id route below; otherwise Fastify would treat the literal
@@ -284,7 +288,7 @@ async function tilesRoutes(fastify) {
     }
 
     const key = `${layerId}/${z}/${x}/${y}`
-    const cached = cache.get(key)
+    const cached = await cache.get(key)
     if (cached) {
       return reply
         .header('Content-Type', 'application/vnd.mapbox-vector-tile')
@@ -301,7 +305,7 @@ async function tilesRoutes(fastify) {
         return reply.code(204).send()
       }
       const buf = Buffer.from(tile)
-      cache.set(key, buf)
+      await cache.set(key, buf)
       return reply
         .header('Content-Type', 'application/vnd.mapbox-vector-tile')
         .header('Cache-Control', 'public, max-age=86400')
