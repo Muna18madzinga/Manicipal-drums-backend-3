@@ -19,6 +19,10 @@ const MIGRATIONS = [
   '072_per_item_inspection_scoring.sql',
   '073_score_includes_na_as_zero.sql',
   '074_spatial_tile_indexes.sql',
+  '075_v_application_summary_add_created_by.sql',
+  '076_available_stands.sql',
+  '077_permit_application_pending_payment.sql',
+  '078_missing_gist_indexes.sql',
 ]
 
 function createPool(env = process.env) {
