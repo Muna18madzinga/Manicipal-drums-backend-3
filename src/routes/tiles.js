@@ -1,5 +1,12 @@
 // src/routes/tiles.js
-// Vector tile service: serves zimbabwe.gpkg PostGIS layers as MVT.
+// Vector tile service: serves PostGIS layers as MVT (Mapbox Vector Tiles).
+//
+// The 24 country-wide spatial layers (country, provinces, districts, wards,
+// roads, buildings, …) and the 6 Vungu master-plan layers live in PostGIS
+// tables that were populated once via scripts/setup-spatial.mjs from the
+// zimbabwe.gpkg / Vungu_RDC_Master_Plan.gpkg GeoPackage sources. Those
+// GeoPackages are NOT read at runtime — every tile and feature lookup
+// hits PostGIS directly through fastify.pg.query.
 const { allLayers, getLayer } = require('../config/spatialLayers')
 const { isValidTileCoord, buildTileQuery } = require('../lib/tileQuery')
 const { TileCache } = require('../lib/tileCache')
