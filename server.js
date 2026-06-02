@@ -38,6 +38,10 @@ const { applicationStatusRoutes } = require('./src/routes/application-status')
 const { paymentRoutes } = require('./src/routes/payments')
 const { documentRoutes } = require('./src/routes/documents')
 
+// Cross-dept notifications + KYC identity verification (migration 075).
+const { notificationsRoutes } = require('./src/routes/notifications')
+const { kycRoutes } = require('./src/routes/kyc')
+
 // Turn D: plan auto-review (PDF + CAD upload + deterministic checks).
 const { planReviewRoutes } = require('./src/routes/plan-review')
 
@@ -197,13 +201,17 @@ async function build() {
   // leaked the entire route surface to stdout. Use `server.printRoutes()`
   // (already called below) for a one-shot summary.
 
+  // ── HTTP caching (Cache-Control headers + server-side LRU) ──────────
+  const { httpCachePlugin } = require('./src/middleware/httpCache')
+  await server.register(httpCachePlugin)
+
   // Health check - register first
   server.get('/health', async (request, reply) => {
-    return { 
-      status: 'ok', 
+    return {
+      status: 'ok',
       timestamp: new Date().toISOString(),
-      service: 'vungu-unified-backend',
-      version: '1.0.0'
+      service: 'spartialiq-backend',
+      version: '2.0.0'
     }
   })
 
@@ -274,6 +282,15 @@ async function build() {
     console.log('✅ Payment + document routes registered')
   } catch (error) {
     server.log.error({ err: error }, 'Failed to register payment/document routes')
+  }
+
+  // Register cross-dept notifications + KYC (migration 075).
+  try {
+    await server.register(notificationsRoutes, { prefix: '/api' })
+    await server.register(kycRoutes,           { prefix: '/api' })
+    console.log('✅ Notifications + KYC routes registered')
+  } catch (error) {
+    server.log.error({ err: error }, 'Failed to register notifications/kyc routes')
   }
 
   // Register Plan Review (Turn D).

@@ -4,15 +4,9 @@
 const { Pool } = require('pg');
 
 // Initialize route
-async function landUseManagementRoutes(fastify, { auth }) {
-  console.log('🔍 DEBUG: Starting enhanced land use routes initialization...');
+async function landUseManagementRoutes(fastify, { auth } = {}) {
   try {
     const pool = fastify.pg.pool;
-    console.log('🔍 DEBUG: Database pool obtained:', !!pool);
-    
-    // Test database connection
-    const testResult = await pool.query('SELECT 1 as test');
-    console.log('🔍 DEBUG: Database test successful:', testResult.rows[0]);
 
   // ============================================
   // Land Use Groups Management
