@@ -20,6 +20,7 @@ const MIGRATIONS = [
   '073_score_includes_na_as_zero.sql',
   '074_spatial_tile_indexes.sql',
   '075_notifications_and_kyc.sql',
+  '076_production_hardening.sql',
 ]
 
 function createPool(env = process.env) {
