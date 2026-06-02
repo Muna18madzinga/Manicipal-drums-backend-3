@@ -21,8 +21,13 @@
 //     ship one; the EnterpriseDB PostgreSQL bundle's ogr2ogr does NOT. The
 //     script auto-discovers a suitable ogr2ogr (QGIS / OSGeo4W / PATH) and
 //     points PROJ at that GDAL's own proj.db to avoid version clashes.
-//   - The two .gpkg files are stored via Git LFS under data/. Run
-//     `git lfs pull` after cloning so they are real files, not pointers.
+//   - The two .gpkg files are NOT in git (zimbabwe.gpkg is 1.47 GB). Fetch
+//     them first with:
+//        ZIMBABWE_GPKG_URL=https://... VUNGU_GPKG_URL=https://... \
+//          node scripts/download-spatial-source.mjs
+//     The live spatial tables already live in PostGIS once this script has
+//     run; the .gpkg sources are only needed to (re-)import or to set up a
+//     fresh database.
 
 import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, statSync } from 'node:fs'
