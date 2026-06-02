@@ -160,18 +160,54 @@ async function build() {
       ? ['https://vungu-rdc.org']
       : localOrigins
 
+  // ── Security headers (@fastify/helmet) ──────────────────────────────────
+  // Was installed but never registered. Without this, browsers receive no
+  // X-Content-Type-Options, X-Frame-Options, Referrer-Policy, or
+  // Content-Security-Policy headers — leaving the app open to clickjacking,
+  // MIME sniffing, and data leakage.
+  await server.register(require('@fastify/helmet'), {
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc:    ["'self'"],
+        scriptSrc:     ["'self'", "'unsafe-inline'"], // Vue needs inline scripts
+        styleSrc:      ["'self'", "'unsafe-inline'"],
+        imgSrc:        ["'self'", 'data:', 'blob:', '*.openstreetmap.org', '*.cartocdn.com'],
+        connectSrc:    ["'self'", 'https://api.maptiler.com', 'https://basemaps.cartocdn.com'],
+        workerSrc:     ["'self'", 'blob:'],
+        frameSrc:      ["'none'"],
+        objectSrc:     ["'none'"],
+        upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,
+      },
+    },
+    crossOriginEmbedderPolicy: false,  // MapLibre workers need this off
+    crossOriginResourcePolicy: { policy: 'cross-origin' }, // tile CDN sharing
+  })
+
   // Register CORS
   await server.register(require('@fastify/cors'), {
-    origin: corsOrigins
+    origin: corsOrigins,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    credentials: true,
   })
 
   // Register Compression
-  await server.register(require('@fastify/compress'))
+  await server.register(require('@fastify/compress'), {
+    global: true,
+    threshold: 1024,          // only compress responses > 1 KB
+    encodings: ['gzip', 'deflate'],
+  })
 
   // Register Rate Limiting
   await server.register(require('@fastify/rate-limit'), {
     max: 100,
-    timeWindow: '1 minute'
+    timeWindow: '1 minute',
+    keyGenerator: (req) => req.headers['x-forwarded-for']?.split(',')[0] || req.ip,
+    errorResponseBuilder: () => ({
+      success: false,
+      error: 'too_many_requests',
+      message: 'Rate limit exceeded. Please wait before retrying.',
+    }),
   })
 
   // Register PostgreSQL
@@ -204,6 +240,12 @@ async function build() {
   // ── HTTP caching (Cache-Control headers + server-side LRU) ──────────
   const { httpCachePlugin } = require('./src/middleware/httpCache')
   await server.register(httpCachePlugin)
+
+  // ── Audit logging (onResponse hook — never delays requests) ─────────
+  // Writes every authenticated mutating request to security_audit_log.
+  // Required for Zimbabwe municipal compliance (RTCP Act traceability).
+  const { auditLogPlugin } = require('./src/middleware/auditLog')
+  await server.register(auditLogPlugin)
 
   // Health check - register first
   server.get('/health', async (request, reply) => {

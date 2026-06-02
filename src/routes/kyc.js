@@ -51,7 +51,7 @@ async function kycRoutes(fastify) {
         let q = `SELECT k.*, u.name AS user_name, u.email AS user_email
                  FROM kyc_verifications k
                  JOIN users u ON u.id = k.user_id`
-        const params: any[] = []
+        const params = []
         if (status) { q += ' WHERE k.status = $1'; params.push(status) }
         q += ' ORDER BY k.created_at DESC'
         const r = await fastify.pg.query(q, params)
