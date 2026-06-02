@@ -189,6 +189,23 @@ async function build() {
     connectionString: process.env.DATABASE_URL || 'postgresql://postgres:cairo2025@localhost:5432/vungu_master_db_v1'
   })
 
+  // Register Redis when REDIS_URL is set. Used by the MVT tile route as the
+  // L2 cache behind its in-process LRU; survives restarts and is shared
+  // across replicas. Without REDIS_URL the tile cache silently degrades to
+  // L1-only, which is still fast — Redis is an optimisation, not a
+  // requirement.
+  if (process.env.REDIS_URL) {
+    try {
+      await server.register(require('@fastify/redis'), {
+        url: process.env.REDIS_URL,
+        closeClient: true,
+      })
+      server.log.info('Redis registered for tile L2 cache')
+    } catch (err) {
+      server.log.warn({ err }, 'Redis registration failed; continuing with L1-only cache')
+    }
+  }
+
   // Multipart form support — required by the inspection-photo upload
   // route (and any future file uploads). Hard-cap files at 10 MB.
   const path = require('node:path')
