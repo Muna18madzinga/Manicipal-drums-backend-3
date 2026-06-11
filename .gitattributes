@@ -1,0 +1,2 @@
+# .gpkg files are no longer tracked. Fetch with
+# scripts/download-spatial-source.mjs; see data/.gitignore.

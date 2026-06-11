@@ -274,9 +274,14 @@ async function paymentRoutes(fastify) {
 
   fastify.get('/payments', { preHandler: requireAuth(fastify) }, async (request, reply) => {
     try {
+      const { relatedKind, relatedId } = request.query || {}
+      const params = [request.user.id]
+      let where = 'payer_id = $1'
+      if (relatedKind) { params.push(relatedKind); where += ` AND related_kind = $${params.length}` }
+      if (relatedId)   { params.push(relatedId);   where += ` AND related_id   = $${params.length}` }
       const { rows } = await fastify.pg.query(
-        `SELECT * FROM payments WHERE payer_id = $1 ORDER BY created_at DESC LIMIT 200`,
-        [request.user.id],
+        `SELECT * FROM payments WHERE ${where} ORDER BY created_at DESC LIMIT 200`,
+        params,
       )
       return reply.send({ success: true, data: rows.map(paymentDTO) })
     } catch (err) {
@@ -314,6 +319,40 @@ async function paymentRoutes(fastify) {
       return reply.send({ success: true, data: paymentDTO(fresh.rows[0]) })
     } catch (err) {
       request.log.error({ err }, 'payment confirm failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    }
+  })
+
+  // ── Poll provider for latest status ────────────────────────────────
+  fastify.post('/payments/:id/poll', { preHandler: requireAuth(fastify) }, async (request, reply) => {
+    try {
+      const { rows } = await fastify.pg.query(
+        `SELECT * FROM payments WHERE id = $1`,
+        [request.params.id],
+      )
+      const row = rows[0]
+      if (!row) return reply.code(404).send({ success: false, error: 'not_found' })
+      const u = request.user
+      const isStaff = ['admin', 'planner', 'eo', 'planning_clerk'].includes(u.role)
+      if (row.payer_id !== u.id && !isStaff) {
+        return reply.code(403).send({ success: false, error: 'forbidden' })
+      }
+
+      const driver = driverModule.getDriver(row.driver)
+      const verdict = await driver.pollPayment({ payment: row })
+
+      await fastify.pg.query(
+        `UPDATE payments SET provider_status = $2, updated_at = NOW() WHERE id = $1`,
+        [row.id, verdict.providerStatus || null],
+      )
+      if (verdict.paid && row.status !== 'paid') {
+        await applyPaid(fastify, row, request.user.id)
+      }
+
+      const fresh = await fastify.pg.query(`SELECT * FROM payments WHERE id = $1`, [row.id])
+      return reply.send({ success: true, data: paymentDTO(fresh.rows[0]) })
+    } catch (err) {
+      request.log.error({ err }, 'payment poll failed')
       return reply.code(500).send({ success: false, error: 'internal' })
     }
   })
@@ -480,6 +519,34 @@ async function applyPaid(fastify, row, actorUserId) {
             },
           })
         }
+      }
+    }
+
+    if (updated.purpose === 'application_fee' && updated.related_kind === 'permit') {
+      const { rows: permitRows } = await client.query(
+        `UPDATE spatial_planning.permit_application
+            SET status      = CASE WHEN status = 'pending_payment'
+                                  THEN 'registered'
+                                  ELSE status END,
+                fee_paid_at = COALESCE(fee_paid_at, NOW()),
+                updated_at  = NOW()
+          WHERE id = $1
+          RETURNING id, applicant_email, applicant_name`,
+        [updated.related_id],
+      )
+      const permit = permitRows[0]
+      if (permit?.applicant_email) {
+        await notifier.enqueue(client, {
+          userId: updated.payer_id,
+          email:  permit.applicant_email,
+          kind:   'application_fee_paid',
+          templateData: {
+            permitId: permit.id,
+            name:     permit.applicant_name,
+            receipt:  updated.issued_receipt_no,
+          },
+          payload: { permitId: permit.id, paymentId: updated.id },
+        })
       }
     }
 

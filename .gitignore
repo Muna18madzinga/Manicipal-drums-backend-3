@@ -37,3 +37,13 @@ coverage/
 # ── Uploads / generated artefacts ─────────────────────────────────────
 uploads/
 tmp/
+
+# ── Spatial source files (huge GeoPackages) ───────────────────────────
+# zimbabwe.gpkg is 1.47 GB; Vungu_RDC_Master_Plan.gpkg is 2.7 MB. Both
+# are import sources only — the live data lives in PostGIS once
+# setup-spatial.mjs has run. Download them on demand with
+# scripts/download-spatial-source.mjs (reads ZIMBABWE_GPKG_URL and
+# VUNGU_GPKG_URL from env).
+data/*.gpkg
+data/*.gpkg-shm
+data/*.gpkg-wal
