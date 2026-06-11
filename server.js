@@ -28,6 +28,7 @@ const { authRoutes } = require('./src/routes/auth')
 // from the existing zone_land_use_controls + planning_assistant_templates.
 const { standsRoutes } = require('./src/routes/stands')
 const { planningAssistantRoutes } = require('./src/routes/planning-assistant')
+const plannerRoutes = require('./src/routes/planner')
 
 // Turn B: inspection bookings + photos + status notifications.
 // These plug into the existing development_applications table.
@@ -57,6 +58,8 @@ const { spatialRoutes } = require('./src/routes/spatial')
 
 // Vector tile service — serves zimbabwe.gpkg PostGIS layers as MVT.
 const { tilesRoutes } = require('./src/routes/tiles')
+const { parcelsRoutes } = require('./src/routes/parcels')
+const { citizenPortalRoutes } = require('./src/routes/citizen-portal')
 
 // Import Spatial Data Routes
 let spatialDataRoutes
@@ -198,9 +201,16 @@ async function build() {
     encodings: ['gzip', 'deflate'],
   })
 
-  // Register Rate Limiting
+  // Register Rate Limiting.
+  // - Global cap bumped from 100/min to 1000/min: a map app legitimately
+  //   issues bursts of tile + feature requests when the user pans, zooms,
+  //   or clicks across many overlapping layers.
+  // - Skip /api/tiles/* and /api/wards entirely. They are read-only,
+  //   already cache-controlled (1d on tiles, 1h on wards), and a single
+  //   viewport easily blows past any sane per-IP cap on slow networks.
+  //   Write endpoints (auth, applications, etc.) keep the global limit.
   await server.register(require('@fastify/rate-limit'), {
-    max: 100,
+    max: 1000,
     timeWindow: '1 minute',
     keyGenerator: (req) => req.headers['x-forwarded-for']?.split(',')[0] || req.ip,
     errorResponseBuilder: () => ({
@@ -208,6 +218,10 @@ async function build() {
       error: 'too_many_requests',
       message: 'Rate limit exceeded. Please wait before retrying.',
     }),
+    allowList: (req) =>
+      req.url.startsWith('/api/tiles/') ||
+      req.url.startsWith('/api/wards') ||
+      req.url.startsWith('/api/map-search'),
   })
 
   // Register PostgreSQL
@@ -303,7 +317,8 @@ async function build() {
   try {
     await server.register(standsRoutes,            { prefix: '/api' })
     await server.register(planningAssistantRoutes, { prefix: '/api' })
-    console.log('✅ Stands + Planning Assistant routes registered')
+    await server.register(plannerRoutes,           { prefix: '/api' })
+    console.log('✅ Stands + Planning Assistant + Planner notifications routes registered')
   } catch (error) {
     server.log.error({ err: error }, 'Failed to register stands/planning routes')
   }
@@ -364,6 +379,8 @@ async function build() {
 
   try {
     await server.register(tilesRoutes, { prefix: '/api' })
+    await server.register(parcelsRoutes, { prefix: '/api' })
+    await server.register(citizenPortalRoutes, { prefix: '/api' })
     console.log('✅ Vector tile routes registered')
   } catch (error) {
     server.log.error({ err: error }, 'Failed to register tile routes')

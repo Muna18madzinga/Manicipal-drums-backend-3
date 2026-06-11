@@ -42,6 +42,45 @@ node src/workers/emailWorker.js                            # email worker (separ
 
 ---
 
+## Spatial data (map layers)
+
+All the map data is reproducible from a clone — you don't need the original
+shapefiles. The two source GeoPackages are committed via **Git LFS** under
+`data/`, and one script rebuilds every layer.
+
+```bash
+# 0. After cloning, pull the LFS-backed GeoPackages (they're ~1.4 GB):
+git lfs install
+git lfs pull
+
+# 1. Make sure DATABASE_URL (or PGHOST/PGUSER/PGPASSWORD/PGDATABASE) points
+#    at a Postgres with PostGIS, then:
+npm run setup:spatial
+```
+
+`npm run setup:spatial` ([scripts/setup-spatial.mjs](scripts/setup-spatial.mjs)) is idempotent and does:
+
+| Step | Source | Result |
+| --- | --- | --- |
+| OSM basemap | `data/zimbabwe.gpkg` | 24 tables: `country`, `provinces`, `districts`, `wards`, `roads`, `buildings`, `landuse`, … (native SRID 900914) |
+| Master plan | `data/Vungu_RDC_Master_Plan.gpkg` | 6 `vungu_*` tables — cemeteries, waste, farm cadastre, parcels, proposed/beyond peri-urban zones (EPSG:4326) |
+| Legacy | `data/seed/gweru_legacy.sql` | 8 `gweru_*` tables (their source shapefiles no longer exist, so they ship as a SQL dump) |
+| Indexes | — | a GiST index on every `geom` column |
+
+**Prerequisites:** `psql`, plus a GDAL `ogr2ogr` that has the PostgreSQL
+driver — **QGIS** or **OSGeo4W** ship one (the EnterpriseDB PostgreSQL
+bundle's `ogr2ogr` does *not*). The script auto-discovers QGIS/OSGeo4W and
+points PROJ at that GDAL's own `proj.db`. Override discovery with the
+`OGR2OGR` / `PSQL` env vars if needed.
+
+> Note: `data/zimbabwe.gpkg` is 1.4 GB. GitHub's free Git LFS tier is 1 GB of
+> storage / 1 GB bandwidth a month — pushing it will exceed that. For a
+> private/self-hosted remote with adequate LFS quota this is fine; otherwise
+> keep `zimbabwe.gpkg` out of the remote and copy it manually, then run
+> `ZIMBABWE_GPKG=/path/to/zimbabwe.gpkg npm run setup:spatial`.
+
+---
+
 ## Migrations added in this engagement
 
 The bold rows below are the migrations introduced while building the

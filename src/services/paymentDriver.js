@@ -45,6 +45,7 @@ const { URLSearchParams } = require('node:url')
 
 // ── Shared error factories ───────────────────────────────────────────────────
 
+
 const NOT_IMPLEMENTED = (driver) => {
   const e = new Error(`Payment driver "${driver}" requires configuration — see ENV vars in paymentDriver.js.`)
   e.code = 'driver_not_implemented'
@@ -644,7 +645,6 @@ const stripeDriver = {
 // ════════════════════════════════════════════════════════════════════════════
 // Driver registry
 // ════════════════════════════════════════════════════════════════════════════
-
 const DRIVERS = {
   manual:   manualDriver,
   paynow:   paynowDriver,
