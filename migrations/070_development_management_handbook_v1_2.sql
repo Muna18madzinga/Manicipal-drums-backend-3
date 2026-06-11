@@ -40,7 +40,11 @@ CREATE TABLE IF NOT EXISTS spatial_planning.permit_application (
   id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   -- Link to the citizen-portal application (optional for staff-captured apps).
-  dev_app_id          VARCHAR(20) REFERENCES public.development_applications(id) ON DELETE SET NULL,
+  -- Soft reference to a citizen-portal application (public.development_applications).
+  -- No hard FK: the citizen-portal lineage (VARCHAR id) and the GIS dev-control
+  -- lineage (UUID application_id) use different development_applications schemas,
+  -- so a cross-table FK is not portable. Linkage is enforced in application code.
+  dev_app_id          VARCHAR(20),
 
   -- Statutory identifiers (assigned by the Town Planning Directorate).
   tpd_reference       VARCHAR(40) UNIQUE,        -- e.g. TPD/HRE/2024/0001

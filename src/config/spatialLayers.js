@@ -14,12 +14,14 @@ const GEOM_SRID = 900914
  * @property {string} id          unique id + MVT source-layer name
  * @property {string} table       PostGIS table name
  * @property {'polygon'|'line'|'point'} geomType
- * @property {'admin'|'landuse'|'hydro'|'transport'|'structures'|'poi'} group
+ * @property {'admin'|'landuse'|'hydro'|'transport'|'structures'|'poi'|'master_plan'} group
  * @property {string} title       human label
  * @property {string[]} attributes columns exposed inside each tile
  * @property {number} minzoom
  * @property {number} maxzoom
  * @property {{maxZoom:number, where:string}|null} lowZoomFilter
+ * @property {number} [srid]      storage SRID; defaults to GEOM_SRID (900914) for OSM-derived tables.
+ *                                Vungu master-plan tables are stored as real EPSG:4326.
  */
 
 /** @type {SpatialLayer[]} */
@@ -60,6 +62,14 @@ const LAYERS = [
   { id: 'transport_points',         table: 'transport_points',         geomType: 'point', group: 'poi', title: 'Transport Points', attributes: ['fid', 'name', 'fclass'],              minzoom: 13, maxzoom: 22, lowZoomFilter: null },
   { id: 'natural_points',           table: 'natural_points',           geomType: 'point', group: 'poi', title: 'Natural Points',   attributes: ['fid', 'name', 'fclass'],              minzoom: 13, maxzoom: 22, lowZoomFilter: null },
   { id: 'places_of_worship_points', table: 'places_of_worship_points', geomType: 'point', group: 'poi', title: 'Worship Points',   attributes: ['fid', 'name', 'fclass'],              minzoom: 13, maxzoom: 22, lowZoomFilter: null },
+
+  // --- Vungu RDC Master Plan (council planning data, stored as real EPSG:4326) ---
+  { id: 'vungu_cemeteries',                table: 'vungu_cemeteries',                geomType: 'polygon', group: 'master_plan', title: 'Cemeteries (Vungu)',          attributes: ['fid', 'name'],                                                                                                                                                          minzoom: 12, maxzoom: 22, lowZoomFilter: null, srid: 4326 },
+  { id: 'vungu_waste_management',          table: 'vungu_waste_management',          geomType: 'polygon', group: 'master_plan', title: 'Waste Management (Vungu)',    attributes: ['fid', 'use'],                                                                                                                                                           minzoom: 12, maxzoom: 22, lowZoomFilter: null, srid: 4326 },
+  { id: 'vungu_farm_cadastre',             table: 'vungu_farm_cadastre',             geomType: 'polygon', group: 'master_plan', title: 'Farm Cadastre (Vungu)',       attributes: ['fid', 'name', 'name_cfu', 'province', 'district', 'status', 'area_ha'],                                                                                                  minzoom: 9,  maxzoom: 22, lowZoomFilter: null, srid: 4326 },
+  { id: 'vungu_parcels',                   table: 'vungu_parcels',                   geomType: 'polygon', group: 'master_plan', title: 'Parcels (Vungu)',             attributes: ['fid', 'name', 'name_cfu', 'province', 'district', 'status', 'area_ha'],                                                                                                  minzoom: 10, maxzoom: 22, lowZoomFilter: null, srid: 4326 },
+  { id: 'vungu_proposed_peri_urban_zones', table: 'vungu_proposed_peri_urban_zones', geomType: 'polygon', group: 'master_plan', title: 'Proposed Peri-Urban Zones',   attributes: ['fid', 'zone', 'area_ha', 'lb'],                                                                                                                                          minzoom: 9,  maxzoom: 22, lowZoomFilter: null, srid: 4326 },
+  { id: 'vungu_beyond_peri_urban_zones',   table: 'vungu_beyond_peri_urban_zones',   geomType: 'polygon', group: 'master_plan', title: 'Beyond Peri-Urban Zones',     attributes: ['fid', 'zone_code', 'settlement', 'adm3_en', 'adm2_en'],                                                                                                                  minzoom: 8,  maxzoom: 22, lowZoomFilter: null, srid: 4326 },
 ]
 
 const BY_ID = new Map(LAYERS.map((l) => [l.id, l]))

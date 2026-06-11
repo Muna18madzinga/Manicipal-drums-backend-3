@@ -13,6 +13,8 @@
     "migrate": "node scripts/migrate-render.js",
     "migrate:render": "node scripts/migrate-render.js",
     "migrate:060": "node scripts/run-migration-060.js",
+    "setup:spatial": "node scripts/setup-spatial.mjs",
+    "download:spatial": "node scripts/download-spatial-source.mjs",
     "seed": "tsx src/scripts/seed.ts",
     "seed:demo": "node scripts/seed-demo-users.js"
   },
@@ -58,6 +60,7 @@
     "@types/node": "^20.9.0",
     "@types/pg": "^8.10.7",
     "jest": "^29.7.0",
+    "nock": "^13.5.6",
     "tsx": "^4.1.4",
     "typescript": "^5.2.2"
   },
