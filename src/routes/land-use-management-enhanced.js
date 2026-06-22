@@ -147,7 +147,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
   // Update land use group
   fastify.put('/groups/:id', {
     schema: {
-      params: { id: { type: 'string', format: 'uuid' } },
+      params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } }, required: ['id'] },
       body: {
         type: 'object',
         properties: {
@@ -193,7 +193,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
   // Delete land use group
   fastify.delete('/groups/:id', {
     schema: {
-      params: { id: { type: 'string', format: 'uuid' } }
+      params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } }, required: ['id'] }
     },
     preHandler: auth.requireAuth
   }, async (request, reply) => {
@@ -469,7 +469,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
   // Update zone-land use control
   fastify.put('/controls/:id', {
     schema: {
-      params: { id: { type: 'string', format: 'uuid' } },
+      params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } }, required: ['id'] },
       body: {
         type: 'object',
         properties: {
@@ -512,7 +512,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
   // Delete zone-land use control
   fastify.delete('/controls/:id', {
     schema: {
-      params: { id: { type: 'string', format: 'uuid' } }
+      params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } }, required: ['id'] }
     },
     preHandler: auth.requireAuth
   }, async (request, reply) => {
@@ -542,7 +542,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
   // Get development matrix for a specific zone
   fastify.get('/zones/:id/matrix', {
     schema: {
-      params: { id: { type: 'string', format: 'uuid' } }
+      params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } }, required: ['id'] }
     },
     preHandler: auth.requireAuth
   }, async (request, reply) => {

@@ -47,3 +47,5 @@ tmp/
 data/*.gpkg
 data/*.gpkg-shm
 data/*.gpkg-wal
+node_modules
+node_modules
