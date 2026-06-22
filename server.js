@@ -29,6 +29,7 @@ const { authRoutes } = require('./src/routes/auth')
 const { standsRoutes } = require('./src/routes/stands')
 const { planningAssistantRoutes } = require('./src/routes/planning-assistant')
 const plannerRoutes = require('./src/routes/planner')
+const { zonesRoutes } = require('./src/routes/zones')
 
 // Turn B: inspection bookings + photos + status notifications.
 // These plug into the existing development_applications table.
@@ -61,19 +62,13 @@ const { tilesRoutes } = require('./src/routes/tiles')
 const { parcelsRoutes } = require('./src/routes/parcels')
 const { citizenPortalRoutes } = require('./src/routes/citizen-portal')
 
-// Import Spatial Data Routes
-let spatialDataRoutes
-try {
-  // Try TypeScript import first
-  spatialDataRoutes = require('./src/routes/spatial-data.ts')
-} catch (tsError) {
-  try {
-    // Fallback to JavaScript if available
-    spatialDataRoutes = require('./src/routes/spatial-data.js')
-  } catch (jsError) {
-    console.warn('Could not load Spatial Data routes (both .ts and .js failed):', jsError.message)
-  }
-}
+// Intelligent map search: NL queries, stand lookup, POI counts, ward search.
+const { mapSearchRoutes } = require('./src/routes/map-search')
+
+// spatial-data.ts was a TypeScript rewrite of spatial.js and registers the same
+// routes (e.g. /api/coordinate-points). Since spatial.js is already loaded above,
+// loading spatial-data would cause a duplicate-route error. Skip it.
+const spatialDataRoutes = undefined
 
 // Import Development Control Routes
 let developmentControlRoutes
@@ -90,22 +85,15 @@ try {
 
 // Import Enhanced Land Use Management Routes
 let enhancedLandUseManagementRoutes
-console.log('🔍 DEBUG: About to load Enhanced Land Use Management module...')
 try {
-  enhancedLandUseManagementRoutes = require('./routes/land-use-management-enhanced.js')
-  console.log('✅ Enhanced Land Use Management module loaded:', typeof enhancedLandUseManagementRoutes)
-  console.log('🔍 DEBUG: Module exists:', !!enhancedLandUseManagementRoutes)
+  enhancedLandUseManagementRoutes = require('./src/routes/land-use-management-enhanced.js')
 } catch (error) {
-  console.warn('❌ Could not load Enhanced Land Use Management routes:', error.message)
+  console.warn('Could not load Enhanced Land Use Management routes:', error.message)
 }
 
-// Import Land Use Management Routes
-let landUseManagementRoutes
-try {
-  landUseManagementRoutes = require('./src/routes/land-use-management.js')
-} catch (error) {
-  console.warn('Could not load Land Use Management routes:', error.message)
-}
+// The enhanced version (land-use-management-enhanced.js) supersedes the old file.
+// landUseManagementRoutes kept as undefined so the registration block below is skipped cleanly.
+const landUseManagementRoutes = undefined
 
 // Import Dynamic Layers Routes
 let dynamicLayerRoutes
@@ -316,9 +304,10 @@ async function build() {
   // These mount under /api and respect the global rate-limit.
   try {
     await server.register(standsRoutes,            { prefix: '/api' })
+    await server.register(zonesRoutes,             { prefix: '/api' })
     await server.register(planningAssistantRoutes, { prefix: '/api' })
     await server.register(plannerRoutes,           { prefix: '/api' })
-    console.log('✅ Stands + Planning Assistant + Planner notifications routes registered')
+    console.log('✅ Stands + Zones + Planning Assistant + Planner routes registered')
   } catch (error) {
     server.log.error({ err: error }, 'Failed to register stands/planning routes')
   }
@@ -411,13 +400,18 @@ async function build() {
   }
 
   // Register Enhanced Land Use Management Routes
+  // The plugin function signature is: (fastify, { auth }) so we must pass the
+  // auth helpers in the options object, not just the prefix.
   if (enhancedLandUseManagementRoutes) {
     try {
-      console.log('🔧 About to register Enhanced Land Use Management Routes...')
-      await server.register(enhancedLandUseManagementRoutes, { prefix: '/api/land-use' })
+      const { requireAuth, requireRole } = require('./src/middleware/jwtAuth')
+      await server.register(enhancedLandUseManagementRoutes, {
+        prefix: '/api/land-use',
+        auth: { requireAuth, requireRole },
+      })
       console.log('✅ Enhanced Land Use Management routes registered')
     } catch (error) {
-      console.error('❌ Failed to register Enhanced Land Use Management routes:', error)
+      console.error('❌ Failed to register Enhanced Land Use Management routes:', error.message)
     }
   }
 

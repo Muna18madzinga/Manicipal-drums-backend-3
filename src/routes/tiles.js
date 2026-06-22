@@ -257,6 +257,27 @@ async function tilesRoutes(fastify) {
         })
       }
 
+      // ── Stands ────────────────────────────────────────────────────────
+      const stands = await fastify.pg.query(
+        `SELECT stand_number AS label, ward, zone_type, status,
+                area_sqm, price_usd,
+                ST_X(centroid)::numeric(9,6) AS lon,
+                ST_Y(centroid)::numeric(9,6) AS lat
+         FROM stands
+         WHERE stand_number ILIKE $1
+         LIMIT 8`,
+        [like]
+      )
+      for (const r of stands.rows) {
+        out.push({
+          type: 'stand',
+          label: `Stand ${r.label}`,
+          subtitle: `${cap(r.status)} — ${r.ward || 'Vungu RDC'}`,
+          meta: { zone_type: r.zone_type, area_sqm: Number(r.area_sqm), price_usd: Number(r.price_usd), status: r.status },
+          center: [Number(r.lon), Number(r.lat)],
+        })
+      }
+
       const data = out.filter((r) =>
         r.label &&
         Number.isFinite(r.center[0]) && Number.isFinite(r.center[1]) &&
@@ -266,6 +287,235 @@ async function tilesRoutes(fastify) {
     } catch (err) {
       fastify.log.error({ err, q }, 'map search failed')
       return reply.code(500).send({ error: 'Search failed' })
+    }
+  })
+
+  // ── NL count + POI search ─────────────────────────────────────────────────
+  // Handles: "how many schools", "show hospitals", "residential zones",
+  //          "available stands", "stand HDR-001".
+  // Returns bbox so the frontend can flyTo the results.
+  const POI_FCLASS_MAP = {
+    school: ['school','kindergarten','college'],
+    hospital: ['hospital'], clinic: ['clinic','doctors'],
+    pharmacy: ['pharmacy','chemist'], police: ['police'],
+    fire: ['fire_station'], library: ['library'],
+    bank: ['bank','atm'], market: ['marketplace','supermarket'],
+    hotel: ['hotel','guesthouse'], restaurant: ['restaurant','fast_food','cafe'],
+    fuel: ['fuel'], community: ['community_centre'],
+  }
+  const VUNGU_BOX = [29.4, -20.1, 30.5, -19.0]
+
+  fastify.get('/map-query', async (request, reply) => {
+    const q = String(request.query?.q || '').trim().toLowerCase()
+    if (!q) return reply.send({ type: 'empty', message: 'Enter a query', results: [], bbox: VUNGU_BOX })
+
+    try {
+      // ── Count query ───────────────────────────────────────────────────────
+      if (/how many|count|number of/.test(q)) {
+        for (const [kw, fclasses] of Object.entries(POI_FCLASS_MAP)) {
+          if (q.includes(kw)) {
+            const ph = fclasses.map((_, i) => `$${i + 5}`).join(', ')
+            const { rows } = await fastify.pg.query(
+              `SELECT COUNT(*)::int as n,
+                      json_agg(json_build_object(
+                        'name', name, 'fclass', fclass,
+                        'lng', ST_X(geom)::numeric(9,6),
+                        'lat', ST_Y(geom)::numeric(9,6)
+                      )) as pts
+               FROM pois_points
+               WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,4326))
+                 AND fclass = ANY(ARRAY[${ph}])`,
+              [...VUNGU_BOX, ...fclasses]
+            )
+            const total = rows[0].n
+            const pts = rows[0].pts || []
+            const label = kw.charAt(0).toUpperCase() + kw.slice(1)
+            const names = pts.slice(0, 5).map(p => p.name).filter(Boolean).join(', ')
+            const lngs = pts.map(p => p.lng), lats = pts.map(p => p.lat)
+            const bbox = pts.length
+              ? [Math.min(...lngs)-0.05, Math.min(...lats)-0.05, Math.max(...lngs)+0.05, Math.max(...lats)+0.05]
+              : VUNGU_BOX
+            return reply.send({
+              type: 'count',
+              message: `${total} ${label}${total!==1?'s':''} in Vungu${names ? ` (${names}${pts.length>5?'…':''})` : ''}`,
+              count: total, bbox,
+              results: pts.map(p => ({
+                type: 'poi', label: p.name || p.fclass,
+                subtitle: cap((p.fclass||'').replace(/_/g,' ')),
+                center: [p.lng, p.lat]
+              }))
+            })
+          }
+        }
+        // Stands count
+        if (/stand|plot|erf/.test(q)) {
+          const status = q.includes('available') ? 'available'
+            : q.includes('allocated') ? 'allocated'
+            : q.includes('reserved') ? 'reserved' : null
+          const cond = status ? `AND status = '${status}'` : ''
+          const { rows } = await fastify.pg.query(
+            `SELECT COUNT(*)::int as n FROM stands
+             WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,4326)) ${cond}`,
+            VUNGU_BOX
+          )
+          const lbl = status || 'total'
+          return reply.send({
+            type: 'count',
+            message: `${rows[0].n} ${lbl} stand${rows[0].n!==1?'s':''} in Vungu RDC`,
+            count: rows[0].n, bbox: VUNGU_BOX, results: []
+          })
+        }
+      }
+
+      // ── Stand status filter: "available stands", "show allocated" ────────────
+      if (/stand|plot|erf/.test(q) && /available|allocated|reserved/.test(q)) {
+        const status = q.includes('available') ? 'available'
+          : q.includes('allocated') ? 'allocated' : 'reserved'
+        const { rows } = await fastify.pg.query(
+          `SELECT stand_number, ward, zone_type, status, area_sqm, price_usd,
+                  ST_X(centroid)::numeric(9,6) as lng, ST_Y(centroid)::numeric(9,6) as lat
+           FROM stands WHERE status = $1
+           ORDER BY stand_number LIMIT 20`,
+          [status]
+        )
+        if (rows.length) {
+          const lngs = rows.map(r => Number(r.lng)), lats = rows.map(r => Number(r.lat))
+          const bbox = [Math.min(...lngs)-0.05, Math.min(...lats)-0.05, Math.max(...lngs)+0.05, Math.max(...lats)+0.05]
+          return reply.send({
+            type: 'stand',
+            message: `${rows.length} ${status} stand${rows.length!==1?'s':''} in Vungu RDC`,
+            count: rows.length, bbox,
+            results: rows.map(s => ({
+              type: 'stand', label: `Stand ${s.stand_number}`,
+              subtitle: `${cap(s.status)} — ${s.ward}`,
+              meta: { zone_type: s.zone_type, area_sqm: Number(s.area_sqm), price_usd: Number(s.price_usd), status: s.status },
+              center: [Number(s.lng), Number(s.lat)]
+            }))
+          })
+        }
+      }
+
+      // ── Stand lookup ───────────────────────────────────────────────────────
+      if (/stand|hdr|mdr|ec-/.test(q)) {
+        const code = q.replace(/^(stand\s+)/,'').trim()
+        const { rows } = await fastify.pg.query(
+          `SELECT stand_number, ward, zone_type, status, area_sqm, price_usd,
+                  ST_X(centroid)::numeric(9,6) as lng, ST_Y(centroid)::numeric(9,6) as lat,
+                  ST_AsGeoJSON(geom) as geom
+           FROM stands WHERE stand_number ILIKE $1 LIMIT 5`,
+          [`%${code}%`]
+        )
+        if (rows.length) {
+          const r = rows[0]
+          const bbox = [Number(r.lng)-0.005, Number(r.lat)-0.005, Number(r.lng)+0.005, Number(r.lat)+0.005]
+          return reply.send({
+            type: 'stand',
+            message: rows.length === 1
+              ? `Stand ${r.stand_number} — ${cap(r.status)}, ${r.ward}`
+              : `${rows.length} stands matching "${code}"`,
+            count: rows.length, bbox,
+            results: rows.map(s => ({
+              type: 'stand', label: `Stand ${s.stand_number}`,
+              subtitle: `${cap(s.status)} — ${s.ward}`,
+              meta: { zone_type: s.zone_type, area_sqm: Number(s.area_sqm), price_usd: Number(s.price_usd), status: s.status },
+              center: [Number(s.lng), Number(s.lat)]
+            }))
+          })
+        }
+      }
+
+      // ── POI type show: "show schools", "hospitals near me" ────────────────
+      for (const [kw, fclasses] of Object.entries(POI_FCLASS_MAP)) {
+        if (q.includes(kw)) {
+          const ph = fclasses.map((_, i) => `$${i+5}`).join(', ')
+          const { rows } = await fastify.pg.query(
+            `SELECT name, fclass,
+                    ST_X(geom)::numeric(9,6) as lng,
+                    ST_Y(geom)::numeric(9,6) as lat
+             FROM pois_points
+             WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,4326))
+               AND fclass = ANY(ARRAY[${ph}])
+             ORDER BY name LIMIT 30`,
+            [...VUNGU_BOX, ...fclasses]
+          )
+          if (rows.length) {
+            const lngs = rows.map(r => Number(r.lng)), lats = rows.map(r => Number(r.lat))
+            const bbox = [Math.min(...lngs)-0.05, Math.min(...lats)-0.05, Math.max(...lngs)+0.05, Math.max(...lats)+0.05]
+            const label = kw.charAt(0).toUpperCase() + kw.slice(1)
+            return reply.send({
+              type: 'poi',
+              message: `${rows.length} ${label}${rows.length!==1?'s':''} in Vungu area`,
+              count: rows.length, bbox,
+              results: rows.map(r => ({
+                type: 'poi', label: r.name || cap(r.fclass),
+                subtitle: cap((r.fclass||'').replace(/_/g,' ')),
+                center: [Number(r.lng), Number(r.lat)]
+              }))
+            })
+          }
+        }
+      }
+
+      // ── Zone type filter ───────────────────────────────────────────────────
+      if (/zone|residential|commercial|industrial|agricultural|corridor/.test(q)) {
+        // Extract the meaningful term: strip stop words and 's' suffix from "zones"
+        const zoneTerm = q.replace(/\b(zones?|show|find|all|in|vungu)\b/gi, ' ').trim().replace(/\s+/g, ' ') || q
+        const { rows } = await fastify.pg.query(
+          `SELECT zone, zone_type, area_ha,
+                  ST_X(ST_Centroid(geom))::numeric(9,6) as lng,
+                  ST_Y(ST_Centroid(geom))::numeric(9,6) as lat
+           FROM vungu_proposed_peri_urban_zones
+           WHERE is_active = true AND (zone ILIKE $1 OR zone_type ILIKE $1)
+           ORDER BY area_ha::numeric DESC NULLS LAST LIMIT 20`,
+          [`%${zoneTerm}%`]
+        )
+        if (rows.length) {
+          const lngs = rows.map(r => Number(r.lng)), lats = rows.map(r => Number(r.lat))
+          const bbox = [Math.min(...lngs)-0.05, Math.min(...lats)-0.05, Math.max(...lngs)+0.05, Math.max(...lats)+0.05]
+          return reply.send({
+            type: 'zone',
+            message: `${rows.length} zone${rows.length!==1?'s':''} matching your query`,
+            count: rows.length, bbox,
+            results: rows.map(r => ({
+              type: 'zone', label: r.zone || r.zone_type,
+              subtitle: `${Number(r.area_ha).toFixed(0)} ha`,
+              center: [Number(r.lng), Number(r.lat)]
+            }))
+          })
+        }
+      }
+
+      return reply.send({ type: 'notfound',
+        message: `No results. Try: "schools", "available stands", "residential zones", "stand HDR-001".`,
+        count: 0, bbox: VUNGU_BOX, results: [] })
+    } catch (err) {
+      fastify.log.error({ err, q }, 'map-query failed')
+      return reply.code(500).send({ error: 'Query failed' })
+    }
+  })
+
+  // ── Vungu district mask (country minus planning zones buffer) ─────────────
+  // Called once on map load; result cached for 24h (static data).
+  fastify.get('/map-search/vungu-mask', async (_req, reply) => {
+    try {
+      const { rows } = await fastify.pg.query(`
+        SELECT ST_AsGeoJSON(
+          ST_Difference(
+            (SELECT geom FROM country LIMIT 1),
+            ST_Buffer(
+              (SELECT ST_Union(geom) FROM vungu_proposed_peri_urban_zones WHERE is_active = true),
+              0.15
+            )
+          )
+        ) AS mask
+      `)
+      if (!rows[0]?.mask) return reply.code(404).send({ error: 'Mask unavailable' })
+      return reply.header('Cache-Control', 'public, max-age=86400').send({
+        type: 'Feature', geometry: JSON.parse(rows[0].mask), properties: {}
+      })
+    } catch (err) {
+      fastify.log.error({ err }, 'vungu-mask failed')
+      return reply.code(500).send({ error: 'Mask failed' })
     }
   })
 
@@ -328,6 +578,14 @@ async function tilesRoutes(fastify) {
         .header('X-Tile-Cache', 'miss')
         .send(compressed)
     } catch (err) {
+      // 42P01 = undefined_table: the layer is registered but the DB table
+      // is missing (e.g. a layer not yet imported). Return an empty tile so
+      // the map renders cleanly instead of logging a 500 per tile.
+      if (err.code === '42P01') {
+        return reply
+          .header('Cache-Control', 'public, max-age=60')
+          .code(204).send()
+      }
       fastify.log.error({ err, layer: layerId, z, x, y }, 'tile query failed')
       return reply.code(500).send({ error: 'Tile generation failed' })
     }
@@ -415,4 +673,9 @@ async function tilesRoutes(fastify) {
   })
 }
 
-module.exports = { tilesRoutes }
+/** Invalidate all cached tiles for a layer — call after data mutations. */
+function invalidateTileLayer(layerId) {
+  return cache.invalidateLayer(layerId)
+}
+
+module.exports = { tilesRoutes, invalidateTileLayer }
