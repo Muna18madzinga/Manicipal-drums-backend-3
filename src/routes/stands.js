@@ -1,19 +1,18 @@
 /**
- * Stands routes — public list/detail + authenticated reserve flow.
+ * Stands routes — public list/detail + planner CRUD + reserve flow.
  *
- *   GET  /api/stands                  → GeoJSON FeatureCollection of stands
- *                                       (default: status='available')
- *   GET  /api/stands/:id              → single stand row + zone + suggested plan summary
- *   POST /api/stands/:id/reserve      → authenticated; soft-reserves a stand for 30 min
- *
- * The list endpoint is intentionally cheap (no full geometry per row in
- * dense queries; the client gets the polygon when it zooms / filters).
- * It emits proper GeoJSON so MapLibre's `addSource({ type: 'geojson' })`
- * can consume it directly.
+ *   GET    /api/stands                  → GeoJSON FeatureCollection
+ *   GET    /api/stands/:id              → single stand + zone + plan suggestion
+ *   POST   /api/stands                  → planner/admin: create stand with geometry
+ *   PUT    /api/stands/:id              → planner/admin: update stand details/geometry
+ *   DELETE /api/stands/:id              → planner/admin: withdraw stand
+ *   POST   /api/stands/:id/reserve      → authenticated: soft-reserve for 30 min
+ *   POST   /api/stands/:id/release      → authenticated: release own reservation
  */
 
-const { requireAuth } = require('../middleware/jwtAuth')
+const { requireAuth, requireRole } = require('../middleware/jwtAuth')
 const planningAssistant = require('../services/planningAssistant')
+const { invalidateTileLayer } = require('./tiles')
 
 const RESERVATION_TTL_MIN = 30
 
@@ -215,6 +214,116 @@ async function standsRoutes(fastify) {
       return reply.send({ success: true, data: row })
     } catch (err) {
       request.log.error({ err }, 'reserve stand failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    }
+  })
+
+  // ── Planner: create stand ───────────────────────────────────────────────
+  fastify.post('/stands', {
+    preHandler: requireRole(fastify, ['planner', 'gis_officer', 'admin']),
+  }, async (request, reply) => {
+    try {
+      const {
+        standNumber, ward, zoneId, zoneType, useScale,
+        frontageM, depthM, priceUsd, description, geometry,
+      } = request.body || {}
+
+      if (!isString(standNumber, 64)) return reply.code(400).send({ success: false, error: 'standNumber required' })
+      if (!isString(ward, 64))        return reply.code(400).send({ success: false, error: 'ward required' })
+      if (!geometry || geometry.type !== 'Polygon')
+        return reply.code(400).send({ success: false, error: 'geometry must be a GeoJSON Polygon' })
+
+      const geomJson = JSON.stringify(geometry)
+      const { rows } = await fastify.pg.query(
+        `INSERT INTO stands
+           (stand_number, ward, zone_id, zone_type, use_scale,
+            frontage_m, depth_m, price_usd, description,
+            geom, area_sqm, created_by, status)
+         VALUES (
+           $1, $2, $3, $4, $5, $6, $7, $8, $9,
+           ST_SetSRID(ST_GeomFromGeoJSON($10), 4326),
+           ROUND(ST_Area(ST_SetSRID(ST_GeomFromGeoJSON($10), 4326)::geography)::numeric, 2),
+           $11, 'available'
+         )
+         RETURNING id, stand_number, ward, status,
+                   ROUND(ST_Area(geom::geography)::numeric, 2) AS area_sqm`,
+        [standNumber, ward, zoneId || null, zoneType || null, useScale || null,
+         frontageM || null, depthM || null, priceUsd || null, description || null,
+         geomJson, request.user.id],
+      )
+      invalidateTileLayer('stands')
+      return reply.code(201).send({ success: true, data: rows[0] })
+    } catch (err) {
+      if (err.code === '23505') return reply.code(409).send({ success: false, error: 'stand_number already exists in this ward' })
+      request.log.error({ err }, 'create stand failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    }
+  })
+
+  // ── Planner: update stand ───────────────────────────────────────────────
+  fastify.put('/stands/:id', {
+    preHandler: requireRole(fastify, ['planner', 'gis_officer', 'admin']),
+  }, async (request, reply) => {
+    try {
+      const { id } = request.params
+      const {
+        standNumber, ward, zoneId, zoneType, useScale,
+        frontageM, depthM, priceUsd, description, status, geometry,
+      } = request.body || {}
+
+      const sets = ['updated_at = NOW()']
+      const params = [id]
+
+      if (standNumber != null)  { params.push(standNumber);  sets.push(`stand_number = $${params.length}`) }
+      if (ward != null)         { params.push(ward);         sets.push(`ward = $${params.length}`) }
+      if (zoneId !== undefined) { params.push(zoneId);       sets.push(`zone_id = $${params.length}`) }
+      if (zoneType != null)     { params.push(zoneType);     sets.push(`zone_type = $${params.length}`) }
+      if (useScale != null)     { params.push(useScale);     sets.push(`use_scale = $${params.length}`) }
+      if (frontageM != null)    { params.push(frontageM);    sets.push(`frontage_m = $${params.length}`) }
+      if (depthM != null)       { params.push(depthM);       sets.push(`depth_m = $${params.length}`) }
+      if (priceUsd != null)     { params.push(priceUsd);     sets.push(`price_usd = $${params.length}`) }
+      if (description != null)  { params.push(description);  sets.push(`description = $${params.length}`) }
+      if (status != null && STATUS_VALUES.has(status)) { params.push(status); sets.push(`status = $${params.length}`) }
+      if (geometry?.type === 'Polygon') {
+        const g = JSON.stringify(geometry)
+        params.push(g)
+        const n = params.length
+        sets.push(`geom = ST_SetSRID(ST_GeomFromGeoJSON($${n}), 4326)`)
+        sets.push(`area_sqm = ROUND(ST_Area(ST_SetSRID(ST_GeomFromGeoJSON($${n}), 4326)::geography)::numeric, 2)`)
+      }
+
+      if (sets.length === 1) return reply.code(400).send({ success: false, error: 'no fields to update' })
+
+      const { rows } = await fastify.pg.query(
+        `UPDATE stands SET ${sets.join(', ')} WHERE id = $1 RETURNING id, stand_number, ward, status`,
+        params,
+      )
+      if (!rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
+      invalidateTileLayer('stands')
+      return reply.send({ success: true, data: rows[0] })
+    } catch (err) {
+      request.log.error({ err }, 'update stand failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    }
+  })
+
+  // ── Planner: withdraw (soft-delete) stand ──────────────────────────────
+  fastify.delete('/stands/:id', {
+    preHandler: requireRole(fastify, ['planner', 'gis_officer', 'admin']),
+  }, async (request, reply) => {
+    try {
+      const { id } = request.params
+      const { rows } = await fastify.pg.query(
+        `UPDATE stands SET status = 'withdrawn', updated_at = NOW()
+          WHERE id = $1 AND status != 'allocated'
+          RETURNING id, stand_number, status`,
+        [id],
+      )
+      if (!rows[0]) return reply.code(404).send({ success: false, error: 'not_found_or_allocated' })
+      invalidateTileLayer('stands')
+      return reply.send({ success: true, data: rows[0] })
+    } catch (err) {
+      request.log.error({ err }, 'withdraw stand failed')
       return reply.code(500).send({ success: false, error: 'internal' })
     }
   })
