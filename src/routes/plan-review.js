@@ -37,7 +37,7 @@ const ALLOWED_PLAN_MIME = new Set([
   'application/octet-stream', // Tolerated for raw .dwg uploads
 ])
 
-const STAFF_ROLES = ['admin', 'planner', 'eo', 'planning_clerk', 'building_inspector']
+const STAFF_ROLES = ['admin', 'planner', 'eo', 'env_officer', 'planning_clerk', 'building_inspector', 'surveyor', 'gis_officer']
 
 const isString = (v, max = 4096) =>
   typeof v === 'string' && v.length > 0 && v.length <= max
