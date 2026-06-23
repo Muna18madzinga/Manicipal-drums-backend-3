@@ -21,7 +21,7 @@
 const { requireRole } = require('../middleware/jwtAuth')
 const notifier = require('../services/notifier')
 
-const STAFF_ROLES = ['admin', 'planner', 'eo', 'building_inspector', 'planning_clerk', 'env_officer']
+const STAFF_ROLES = ['admin', 'planner', 'eo', 'env_officer', 'building_inspector', 'planning_clerk', 'surveyor', 'gis_officer']
 
 const isString = (v, max = 4096) =>
   typeof v === 'string' && v.length > 0 && v.length <= max
