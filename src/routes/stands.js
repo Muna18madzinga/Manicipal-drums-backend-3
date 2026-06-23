@@ -12,7 +12,7 @@
 
 const { requireAuth, requireRole } = require('../middleware/jwtAuth')
 const planningAssistant = require('../services/planningAssistant')
-const { invalidateTileLayer } = require('./tiles')
+const { invalidateTileLayer, emitMapEvent } = require('./tiles')
 
 const RESERVATION_TTL_MIN = 30
 
@@ -251,7 +251,7 @@ async function standsRoutes(fastify) {
          frontageM || null, depthM || null, priceUsd || null, description || null,
          geomJson, request.user.id],
       )
-      invalidateTileLayer('stands')
+      invalidateTileLayer('stands'); emitMapEvent({ layer: 'stands', action: 'updated' })
       return reply.code(201).send({ success: true, data: rows[0] })
     } catch (err) {
       if (err.code === '23505') return reply.code(409).send({ success: false, error: 'stand_number already exists in this ward' })
@@ -299,7 +299,7 @@ async function standsRoutes(fastify) {
         params,
       )
       if (!rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
-      invalidateTileLayer('stands')
+      invalidateTileLayer('stands'); emitMapEvent({ layer: 'stands', action: 'updated' })
       return reply.send({ success: true, data: rows[0] })
     } catch (err) {
       request.log.error({ err }, 'update stand failed')
@@ -320,7 +320,7 @@ async function standsRoutes(fastify) {
         [id],
       )
       if (!rows[0]) return reply.code(404).send({ success: false, error: 'not_found_or_allocated' })
-      invalidateTileLayer('stands')
+      invalidateTileLayer('stands'); emitMapEvent({ layer: 'stands', action: 'updated' })
       return reply.send({ success: true, data: rows[0] })
     } catch (err) {
       request.log.error({ err }, 'withdraw stand failed')
