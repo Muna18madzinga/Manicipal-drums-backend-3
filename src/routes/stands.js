@@ -328,6 +328,163 @@ async function standsRoutes(fastify) {
     }
   })
 
+  // ── Planner/GIS: MERGE stands (land consolidation) ──────────────────────
+  // Unions ≥2 contiguous stands into one new parcel and withdraws the
+  // originals — the cadastral "consolidation" operation. Transactional:
+  // either the new stand is created and all parents withdrawn, or nothing.
+  fastify.post('/stands/merge', {
+    preHandler: requireRole(fastify, ['planner', 'gis_officer', 'admin']),
+  }, async (request, reply) => {
+    const { standIds, standNumber, ward, zoneType, useScale, priceUsd, description } = request.body || {}
+
+    if (!Array.isArray(standIds) || standIds.length < 2)
+      return reply.code(400).send({ success: false, error: 'merge requires at least 2 standIds' })
+    if (!isString(standNumber, 64))
+      return reply.code(400).send({ success: false, error: 'standNumber required for merged stand' })
+
+    try {
+      const result = await fastify.pg.transact(async (client) => {
+        // Lock the source rows; reject if any is allocated or missing.
+        const { rows: sources } = await client.query(
+          `SELECT id, ward, zone_id, zone_type, use_scale, status,
+                  ST_AsText(geom) AS wkt
+             FROM stands
+            WHERE id = ANY($1::uuid[])
+            FOR UPDATE`,
+          [standIds],
+        )
+        if (sources.length !== standIds.length) throw { code: 'NOT_FOUND' }
+        if (sources.some(s => s.status === 'allocated')) throw { code: 'ALLOCATED' }
+
+        // Union must yield a single contiguous Polygon. ST_Union of
+        // disjoint parcels yields a MultiPolygon — reject those: you cannot
+        // consolidate non-adjacent stands into one parcel.
+        const { rows: u } = await client.query(
+          `SELECT GeometryType(g) AS gtype,
+                  ST_AsGeoJSON(g) AS geojson,
+                  ROUND(ST_Area(g::geography)::numeric, 2) AS area_sqm
+             FROM (
+               SELECT ST_UnaryUnion(ST_Collect(geom)) AS g
+                 FROM stands WHERE id = ANY($1::uuid[])
+             ) q`,
+          [standIds],
+        )
+        if (u[0].gtype !== 'POLYGON') throw { code: 'NOT_CONTIGUOUS' }
+
+        const wardVal = isString(ward, 64) ? ward : sources[0].ward
+        const zoneId  = sources[0].zone_id
+        const { rows: created } = await client.query(
+          `INSERT INTO stands
+             (stand_number, ward, zone_id, zone_type, use_scale,
+              price_usd, description, geom, area_sqm, created_by, status)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,
+                   ST_SetSRID(ST_GeomFromGeoJSON($8),4326),$9,$10,'available')
+           RETURNING id, stand_number, ward, area_sqm, status,
+                     ST_AsGeoJSON(geom)::json AS geometry`,
+          [standNumber, wardVal, zoneId,
+           zoneType || sources[0].zone_type, useScale || sources[0].use_scale,
+           priceUsd || null, description || `Consolidated from ${sources.length} stands`,
+           u[0].geojson, u[0].area_sqm, request.user.id],
+        )
+
+        await client.query(
+          `UPDATE stands SET status='withdrawn', updated_at=NOW()
+            WHERE id = ANY($1::uuid[])`,
+          [standIds],
+        )
+        return created[0]
+      })
+
+      invalidateTileLayer('stands'); emitMapEvent({ layer: 'stands', action: 'updated' })
+      return reply.code(201).send({ success: true, data: result })
+    } catch (err) {
+      if (err.code === 'NOT_FOUND')      return reply.code(404).send({ success: false, error: 'one or more stands not found' })
+      if (err.code === 'ALLOCATED')      return reply.code(409).send({ success: false, error: 'cannot merge an allocated stand' })
+      if (err.code === 'NOT_CONTIGUOUS') return reply.code(422).send({ success: false, error: 'stands are not adjacent — consolidation requires touching boundaries' })
+      if (err.code === '23505')          return reply.code(409).send({ success: false, error: 'stand_number already exists in this ward' })
+      request.log.error({ err }, 'merge stands failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    }
+  })
+
+  // ── Planner/GIS: SPLIT a stand (subdivision) ────────────────────────────
+  // Cuts one stand with a blade LineString (ST_Split) into ≥2 child parcels,
+  // withdraws the parent. The cadastral "subdivision" operation.
+  fastify.post('/stands/:id/split', {
+    preHandler: requireRole(fastify, ['planner', 'gis_officer', 'admin']),
+  }, async (request, reply) => {
+    const { id } = request.params
+    const { blade } = request.body || {}
+    if (!blade || blade.type !== 'LineString')
+      return reply.code(400).send({ success: false, error: 'blade must be a GeoJSON LineString' })
+
+    try {
+      const result = await fastify.pg.transact(async (client) => {
+        const { rows: parents } = await client.query(
+          `SELECT id, stand_number, ward, zone_id, zone_type, use_scale,
+                  price_usd, status
+             FROM stands WHERE id = $1 FOR UPDATE`,
+          [id],
+        )
+        const parent = parents[0]
+        if (!parent) throw { code: 'NOT_FOUND' }
+        if (parent.status === 'allocated') throw { code: 'ALLOCATED' }
+
+        // ST_Split returns a GeometryCollection; dump it into individual
+        // polygons. Require ≥2 to be a real subdivision.
+        const { rows: parts } = await client.query(
+          `SELECT ST_AsGeoJSON(geom)::json AS geometry,
+                  ROUND(ST_Area(geom::geography)::numeric, 2) AS area_sqm
+             FROM (
+               SELECT (ST_Dump(ST_Split(s.geom,
+                        ST_SetSRID(ST_GeomFromGeoJSON($2),4326)))).geom AS geom
+                 FROM stands s WHERE s.id = $1
+             ) q
+            WHERE GeometryType(geom) = 'POLYGON'
+            ORDER BY ST_Area(geom) DESC`,
+          [id, JSON.stringify(blade)],
+        )
+        if (parts.length < 2) throw { code: 'NO_SPLIT' }
+
+        // Child numbering: parent-A, parent-B, … (skips collisions defensively).
+        const suffixes = 'ABCDEFGHIJ'.split('')
+        const children = []
+        for (let i = 0; i < parts.length; i++) {
+          const childNum = `${parent.stand_number}-${suffixes[i] || (i + 1)}`
+          const { rows: c } = await client.query(
+            `INSERT INTO stands
+               (stand_number, ward, zone_id, zone_type, use_scale,
+                price_usd, description, geom, area_sqm, created_by, status)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,
+                     ST_SetSRID(ST_GeomFromGeoJSON($8),4326),$9,$10,'available')
+             RETURNING id, stand_number, area_sqm, status,
+                       ST_AsGeoJSON(geom)::json AS geometry`,
+            [childNum, parent.ward, parent.zone_id, parent.zone_type, parent.use_scale,
+             null, `Subdivided from ${parent.stand_number}`,
+             parts[i].geometry, parts[i].area_sqm, request.user.id],
+          )
+          children.push(c[0])
+        }
+
+        await client.query(
+          `UPDATE stands SET status='withdrawn', updated_at=NOW() WHERE id=$1`,
+          [id],
+        )
+        return { parent: parent.stand_number, children }
+      })
+
+      invalidateTileLayer('stands'); emitMapEvent({ layer: 'stands', action: 'updated' })
+      return reply.code(201).send({ success: true, data: result })
+    } catch (err) {
+      if (err.code === 'NOT_FOUND') return reply.code(404).send({ success: false, error: 'stand not found' })
+      if (err.code === 'ALLOCATED') return reply.code(409).send({ success: false, error: 'cannot subdivide an allocated stand' })
+      if (err.code === 'NO_SPLIT')  return reply.code(422).send({ success: false, error: 'blade does not divide the stand into 2+ parts — draw a line fully across it' })
+      if (err.code === '23505')     return reply.code(409).send({ success: false, error: 'a child stand_number already exists in this ward' })
+      request.log.error({ err }, 'split stand failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    }
+  })
+
   // ── Auth: release my reservation ────────────────────────────────────
   fastify.post('/stands/:id/release', { preHandler: requireAuth(fastify) }, async (request, reply) => {
     try {
