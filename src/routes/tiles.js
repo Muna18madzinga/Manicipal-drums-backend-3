@@ -68,17 +68,20 @@ async function tilesRoutes(fastify) {
     // Never resolve — Fastify must not end the response
     await new Promise(() => {})
   })
-  fastify.get('/tiles/layers', async () => ({
-    success: true,
-    data: allLayers().map((l) => ({
-      id: l.id,
-      title: l.title,
-      geomType: l.geomType,
-      group: l.group,
-      minzoom: l.minzoom,
-      maxzoom: l.maxzoom,
-    })),
-  }))
+  fastify.get('/tiles/layers', async (request, reply) => {
+    reply.header('Cache-Control', 'public, max-age=3600')
+    return {
+      success: true,
+      data: allLayers().map((l) => ({
+        id: l.id,
+        title: l.title,
+        geomType: l.geomType,
+        group: l.group,
+        minzoom: l.minzoom,
+        maxzoom: l.maxzoom,
+      })),
+    }
+  })
 
   fastify.get('/tiles/cache/stats',
     { preHandler: [requireAuth, requireRole(['admin'])] },
