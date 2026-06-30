@@ -21,6 +21,7 @@ const MIGRATIONS = [
   '074_spatial_tile_indexes.sql',
   '075_notifications_and_kyc.sql',
   '076_production_hardening.sql',
+  '083_planning_projects.sql',
 ]
 
 function createPool(env = process.env) {

@@ -28,6 +28,7 @@ const { authRoutes } = require('./src/routes/auth')
 // from the existing zone_land_use_controls + planning_assistant_templates.
 const { standsRoutes } = require('./src/routes/stands')
 const { planningAssistantRoutes } = require('./src/routes/planning-assistant')
+const { planningProjectsRoutes } = require('./src/routes/planning-projects')
 const plannerRoutes = require('./src/routes/planner')
 const { zonesRoutes } = require('./src/routes/zones')
 
@@ -306,8 +307,9 @@ async function build() {
     await server.register(standsRoutes,            { prefix: '/api' })
     await server.register(zonesRoutes,             { prefix: '/api' })
     await server.register(planningAssistantRoutes, { prefix: '/api' })
+    await server.register(planningProjectsRoutes,  { prefix: '/api' })
     await server.register(plannerRoutes,           { prefix: '/api' })
-    console.log('✅ Stands + Zones + Planning Assistant + Planner routes registered')
+    console.log('✅ Stands + Zones + Planning Assistant + Planning Projects + Planner routes registered')
   } catch (error) {
     server.log.error({ err: error }, 'Failed to register stands/planning routes')
   }
