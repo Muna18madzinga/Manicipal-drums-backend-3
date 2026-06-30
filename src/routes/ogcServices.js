@@ -110,52 +110,62 @@ function extractCoordinates(geometry) {
 }
 
 /**
- * Parse CQL filter to SQL WHERE clause
- * Supports: =, <>, <, >, <=, >=, LIKE, AND, OR, IN
- * @param {string} cql - CQL filter string
- * @returns {string|null} SQL WHERE clause or null
+ * Parse a CQL filter into a PARAMETERIZED SQL fragment.
+ *
+ * Security: the previous implementation string-built a WHERE clause from raw
+ * user input and relied on a character allowlist, which was bypassable
+ * (`a=1 OR 1=1`, sub-selects, quote breakouts) — a SQL-injection vector. This
+ * version supports a safe subset only: comparisons (`field OP value`) joined by
+ * AND/OR. Field names are validated as identifiers and quoted; every value is
+ * returned as a BOUND parameter ($n), so no user value ever reaches the SQL
+ * string. Anything outside the grammar (parens, IN, sub-selects, functions)
+ * returns null and the filter is simply ignored.
+ *
+ * @param {string} cql        CQL filter string
+ * @param {number} startIndex next bind-parameter number ($startIndex …)
+ * @returns {{ clause: string, params: any[] } | null}
  */
-function parseCQLFilter(cql) {
-  if (!cql) return null
-  
-  try {
-    // Basic CQL to SQL conversion
-    let sql = cql
-    
-    // Replace operators
-    sql = sql.replace(/\s*=\s*/g, ' = ')
-    sql = sql.replace(/\s*<>\s*/g, ' <> ')
-    sql = sql.replace(/\s*</g, ' < ')
-    sql = sql.replace(/\s*>/g, ' > ')
-    sql = sql.replace(/\s*<=\s*/g, ' <= ')
-    sql = sql.replace(/\s*>=\s*/g, ' >= ')
-    
-    // Handle LIKE (case insensitive)
-    sql = sql.replace(/\s+LIKE\s+/gi, ' ILIKE ')
-    sql = sql.replace(/\s+NOT\s+ILIKE\s+/gi, ' NOT ILIKE ')
-    
-    // Handle IN operator
-    sql = sql.replace(/\s+IN\s*\(/gi, ' IN (')
-    
-    // Handle AND/OR (case insensitive)
-    sql = sql.replace(/\s+AND\s+/gi, ' AND ')
-    sql = sql.replace(/\s+OR\s+/gi, ' OR ')
-    
-    // Wrap column names in quotes for safety
-    // Simple regex to quote unquoted identifiers
-    sql = sql.replace(/(\w+)\s*(=|<>|<|>|<=|>=)/g, '"$1" $2')
-    
-    // Validate - only allow safe characters
-    if (!/^[\w\s\"\'\=\<\>\!\(\)\,\.\%\*\_\-]+$/.test(sql)) {
-      console.warn(`[OGC Routes] ⚠️ Invalid CQL filter characters: ${cql}`)
-      return null
+function parseCQLLiteral(raw) {
+  const s = String(raw).trim()
+  const m = s.match(/^'((?:[^']|'')*)'$/)        // single-quoted string ('' escapes a quote)
+  if (m) return m[1].replace(/''/g, "'")
+  if (/^-?\d+(\.\d+)?$/.test(s)) return Number(s) // plain number
+  return undefined
+}
+
+function parseCQLFilter(cql, startIndex = 1) {
+  if (!cql || typeof cql !== 'string' || cql.length > 1000) return null
+
+  const params = []
+  let idx = startIndex
+
+  // Split on top-level AND/OR. Nested parentheses are not supported (return
+  // null rather than risk an unsafe parse).
+  const tokens = cql.split(/\s+(AND|OR)\s+/i)
+  if (tokens.length % 2 === 0) return null // must be: comparison (CONN comparison)*
+
+  const parts = []
+  for (let i = 0; i < tokens.length; i += 2) {
+    const m = tokens[i].trim().match(
+      /^([A-Za-z_][A-Za-z0-9_]*)\s*(=|<>|!=|<=|>=|<|>|LIKE|ILIKE)\s*(.+)$/i,
+    )
+    if (!m) return null
+    const field = m[1]
+    const opRaw = m[2].toUpperCase()
+    const value = parseCQLLiteral(m[3])
+    if (value === undefined) return null
+    const op = opRaw === '!=' ? '<>' : opRaw === 'LIKE' ? 'ILIKE' : opRaw
+    params.push(value)
+    parts.push(`"${field}" ${op} $${idx++}`)
+
+    if (i + 1 < tokens.length) {
+      const conn = tokens[i + 1].toUpperCase()
+      if (conn !== 'AND' && conn !== 'OR') return null
+      parts.push(conn)
     }
-    
-    return sql
-  } catch (error) {
-    console.warn(`[OGC Routes] ⚠️ Failed to parse CQL filter: ${error.message}`)
-    return null
   }
+
+  return { clause: parts.join(' '), params }
 }
 
 async function ogcServicesRoutes(fastify, options) {
@@ -381,11 +391,12 @@ async function ogcServicesRoutes(fastify, options) {
         // Fallback to direct PostgreSQL query
         const { Pool } = require('pg')
         const pool = new Pool({
-          host: 'localhost',
-          port: 5432,
-          database: 'vungu_master_db_v1',
-          user: 'postgres',
-          password: 'cairo2025'
+          connectionString: process.env.DATABASE_URL,
+          host: process.env.DATABASE_URL ? undefined : 'localhost',
+          port: process.env.DATABASE_URL ? undefined : 5432,
+          database: process.env.DATABASE_URL ? undefined : 'vungu_master_db_v1',
+          user: process.env.DATABASE_URL ? undefined : 'postgres',
+          password: process.env.DATABASE_URL ? undefined : (process.env.DB_PASSWORD || process.env.PGPASSWORD || 'postgres')
         })
         
         // Map layer name to table name
@@ -416,18 +427,20 @@ async function ogcServicesRoutes(fastify, options) {
           FROM public."${tableName}"
           WHERE geom IS NOT NULL
         `
-        
+        const params = []
+
         // Add bbox filter
         if (bbox) {
           const [minx, miny, maxx, maxy] = bbox.split(',').map(Number)
           query += ` AND ST_Intersects(ST_Transform(geom, 4326), ST_MakeEnvelope(${minx}, ${miny}, ${maxx}, ${maxy}, 4326))`
         }
         
-        // Add CQL filter support
+        // Add CQL filter support (parameterized — values are bound, never concatenated)
         if (filter) {
-          const sqlFilter = parseCQLFilter(filter)
-          if (sqlFilter) {
-            query += ` AND ${sqlFilter}`
+          const parsed = parseCQLFilter(filter, params.length + 1)
+          if (parsed) {
+            query += ` AND ${parsed.clause}`
+            params.push(...parsed.params)
           }
         }
         
@@ -435,7 +448,7 @@ async function ogcServicesRoutes(fastify, options) {
           query += ` LIMIT ${parseInt(maxFeatures)}`
         }
         
-        const result = await pool.query(query)
+        const result = await pool.query(query, params)
         await pool.end()
         
         // Build GeoJSON features with actual properties

@@ -10,12 +10,13 @@ async function login(creds) {
   return r.data.data.token
 }
 
-let citizenToken, plannerToken
+let citizenToken, plannerToken, eoToken
 let citizenPermitId, plannerPermitId
 
 beforeAll(async () => {
   citizenToken = await login(CITIZEN)
   plannerToken = await login(PLANNER)
+  eoToken      = await login(EO)
 })
 
 afterAll(async () => {
@@ -67,5 +68,20 @@ describe('/permit-applications role + own-row gating', () => {
     const err = await axios.get(`${BASE}/permit-applications/${plannerPermitId}`,
       { headers: { Authorization: `Bearer ${citizenToken}` } }).catch(e => e.response)
     expect(err.status).toBe(404)
+  })
+
+  test('eo can transition a permit status (determination right)', async () => {
+    const r = await axios.patch(`${BASE}/permit-applications/${plannerPermitId}/status`,
+      { status: 'under_review' },
+      { headers: { Authorization: `Bearer ${eoToken}` } })
+    expect(r.status).toBe(200)
+    expect(r.data.data.status).toBe('under_review')
+  })
+
+  test('citizen cannot transition a permit status (403)', async () => {
+    const err = await axios.patch(`${BASE}/permit-applications/${citizenPermitId}/status`,
+      { status: 'under_review' },
+      { headers: { Authorization: `Bearer ${citizenToken}` } }).catch(e => e.response)
+    expect(err.status).toBe(403)
   })
 })

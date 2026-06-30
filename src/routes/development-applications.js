@@ -1,10 +1,35 @@
 // Development Application API Routes (JavaScript/CommonJS)
-// Handles all development application related endpoints
+// Handles all development application related endpoints.
+//
+// SECURITY (audit fix F1): every endpoint now requires a valid JWT. Reads are
+// owner-scoped — a citizen only sees their own applications; staff see all.
+// Status changes are staff-only and validated against an allow-list. Errors
+// return a generic message (detail is logged server-side only) so DB/driver
+// internals are never leaked to the client.
+
+const { requireAuth, requireRole } = require('../middleware/jwtAuth')
+
+// Council staff who may read every application and change status.
+const STAFF_ROLES = [
+  'admin', 'planner', 'planning_clerk', 'eo',
+  'gis_officer', 'env_officer', 'building_inspector', 'surveyor',
+]
+
+// Legal application statuses. Anything else is rejected on PATCH.
+const ALLOWED_STATUSES = [
+  'draft', 'submitted', 'under_review', 'pending_payment',
+  'more_info_required', 'approved', 'rejected', 'withdrawn',
+]
+
+const isStaff = (user) => !!user && STAFF_ROLES.includes(user.role)
 
 async function developmentApplicationRoutes(fastify, options) {
+  const authd = { preHandler: requireAuth(fastify) }
+  const staffOnly = { preHandler: requireRole(fastify, STAFF_ROLES) }
 
-  // Submit new development application
+  // Submit new development application (authenticated citizen).
   fastify.post('/development-applications', {
+    ...authd,
     schema: {
       description: 'Submit a new development application',
       tags: ['development-applications'],
@@ -27,14 +52,14 @@ async function developmentApplicationRoutes(fastify, options) {
 
       const insertQuery = `
         INSERT INTO development_applications (
-          id, user_id, selection_data, eligibility_data, form_data, 
+          id, user_id, selection_data, eligibility_data, form_data,
           fees_data, status, submitted_at, created_at, updated_at
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
         RETURNING *
       `
       const values = [
         applicationId,
-        request.user?.id || 'anonymous',
+        request.user.id,
         JSON.stringify(selection),
         JSON.stringify(eligibility),
         JSON.stringify(formData),
@@ -63,7 +88,6 @@ async function developmentApplicationRoutes(fastify, options) {
         }
       }
 
-      console.log(`✅ Application ${applicationId} submitted successfully`)
       return reply.status(201).send({
         success: true,
         applicationId,
@@ -71,13 +95,13 @@ async function developmentApplicationRoutes(fastify, options) {
         data: rows[0]
       })
     } catch (error) {
-      fastify.log.error('❌ Failed to submit application:', error)
-      return reply.status(500).send({ success: false, message: error.message || 'Failed to submit application' })
+      fastify.log.error({ err: error }, 'Failed to submit application')
+      return reply.status(500).send({ success: false, message: 'Failed to submit application' })
     }
   })
 
-  // Get application by ID
-  fastify.get('/development-applications/:id', async (request, reply) => {
+  // Get application by ID (owner or staff only).
+  fastify.get('/development-applications/:id', authd, async (request, reply) => {
     try {
       const { id } = request.params
       const { rows } = await fastify.pg.query('SELECT * FROM development_applications WHERE id = $1', [id])
@@ -86,6 +110,11 @@ async function developmentApplicationRoutes(fastify, options) {
       }
 
       const app = rows[0]
+      // 404 (not 403) for someone else's application so we don't leak existence.
+      if (!isStaff(request.user) && String(app.user_id) !== String(request.user.id)) {
+        return reply.status(404).send({ success: false, message: 'Application not found' })
+      }
+
       const docs = await fastify.pg.query('SELECT * FROM application_documents WHERE application_id = $1 ORDER BY uploaded_at DESC', [id])
       const timeline = await fastify.pg.query('SELECT * FROM application_timeline WHERE application_id = $1 ORDER BY event_date DESC', [id])
 
@@ -102,13 +131,13 @@ async function developmentApplicationRoutes(fastify, options) {
         }
       }
     } catch (error) {
-      fastify.log.error(`❌ Failed to get application:`, error)
-      return reply.status(500).send({ success: false, message: error.message })
+      fastify.log.error({ err: error }, 'Failed to get application')
+      return reply.status(500).send({ success: false, message: 'Failed to load application' })
     }
   })
 
-  // List applications (for authenticated user)
-  fastify.get('/development-applications', async (request, reply) => {
+  // List applications. Citizens see only their own; staff see all.
+  fastify.get('/development-applications', authd, async (request, reply) => {
     try {
       const { status, limit = 50, offset = 0 } = request.query || {}
       let query = `
@@ -119,91 +148,124 @@ async function developmentApplicationRoutes(fastify, options) {
         FROM development_applications
       `
       const params = []
+      const where = []
+      if (!isStaff(request.user)) {
+        params.push(request.user.id)
+        where.push(`user_id = $${params.length}`)
+      }
       if (status) {
         params.push(status)
-        query += ` WHERE status = $${params.length}`
+        where.push(`status = $${params.length}`)
       }
+      if (where.length) query += ` WHERE ${where.join(' AND ')}`
       query += ` ORDER BY submitted_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`
       params.push(limit, offset)
 
       const { rows } = await fastify.pg.query(query, params)
       return { success: true, data: rows, count: rows.length }
     } catch (error) {
-      fastify.log.error('❌ Failed to get applications:', error)
-      return reply.status(500).send({ success: false, message: error.message })
+      fastify.log.error({ err: error }, 'Failed to get applications')
+      return reply.status(500).send({ success: false, message: 'Failed to load applications' })
     }
   })
 
-  // Update application status
-  fastify.patch('/development-applications/:id/status', async (request, reply) => {
+  // Update application status (staff only, validated transition target).
+  fastify.patch('/development-applications/:id/status', staffOnly, async (request, reply) => {
     try {
       const { id } = request.params
-      const { status, notes } = request.body
+      const { status, notes } = request.body || {}
 
-      await fastify.pg.query('UPDATE development_applications SET status = $1, updated_at = NOW() WHERE id = $2', [status, id])
+      if (!ALLOWED_STATUSES.includes(status)) {
+        return reply.status(400).send({ success: false, message: 'Invalid status value' })
+      }
+
+      const upd = await fastify.pg.query(
+        'UPDATE development_applications SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id',
+        [status, id]
+      )
+      if (upd.rows.length === 0) {
+        return reply.status(404).send({ success: false, message: 'Application not found' })
+      }
       await fastify.pg.query(
         `INSERT INTO application_timeline (application_id, event_type, event_description, event_date, created_at)
          VALUES ($1, $2, $3, $4, NOW())`,
         [id, 'status_change', `Status changed to: ${status}${notes ? '. Notes: ' + notes : ''}`, new Date().toISOString()]
       )
 
-      console.log(`✅ Application ${id} status updated to ${status}`)
       return { success: true, data: { status, notes }, message: 'Status updated successfully' }
     } catch (error) {
-      fastify.log.error('❌ Failed to update status:', error)
-      return reply.status(500).send({ success: false, message: error.message })
+      fastify.log.error({ err: error }, 'Failed to update status')
+      return reply.status(500).send({ success: false, message: 'Failed to update status' })
     }
   })
 
-  // Get application timeline
-  fastify.get('/development-applications/:id/timeline', async (request, reply) => {
+  // Helper: confirm the caller may see a given application.
+  async function assertCanReadApplication(request, reply, id) {
+    const { rows } = await fastify.pg.query('SELECT user_id FROM development_applications WHERE id = $1', [id])
+    if (rows.length === 0) {
+      reply.status(404).send({ success: false, message: 'Application not found' })
+      return false
+    }
+    if (!isStaff(request.user) && String(rows[0].user_id) !== String(request.user.id)) {
+      reply.status(404).send({ success: false, message: 'Application not found' })
+      return false
+    }
+    return true
+  }
+
+  // Get application timeline (owner or staff).
+  fastify.get('/development-applications/:id/timeline', authd, async (request, reply) => {
     try {
       const { id } = request.params
+      if (!(await assertCanReadApplication(request, reply, id))) return
       const { rows } = await fastify.pg.query(
         'SELECT * FROM application_timeline WHERE application_id = $1 ORDER BY event_date DESC', [id]
       )
       return { success: true, data: rows }
     } catch (error) {
-      fastify.log.error('❌ Failed to get timeline:', error)
-      return reply.status(500).send({ success: false, message: error.message })
+      fastify.log.error({ err: error }, 'Failed to get timeline')
+      return reply.status(500).send({ success: false, message: 'Failed to load timeline' })
     }
   })
 
-  // Add comment
-  fastify.post('/development-applications/:id/comments', async (request, reply) => {
+  // Add comment (owner or staff). Internal comments are staff-only.
+  fastify.post('/development-applications/:id/comments', authd, async (request, reply) => {
     try {
       const { id } = request.params
-      const { comment, isInternal } = request.body
+      const { comment, isInternal } = request.body || {}
+      if (!(await assertCanReadApplication(request, reply, id))) return
+      const internal = isStaff(request.user) ? !!isInternal : false
       const { rows } = await fastify.pg.query(
-        `INSERT INTO application_comments (application_id, comment_text, is_internal, created_at)
-         VALUES ($1, $2, $3, NOW()) RETURNING *`,
-        [id, comment, isInternal || false]
+        `INSERT INTO application_comments (application_id, comment_text, is_internal, author_id, created_at)
+         VALUES ($1, $2, $3, $4, NOW()) RETURNING *`,
+        [id, comment, internal, request.user.id]
       )
       return { success: true, data: rows[0], message: 'Comment added' }
     } catch (error) {
-      fastify.log.error('❌ Failed to add comment:', error)
-      return reply.status(500).send({ success: false, message: error.message })
+      fastify.log.error({ err: error }, 'Failed to add comment')
+      return reply.status(500).send({ success: false, message: 'Failed to add comment' })
     }
   })
 
-  // Get documents
-  fastify.get('/development-applications/:id/documents', async (request, reply) => {
+  // Get documents (owner or staff).
+  fastify.get('/development-applications/:id/documents', authd, async (request, reply) => {
     try {
       const { id } = request.params
+      if (!(await assertCanReadApplication(request, reply, id))) return
       const { rows } = await fastify.pg.query(
         'SELECT * FROM application_documents WHERE application_id = $1 ORDER BY uploaded_at DESC', [id]
       )
       return { success: true, data: rows }
     } catch (error) {
-      fastify.log.error('❌ Failed to get documents:', error)
-      return reply.status(500).send({ success: false, message: error.message })
+      fastify.log.error({ err: error }, 'Failed to get documents')
+      return reply.status(500).send({ success: false, message: 'Failed to load documents' })
     }
   })
 
-  // Calculate fees
-  fastify.post('/development-applications/calculate-fees', async (request, reply) => {
+  // Calculate fees (authenticated).
+  fastify.post('/development-applications/calculate-fees', authd, async (request, reply) => {
     try {
-      const { selection, eligibility } = request.body
+      const { selection, eligibility } = request.body || {}
       const baseFee = 500
       const areaFee = (selection?.area_hectares || 0) * 50
       const processingFee = 200
@@ -212,16 +274,16 @@ async function developmentApplicationRoutes(fastify, options) {
         data: { application: baseFee, planning: areaFee, processing: processingFee, total: baseFee + areaFee + processingFee }
       }
     } catch (error) {
-      fastify.log.error('❌ Failed to calculate fees:', error)
-      return reply.status(500).send({ success: false, message: error.message })
+      fastify.log.error({ err: error }, 'Failed to calculate fees')
+      return reply.status(500).send({ success: false, message: 'Failed to calculate fees' })
     }
   })
 
-  // Get application statistics
-  fastify.get('/development-applications/stats', async (request, reply) => {
+  // Get application statistics (staff only — aggregate council data).
+  fastify.get('/development-applications/stats', staffOnly, async (request, reply) => {
     try {
       const { rows } = await fastify.pg.query(`
-        SELECT 
+        SELECT
           COUNT(*) as total,
           COUNT(CASE WHEN status = 'submitted' THEN 1 END) as submitted,
           COUNT(CASE WHEN status = 'under_review' THEN 1 END) as under_review,
@@ -231,54 +293,61 @@ async function developmentApplicationRoutes(fastify, options) {
       `)
       return { success: true, data: rows[0] }
     } catch (error) {
-      fastify.log.error('❌ Failed to get stats:', error)
-      return reply.status(500).send({ success: false, message: error.message })
+      fastify.log.error({ err: error }, 'Failed to get stats')
+      return reply.status(500).send({ success: false, message: 'Failed to load statistics' })
     }
   })
 
-  // Save draft
-  fastify.post('/development-applications/drafts', async (request, reply) => {
+  // Save draft (authenticated, owned by caller).
+  fastify.post('/development-applications/drafts', authd, async (request, reply) => {
     try {
       const draftId = `DRAFT-${Date.now().toString().slice(-6)}`
       const { rows } = await fastify.pg.query(
         `INSERT INTO application_drafts (id, user_id, draft_data, created_at, updated_at)
          VALUES ($1, $2, $3, NOW(), NOW()) RETURNING *`,
-        [draftId, request.user?.id || 'anonymous', JSON.stringify(request.body)]
+        [draftId, request.user.id, JSON.stringify(request.body)]
       )
       return { success: true, data: rows[0], message: 'Draft saved' }
     } catch (error) {
-      fastify.log.error('❌ Failed to save draft:', error)
-      return reply.status(500).send({ success: false, message: error.message })
+      fastify.log.error({ err: error }, 'Failed to save draft')
+      return reply.status(500).send({ success: false, message: 'Failed to save draft' })
     }
   })
 
-  // Get drafts
-  fastify.get('/development-applications/drafts', async (request, reply) => {
+  // Get drafts (caller's own only).
+  fastify.get('/development-applications/drafts', authd, async (request, reply) => {
     try {
       const { rows } = await fastify.pg.query(
-        'SELECT * FROM application_drafts ORDER BY updated_at DESC'
+        'SELECT * FROM application_drafts WHERE user_id = $1 ORDER BY updated_at DESC',
+        [request.user.id]
       )
       return { success: true, data: rows, count: rows.length }
     } catch (error) {
-      fastify.log.error('❌ Failed to get drafts:', error)
-      return reply.status(500).send({ success: false, message: error.message })
+      fastify.log.error({ err: error }, 'Failed to get drafts')
+      return reply.status(500).send({ success: false, message: 'Failed to load drafts' })
     }
   })
 
-  // Delete draft
-  fastify.delete('/development-applications/drafts/:id', async (request, reply) => {
+  // Delete draft (caller's own only).
+  fastify.delete('/development-applications/drafts/:id', authd, async (request, reply) => {
     try {
       const { id } = request.params
-      await fastify.pg.query('DELETE FROM application_drafts WHERE id = $1', [id])
+      const del = await fastify.pg.query(
+        'DELETE FROM application_drafts WHERE id = $1 AND user_id = $2 RETURNING id',
+        [id, request.user.id]
+      )
+      if (del.rows.length === 0) {
+        return reply.status(404).send({ success: false, message: 'Draft not found' })
+      }
       return { success: true, message: 'Draft deleted' }
     } catch (error) {
-      fastify.log.error('❌ Failed to delete draft:', error)
-      return reply.status(500).send({ success: false, message: error.message })
+      fastify.log.error({ err: error }, 'Failed to delete draft')
+      return reply.status(500).send({ success: false, message: 'Failed to delete draft' })
     }
   })
 
-  // Get development types
-  fastify.get('/development-applications/development-types', async (request, reply) => {
+  // Get development types (reference data, authenticated).
+  fastify.get('/development-applications/development-types', authd, async (request, reply) => {
     return {
       success: true,
       data: [
@@ -294,8 +363,8 @@ async function developmentApplicationRoutes(fastify, options) {
     }
   })
 
-  // Get zone requirements
-  fastify.get('/development-applications/zone-requirements', async (request, reply) => {
+  // Get zone requirements (reference data, authenticated).
+  fastify.get('/development-applications/zone-requirements', authd, async (request, reply) => {
     const { zone } = request.query || {}
     const requirements = {
       'Estates': { requiredDocuments: ['Architectural approval', 'Site plan', 'Building plans'], processingTime: '4-6 weeks' },

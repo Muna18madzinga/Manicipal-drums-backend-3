@@ -266,7 +266,7 @@ class StyleSyncService extends EventEmitter {
   async parseQMLContent(content) {
     try {
       // Parse QML XML content
-      const { DOMParser } = require('xmldom');
+      const { DOMParser } = require('@xmldom/xmldom');
       const parser = new DOMParser();
       const doc = parser.parseFromString(content, 'text/xml');
       

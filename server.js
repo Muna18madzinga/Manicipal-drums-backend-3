@@ -39,6 +39,10 @@ const { applicationStatusRoutes } = require('./src/routes/application-status')
 const { paymentRoutes } = require('./src/routes/payments')
 const { documentRoutes } = require('./src/routes/documents')
 
+// Editable public-site content (CMS) — replaces the static vungurdc.org.zw
+// pages so the IT Admin can change wording, staff lists and committee duties.
+const { siteContentRoutes } = require('./src/routes/site-content')
+
 // Turn D: plan auto-review (PDF + CAD upload + deterministic checks).
 const { planReviewRoutes } = require('./src/routes/plan-review')
 
@@ -55,21 +59,11 @@ const { spatialRoutes } = require('./src/routes/spatial')
 // Vector tile service — serves zimbabwe.gpkg PostGIS layers as MVT.
 const { tilesRoutes } = require('./src/routes/tiles')
 const { parcelsRoutes } = require('./src/routes/parcels')
+const { gisRoutes } = require('./src/routes/gis')
+const { planningRoutes } = require('./src/routes/planning')
 const { citizenPortalRoutes } = require('./src/routes/citizen-portal')
-
-// Import Spatial Data Routes
-let spatialDataRoutes
-try {
-  // Try TypeScript import first
-  spatialDataRoutes = require('./src/routes/spatial-data.ts')
-} catch (tsError) {
-  try {
-    // Fallback to JavaScript if available
-    spatialDataRoutes = require('./src/routes/spatial-data.js')
-  } catch (jsError) {
-    console.warn('Could not load Spatial Data routes (both .ts and .js failed):', jsError.message)
-  }
-}
+const { surveyorRoutes } = require('./src/routes/surveyor')
+const { propertyRoutes } = require('./src/routes/properties')
 
 // Import Development Control Routes
 let developmentControlRoutes
@@ -95,13 +89,6 @@ try {
   console.warn('❌ Could not load Enhanced Land Use Management routes:', error.message)
 }
 
-// Import Land Use Management Routes
-let landUseManagementRoutes
-try {
-  landUseManagementRoutes = require('./src/routes/land-use-management.js')
-} catch (error) {
-  console.warn('Could not load Land Use Management routes:', error.message)
-}
 
 // Import Dynamic Layers Routes
 let dynamicLayerRoutes
@@ -159,9 +146,25 @@ async function build() {
       ? ['https://vungu-rdc.org']
       : localOrigins
 
-  // Register CORS
+  // Register CORS. Methods are listed explicitly so the preflight
+  // Access-Control-Allow-Methods header includes PATCH/DELETE — the EO
+  // determination (PATCH /permit-applications/:id/status) and other writes
+  // are blocked otherwise when the browser calls :3000 directly (i.e. when
+  // VITE_API_BASE_URL bypasses the Vite dev proxy).
   await server.register(require('@fastify/cors'), {
-    origin: corsOrigins
+    origin: corsOrigins,
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })
+
+  // Security headers (audit fix): nosniff, frameguard (clickjacking),
+  // HSTS, Referrer-Policy, etc. CSP is left off here because this process
+  // serves JSON + uploaded files (not the HTML app) and a maps CSP must be
+  // tuned at the frontend host; crossOriginResourcePolicy is relaxed so the
+  // separately-hosted frontend can still load /uploads images.
+  await server.register(require('@fastify/helmet'), {
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
   })
 
   // Register Compression
@@ -184,9 +187,15 @@ async function build() {
       req.url.startsWith('/api/map-search'),
   })
 
-  // Register PostgreSQL
+  // Register PostgreSQL. DATABASE_URL is required in production (no hardcoded
+  // credentials in source). Local dev falls back to a standard password-less
+  // localhost role so a leaked repo never ships a real password.
+  const databaseUrl = process.env.DATABASE_URL
+  if (!databaseUrl && process.env.NODE_ENV === 'production') {
+    throw new Error('[db] DATABASE_URL must be set in production')
+  }
   await server.register(require('@fastify/postgres'), {
-    connectionString: process.env.DATABASE_URL || 'postgresql://postgres:cairo2025@localhost:5432/vungu_master_db_v1'
+    connectionString: databaseUrl || 'postgresql://postgres:postgres@localhost:5432/vungu_master_db_v1'
   })
 
   // Register Redis when REDIS_URL is set. Used by the MVT tile route as the
@@ -303,7 +312,8 @@ async function build() {
   try {
     await server.register(paymentRoutes,   { prefix: '/api' })
     await server.register(documentRoutes,  { prefix: '/api' })
-    console.log('✅ Payment + document routes registered')
+    await server.register(siteContentRoutes, { prefix: '/api' })
+    console.log('✅ Payment + document + site-content routes registered')
   } catch (error) {
     server.log.error({ err: error }, 'Failed to register payment/document routes')
   }
@@ -339,19 +349,13 @@ async function build() {
     await server.register(tilesRoutes, { prefix: '/api' })
     await server.register(parcelsRoutes, { prefix: '/api' })
     await server.register(citizenPortalRoutes, { prefix: '/api' })
-    console.log('✅ Vector tile routes registered')
+    await server.register(surveyorRoutes, { prefix: '/api' })
+    await server.register(propertyRoutes, { prefix: '/api' })
+    await server.register(gisRoutes, { prefix: '/api' })
+    await server.register(planningRoutes, { prefix: '/api' })
+    console.log('✅ Vector tile + property register + GIS editing + planning routes registered')
   } catch (error) {
     server.log.error({ err: error }, 'Failed to register tile routes')
-  }
-
-  // Register Spatial Data Routes
-  if (spatialDataRoutes) {
-    try {
-      await server.register(spatialDataRoutes, { prefix: '/api' })
-      console.log('✅ Spatial data routes registered')
-    } catch (error) {
-      console.error('❌ Failed to register spatial data routes:', error.message)
-    }
   }
 
   // Register OGC Services Routes (WMS/WFS/WMTS)
@@ -379,11 +383,6 @@ async function build() {
     }
   }
 
-  // Register Land Use Management Routes
-  if (landUseManagementRoutes) {
-    await server.register(landUseManagementRoutes, { prefix: '/api/land-use-management' })
-    console.log('✅ Land Use Management routes registered')
-  }
 
   // Register Dynamic Layers Routes
   if (dynamicLayerRoutes) {
@@ -434,15 +433,19 @@ async function build() {
     })
   })
 
-  // Global error handler
+  // Global error handler. 4xx (validation / client) errors keep their
+  // message; 5xx errors return a generic message so DB/driver internals and
+  // stack traces are never leaked to the client (audit fix F10). Full detail
+  // is logged server-side.
   server.setErrorHandler(async (error, request, reply) => {
-    server.log.error('Unhandled error:', error)
-    
-    reply.status(error.statusCode || 500).send({
-      error: error.name || 'Internal Server Error',
-      message: error.message || 'An unexpected error occurred',
+    server.log.error({ err: error }, 'Unhandled error')
+
+    const statusCode = error.statusCode || 500
+    const isClientError = statusCode >= 400 && statusCode < 500
+    reply.status(statusCode).send({
+      error: isClientError ? (error.name || 'Error') : 'Internal Server Error',
+      message: isClientError ? (error.message || 'Request error') : 'An unexpected error occurred',
       timestamp: new Date().toISOString(),
-      ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
     })
   })
 

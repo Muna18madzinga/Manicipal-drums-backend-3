@@ -210,11 +210,12 @@ class EnhancedOGCBridge extends SmartQGISExtractor {
     const { Pool } = require('pg')
     
     const pool = new Pool({
-      host: 'localhost',
-      port: 5433,
-      database: 'vungu_master_db',
-      user: 'postgres',
-      password: 'cairo2025'
+      connectionString: process.env.DATABASE_URL,
+      host: process.env.DATABASE_URL ? undefined : 'localhost',
+      port: process.env.DATABASE_URL ? undefined : 5433,
+      database: process.env.DATABASE_URL ? undefined : 'vungu_master_db',
+      user: process.env.DATABASE_URL ? undefined : 'postgres',
+      password: process.env.DATABASE_URL ? undefined : (process.env.DB_PASSWORD || process.env.PGPASSWORD || 'postgres')
     })
     
     try {
