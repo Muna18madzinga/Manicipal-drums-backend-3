@@ -49,11 +49,14 @@ const crypto = require('crypto')
 const { requireAuth, requireRole } = require('../middleware/jwtAuth')
 const notifier = require('../services/notifier')
 
-const STAFF_ROLES = ['admin', 'planner', 'planning_clerk', 'building_inspector', 'eo', 'surveyor', 'gis_officer', 'env_officer']
+const STAFF_ROLES = [
+  'admin', 'planner', 'planning_clerk', 'building_inspector',
+  'eo', 'env_officer', 'surveyor', 'gis_officer',
+]
 
-// Citizens (user / viewer / registered) can read their own rows and create
+// Citizens (public / registered / viewer) can read their own rows and create
 // new applications; only staff can change status or add internal records.
-const PERMIT_READERS = [...STAFF_ROLES, 'user', 'viewer', 'registered']
+const PERMIT_READERS = [...STAFF_ROLES, 'public', 'viewer', 'registered']
 
 // ════════════════════════════════════════════════════════════════════
 // Photo storage (DM Handbook Phase 4 — Stage Inspection Photos)
@@ -170,7 +173,7 @@ async function developmentManagementRoutes(fastify) {
   // ══════════════════════════════════════════════════════════════════
 
   fastify.post('/permit-applications', {
-    preHandler: requireRole(fastify, ['planning_clerk', 'planner', 'admin', 'user', 'viewer', 'registered']),
+    preHandler: requireRole(fastify, ['planning_clerk', 'planner', 'admin', 'public', 'viewer', 'registered']),
   }, async (request, reply) => {
     const b = request.body || {}
     if (!isStr(b.applicant_name, 255)) {

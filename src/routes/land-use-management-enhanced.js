@@ -4,28 +4,12 @@
 const { Pool } = require('pg');
 
 // Initialize route
-async function landUseManagementRoutes(fastify, { auth } = {}) {
-  try {
-    const pool = fastify.pg.pool;
+async function landUseManagementRoutes(fastify, { auth }) {
+  const pool = fastify.pg.pool;
 
   // ============================================
   // Land Use Groups Management
   // ============================================
-
-  // Test route
-  console.log('🔍 DEBUG: Registering test route...');
-  fastify.get('/test', async (request, reply) => {
-    console.log('🔍 DEBUG: Test route called');
-    try {
-      const result = await pool.query('SELECT NOW() as current_time');
-      console.log('🔍 DEBUG: Test route DB query successful');
-      return { success: true, time: result.rows[0].current_time };
-    } catch (error) {
-      console.error('🔍 DEBUG: Test route error:', error);
-      return { success: false, error: error.message };
-    }
-  });
-  console.log('🔍 DEBUG: Test route registered');
 
   // Get all land use groups with optional filtering
   fastify.get('/groups', {
@@ -39,20 +23,11 @@ async function landUseManagementRoutes(fastify, { auth } = {}) {
         }
       }
     },
-    // preHandler: auth.requireAuth // Auth disabled for testing
+    preHandler: auth.requireAuth
   }, async (request, reply) => {
-    console.log('🔍 DEBUG: Groups endpoint called with query:', request.query);
     try {
-      const { development_category, use_scale, is_active, page = 1, limit = 50 } = request.query;
-
-      console.log('🔍 DEBUG: Parsed params:', {
-        development_category,
-        use_scale,
-        is_active,
-        page,
-        limit
-      });
-
+      const { development_category, use_scale, is_active, page = 1, limit = 20 } = request.query;
+      
       let query = `
         SELECT 
           lug.group_id,
@@ -64,70 +39,55 @@ async function landUseManagementRoutes(fastify, { auth } = {}) {
           lug.notes,
           lug.is_active,
           lug.created_at,
-          0 as land_use_controls_count
+          COUNT(zlc.id) as land_use_controls_count
         FROM land_use_groups lug
+        LEFT JOIN zone_land_use_controls zlc ON lug.group_id = zlc.land_use_group_id
         WHERE 1=1
       `;
-
+      
       const params = [];
       const values = [];
       let paramIndex = 1;
-
+      
       if (development_category) {
         query += ` AND lug.development_category = $${paramIndex++}`;
-        params.push('development_category');
+        params.push(development_category);
         values.push(development_category);
       }
-
+      
       if (use_scale) {
         query += ` AND lug.use_scale = $${paramIndex++}`;
-        params.push('use_scale');
+        params.push(use_scale);
         values.push(use_scale);
       }
-
+      
       if (is_active !== undefined) {
         query += ` AND lug.is_active = $${paramIndex++}`;
-        params.push('is_active');
-        values.push(is_active);
+        params.push(is_active);
+        values.push(is_active === 'true' ? true : false);
       }
-
-      query += ` GROUP BY lug.group_id, lug.group_code, lug.description, lug.group_category, lug.development_category, lug.use_scale, lug.notes, lug.is_active, lug.created_at ORDER BY lug.group_category, lug.group_code LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
       
+      query += ` GROUP BY lug.group_id, lug.group_code, lug.description, lug.group_category, lug.development_category, lug.use_scale, lug.notes, lug.is_active, lug.created_at`;
+      query += ` ORDER BY lug.group_category, lug.group_code`;
+      
+      // Add pagination
       const offset = (page - 1) * limit;
-      values.push(limit, offset);
+      query += ` LIMIT $${limit} OFFSET $${offset}`;
       
-      console.log('🔍 DEBUG: Final query:', query);
-      console.log('🔍 DEBUG: Query params:', values);
-
       const result = await pool.query(query, values);
-      console.log('🔍 DEBUG: Query executed successfully, rows:', result.rows.length);
-
+      
       const countQuery = `
         SELECT COUNT(*) as total
         FROM land_use_groups lug
         WHERE 1=1
       `;
-
-      const countValues = [];
-      let countParamIndex = 1;
-
-      if (development_category) {
-        countQuery += ` AND lug.development_category = $${countParamIndex++}`;
-        countValues.push(development_category);
-      }
-
-      if (use_scale) {
-        countQuery += ` AND lug.use_scale = $${countParamIndex++}`;
-        countValues.push(use_scale);
-      }
-
-      if (is_active !== undefined) {
-        countQuery += ` AND lug.is_active = $${countParamIndex++}`;
-        countValues.push(is_active);
-      }
-
-      const countResult = await pool.query(countQuery, countValues);
-
+      
+      if (development_category) countQuery += ` AND lug.development_category = $${paramIndex++}`;
+      if (use_scale) countQuery += ` AND lug.use_scale = $${paramIndex++}`;
+      if (is_active !== undefined) countQuery += ` AND lug.is_active = $${paramIndex++}`;
+      
+      const countResult = await pool.query(countQuery, values.slice(0, paramIndex - 1));
+      
       return reply.send({
         success: true,
         data: result.rows,
@@ -138,62 +98,213 @@ async function landUseManagementRoutes(fastify, { auth } = {}) {
           totalPages: Math.ceil(countResult.rows[0].total / limit)
         }
       });
-
+      
     } catch (error) {
-      console.error('🔍 DEBUG: Groups endpoint error:', error);
-      fastify.log.error('Groups query error:', error);
+      fastify.log.error('Land use groups query error:', error);
       reply.code(500).send({ error: 'Failed to fetch land use groups' });
     }
   });
 
+  // Create new land use group
+  fastify.post('/groups', {
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          group_code: { type: 'string', minLength: 1, maxLength: 10 },
+          description: { type: 'string', minLength: 1, maxLength: 200 },
+          group_category: { type: 'string', enum: ['residential', 'agricultural', 'commercial', 'institutional', 'industrial'] },
+          development_category: { type: 'string', enum: ['permitted', 'prohibited', 'special_consent'] },
+          use_scale: { type: 'string', enum: ['small_scale', 'large_scale', 'mixed_scale', 'all_scales'] },
+          notes: { type: 'string' }
+        }
+      }
+    },
+    preHandler: auth.requireAuth
+  }, async (request, reply) => {
+    try {
+      const { group_code, description, group_category, development_category, use_scale, notes } = request.body;
+      const userId = request.user.id;
+      
+      const result = await pool.query(`
+        INSERT INTO land_use_groups (group_code, description, group_category, development_category, use_scale, notes, is_active, created_at, created_by)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)
+        RETURNING *
+      `, [group_code, description, group_category, development_category, use_scale, notes, true, userId]);
+      
+      reply.send({
+        success: true,
+        data: result.rows[0],
+        message: 'Land use group created successfully'
+      });
+      
+    } catch (error) {
+      fastify.log.error('Create land use group error:', error);
+      reply.code(500).send({ error: 'Failed to create land use group' });
+    }
+  });
+
+  // Update land use group
+  fastify.put('/groups/:id', {
+    schema: {
+      params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } }, required: ['id'] },
+      body: {
+        type: 'object',
+        properties: {
+          group_code: { type: 'string', minLength: 1, maxLength: 10 },
+          description: { type: 'string', minLength: 1, maxLength: 200 },
+          group_category: { type: 'string', enum: ['residential', 'agricultural', 'commercial', 'institutional', 'industrial'] },
+          development_category: { type: 'string', enum: ['permitted', 'prohibited', 'special_consent'] },
+          use_scale: { type: 'string', enum: ['small_scale', 'large_scale', 'mixed_scale', 'all_scales'] },
+          notes: { type: 'string' }
+        }
+      }
+    },
+    preHandler: auth.requireAuth
+  }, async (request, reply) => {
+    try {
+      const { id } = request.params;
+      const { group_code, description, group_category, development_category, use_scale, notes } = request.body;
+      const userId = request.user.id;
+      
+      const result = await pool.query(`
+        UPDATE land_use_groups 
+        SET group_code = $1, description = $2, group_category = $3, development_category = $4, use_scale = $5, notes = $6, updated_at = NOW(), updated_by = $7
+        WHERE group_id = $8
+        RETURNING *
+      `, [group_code, description, group_category, development_category, use_scale, notes, userId, id]);
+      
+      if (result.rows.length === 0) {
+        return reply.code(404).send({ error: 'Land use group not found' });
+      }
+      
+      reply.send({
+        success: true,
+        data: result.rows[0],
+        message: 'Land use group updated successfully'
+      });
+      
+    } catch (error) {
+      fastify.log.error('Update land use group error:', error);
+      reply.code(500).send({ error: 'Failed to update land use group' });
+    }
+  });
+
+  // Delete land use group
+  fastify.delete('/groups/:id', {
+    schema: {
+      params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } }, required: ['id'] }
+    },
+    preHandler: auth.requireAuth
+  }, async (request, reply) => {
+    try {
+      const { id } = request.params;
+      
+      // Check if group is being used in zone controls
+      const usageCheck = await pool.query(
+        'SELECT COUNT(*) as count FROM zone_land_use_controls WHERE land_use_group_id = $1',
+        [id]
+      );
+      
+      if (parseInt(usageCheck.rows[0].count) > 0) {
+        return reply.code(400).send({ 
+          error: 'Cannot delete land use group that is being used in zone controls',
+          usage_count: parseInt(usageCheck.rows[0].count)
+        });
+      }
+      
+      const result = await pool.query(
+        'DELETE FROM land_use_groups WHERE group_id = $1 RETURNING *',
+        [id]
+      );
+      
+      reply.send({
+        success: true,
+        message: 'Land use group deleted successfully'
+      });
+      
+    } catch (error) {
+      fastify.log.error('Delete land use group error:', error);
+      reply.code(500).send({ error: 'Failed to delete land use group' });
+    }
+  });
+
   // ============================================
-  // Zones Management
+  // Zone Management (using proposed_peri_urban_zones)
   // ============================================
 
-  // Get all zones
+  // Get all zones with optional filtering
   fastify.get('/zones', {
     schema: {
       querystring: {
         type: 'object',
         properties: {
-          page: { type: 'integer', minimum: 1, default: 1 },
-          limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 }
+          zone_type: { type: 'string' },
+          scale_category: { type: 'string', enum: ['small_scale', 'large_scale', 'mixed_scale'] },
+          authority: { type: 'string' }
         }
       }
-    }
-    // Temporarily removed: preHandler: auth.requireAuth
+    },
+    preHandler: auth.requireAuth
   }, async (request, reply) => {
     try {
-      console.log('🏙️ ZONES ROUTE CALLED');
-      const { page = 1, limit = 20 } = request.query;
-      console.log('📄 Request params:', { page, limit });
-
-      // ENRICHED QUERY: Get zones with all data (same pattern as controls)
+      const { zone_type, scale_category, authority, page = 1, limit = 20 } = request.query;
+      
       let query = `
-        SELECT id, zone as zone_name, zone_type, scale_category, authority, zone_description
-        FROM proposed_peri_urban_zones
-        ORDER BY zone
+        SELECT 
+          puz.id,
+          puz.zone as zone_name,
+          puz.zone_type,
+          puz.scale_category,
+          puz.authority,
+          COUNT(zlc.id) as land_use_controls_count
+        FROM proposed_peri_urban_zones puz
+        LEFT JOIN zone_land_use_controls zlc ON puz.id = zlc.zone_id
+        WHERE 1=1
       `;
-
+      
+      const params = [];
       const values = [];
       let paramIndex = 1;
-
+      
+      if (zone_type) {
+        query += ` AND puz.zone_type ILIKE $${paramIndex++}`;
+        params.push(zone_type);
+        values.push(`%${zone_type}%`);
+      }
+      
+      if (scale_category) {
+        query += ` AND puz.scale_category = $${paramIndex++}`;
+        params.push(scale_category);
+        values.push(scale_category);
+      }
+      
+      if (authority) {
+        query += ` AND puz.authority = $${paramIndex++}`;
+        params.push(authority);
+        values.push(authority);
+      }
+      
+      query += ` GROUP BY puz.id, puz.zone, puz.zone_type, puz.scale_category, puz.authority`;
+      
       // Add pagination
       const offset = (page - 1) * limit;
-      query += ` LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
-      values.push(limit, offset);
-
-      console.log('🔍 Executing zones query with limit:', limit, 'offset:', offset);
+      query += ` ORDER BY puz.zone LIMIT $${limit} OFFSET $${offset}`;
       
       const result = await pool.query(query, values);
-      console.log('✅ Query successful, rows returned:', result.rows.length);
-
-      // Count query
-      const countQuery = `SELECT COUNT(*) as total FROM proposed_peri_urban_zones`;
       
-      const countResult = await pool.query(countQuery);
-      console.log('📊 Count query successful, total:', countResult.rows[0].total);
-
+      const countQuery = `
+        SELECT COUNT(*) as total
+        FROM proposed_peri_urban_zones puz
+        WHERE 1=1
+      `;
+      
+      if (zone_type) countQuery += ` AND puz.zone_type ILIKE $${paramIndex++}`;
+      if (scale_category) countQuery += ` AND puz.scale_category = $${paramIndex++}`;
+      if (authority) countQuery += ` AND puz.authority = $${paramIndex++}`;
+      
+      const countResult = await pool.query(countQuery, values.slice(0, paramIndex - 1));
+      
       return reply.send({
         success: true,
         data: result.rows,
@@ -204,38 +315,38 @@ async function landUseManagementRoutes(fastify, { auth } = {}) {
           totalPages: Math.ceil(countResult.rows[0].total / limit)
         }
       });
-
+      
     } catch (error) {
-      console.log('❌ ZONES ROUTE ERROR:', error.message);
       fastify.log.error('Zones query error:', error);
       reply.code(500).send({ error: 'Failed to fetch zones' });
     }
   });
 
-  // Create zone
+  // Create new zone
   fastify.post('/zones', {
     schema: {
       body: {
         type: 'object',
         properties: {
-          zone: { type: 'string', maxLength: 100 },
-          zone_type: { type: 'string', maxLength: 50 },
-          scale_category: { type: 'string', maxLength: 50 },
-          authority: { type: 'string', maxLength: 100 }
-        },
-        required: ['zone', 'zone_type', 'scale_category']
+          zone: { type: 'string', minLength: 1, maxLength: 50 },
+          zone_type: { type: 'string', enum: ['Communal Farming Zone', 'High Intensive Commercial Farming Zone', 'Estates Zone (Large Farms)', 'Irrigation Scheme Zone', 'Proposed Peri-Urban Zone'] },
+          scale_category: { type: 'string', enum: ['small_scale', 'large_scale', 'mixed_scale'] },
+          authority: { type: 'string', maxLength: 100 },
+          zone_description: { type: 'string' }
+        }
       }
     },
-    preHandler: auth && auth.requireAuth ? auth.requireAuth : undefined
+    preHandler: auth.requireAuth
   }, async (request, reply) => {
     try {
-      const { zone, zone_type, scale_category, authority } = request.body;
+      const { zone, zone_type, scale_category, authority, zone_description } = request.body;
+      const userId = request.user.id;
       
       const result = await pool.query(`
-        INSERT INTO proposed_peri_urban_zones (zone, zone_type, scale_category, authority, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, NOW(), NOW())
+        INSERT INTO proposed_peri_urban_zones (zone, zone_type, scale_category, authority, zone_description, is_active, created_at, created_by)
+        VALUES ($1, $2, $3, $4, $5, true, NOW(), $6)
         RETURNING *
-      `, [zone, zone_type, scale_category, authority]);
+      `, [zone, zone_type, scale_category, authority, zone_description, userId]);
       
       reply.send({
         success: true,
@@ -253,7 +364,7 @@ async function landUseManagementRoutes(fastify, { auth } = {}) {
   // Zone-Land Use Controls Management
   // ============================================
 
-  // Get zone-land use controls (ENRICHED VERSION for Development Matrix)
+  // Get zone-land use controls (SIMPLE VERSION for debugging)
   fastify.get('/controls', {
     schema: {
       querystring: {
@@ -271,51 +382,19 @@ async function landUseManagementRoutes(fastify, { auth } = {}) {
       const { page = 1, limit = 20 } = request.query;
       console.log('📄 Request params:', { page, limit });
 
-      // ENRICHED QUERY: Get controls with joined zone and group data
-      let query = `
-        SELECT
-          zlc.id,
-          puz.zone as zone_name,
-          puz.zone_type,
-          puz.scale_category,
-          lug.group_code,
-          lug.description,
-          lug.group_category,
-          lug.development_category,
-          lug.use_scale,
-          zlc.control_type,
-          zlc.authority,
-          zlc.conditions,
-          zlc.created_at,
-          zlc.updated_at
-        FROM zone_land_use_controls zlc
-        JOIN proposed_peri_urban_zones puz ON zlc.zone_id = puz.id
-        JOIN land_use_groups lug ON zlc.land_use_group_id = lug.group_id
-        ORDER BY puz.zone, lug.group_code, zlc.control_type
-      `;
-
-      const values = [];
-      let paramIndex = 1;
-
-      // Add pagination
+      // Simple query without JOINs first
       const offset = (page - 1) * limit;
-      query += ` LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
-      values.push(limit, offset);
-
-      console.log('🔍 Executing enriched query with limit:', limit, 'offset:', offset);
+      console.log('🔍 Executing query with limit:', limit, 'offset:', offset);
       
-      const result = await pool.query(query, values);
+      const result = await pool.query(`
+        SELECT * FROM zone_land_use_controls
+        ORDER BY created_at DESC
+        LIMIT $1 OFFSET $2
+      `, [limit, offset]);
+      
       console.log('✅ Query successful, rows returned:', result.rows.length);
 
-      // Count query with JOINs
-      const countQuery = `
-        SELECT COUNT(*) as total
-        FROM zone_land_use_controls zlc
-        JOIN proposed_peri_urban_zones puz ON zlc.zone_id = puz.id
-        JOIN land_use_groups lug ON zlc.land_use_group_id = lug.group_id
-      `;
-      
-      const countResult = await pool.query(countQuery);
+      const countResult = await pool.query('SELECT COUNT(*) as total FROM zone_land_use_controls');
       console.log('📊 Count query successful, total:', countResult.rows[0].total);
 
       return reply.send({
@@ -350,7 +429,7 @@ async function landUseManagementRoutes(fastify, { auth } = {}) {
         }
       }
     },
-    preHandler: auth && auth.requireAuth ? auth.requireAuth : undefined
+    preHandler: auth.requireAuth
   }, async (request, reply) => {
     try {
       const { zone_id, land_use_group_id, control_type, authority, conditions } = request.body;
@@ -390,13 +469,7 @@ async function landUseManagementRoutes(fastify, { auth } = {}) {
   // Update zone-land use control
   fastify.put('/controls/:id', {
     schema: {
-      params: {
-        type: 'object',
-        properties: {
-          id: { type: 'string', format: 'uuid' }
-        },
-        required: ['id']
-      },
+      params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } }, required: ['id'] },
       body: {
         type: 'object',
         properties: {
@@ -406,7 +479,7 @@ async function landUseManagementRoutes(fastify, { auth } = {}) {
         }
       }
     },
-    preHandler: auth && auth.requireAuth ? auth.requireAuth : undefined
+    preHandler: auth.requireAuth
   }, async (request, reply) => {
     try {
       const { id } = request.params;
@@ -439,15 +512,9 @@ async function landUseManagementRoutes(fastify, { auth } = {}) {
   // Delete zone-land use control
   fastify.delete('/controls/:id', {
     schema: {
-      params: {
-        type: 'object',
-        properties: {
-          id: { type: 'string', format: 'uuid' }
-        },
-        required: ['id']
-      }
+      params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } }, required: ['id'] }
     },
-    preHandler: auth && auth.requireAuth ? auth.requireAuth : undefined
+    preHandler: auth.requireAuth
   }, async (request, reply) => {
     try {
       const { id } = request.params;
@@ -475,15 +542,9 @@ async function landUseManagementRoutes(fastify, { auth } = {}) {
   // Get development matrix for a specific zone
   fastify.get('/zones/:id/matrix', {
     schema: {
-      params: {
-        type: 'object',
-        properties: {
-          id: { type: 'string' }  // Allow string format for integer IDs
-        },
-        required: ['id']
-      }
+      params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } }, required: ['id'] }
     },
-    preHandler: auth && auth.requireAuth ? auth.requireAuth : undefined
+    preHandler: auth.requireAuth
   }, async (request, reply) => {
     try {
       const { id } = request.params;
@@ -544,11 +605,6 @@ async function landUseManagementRoutes(fastify, { auth } = {}) {
       reply.code(500).send({ error: 'Failed to fetch development matrix' });
     }
   });
-
-  } catch (error) {
-    console.error('🔍 DEBUG: Enhanced land use routes initialization error:', error);
-    throw error;
-  }
 
   return fastify;
 };
