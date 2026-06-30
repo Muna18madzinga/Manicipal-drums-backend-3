@@ -23,6 +23,26 @@ const MIGRATIONS = [
   '076_available_stands.sql',
   '077_permit_application_pending_payment.sql',
   '078_missing_gist_indexes.sql',
+  '080_survey_tasks.sql',
+  '081_v_application_summary_add_lnglat.sql',
+  // 082–084 were applied to local/dev via psql but were never added to this
+  // Render allowlist. They are idempotent and tracked in schema_migrations, so
+  // listing them here is safe and ensures a fresh deploy has the planner case
+  // columns (082) before 085 (which depends on them) runs.
+  '082_planner_case_and_audit.sql',
+  '083_committee_meetings.sql',
+  '084_property_register.sql',
+  '085_planner_case_backend.sql',
+  '086_eo_decision_returns.sql',
+  '087_generated_document_content.sql',
+  '088_map_evidence_doc_type.sql',
+  '089_public_notice.sql',
+  '090_consultation_blocking_escalation.sql',
+  '091_gis_editable_features.sql',
+  '092_gis_feature_history.sql',
+  '093_user_applicant_profile.sql',
+  '094_site_content.sql',
+  '095_planning_projects.sql',
 ]
 
 function createPool(env = process.env) {

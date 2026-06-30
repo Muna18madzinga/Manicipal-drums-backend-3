@@ -50,6 +50,12 @@ async function ensureDir(dir) {
 }
 
 function docDTO(row) {
+  // The verifier stores its machine assessment in verifier_payload (JSONB).
+  // Surface the AI's recommendation + reason so the staff review queue can
+  // show "AI says: pass/fail/uncertain" next to each document.
+  const payload = row.verifier_payload && typeof row.verifier_payload === 'object'
+    ? row.verifier_payload
+    : {}
   return {
     id:                  row.id,
     userId:              row.user_id,
@@ -67,6 +73,9 @@ function docDTO(row) {
     verifiedAt:          row.verified_at,
     verifierProvider:    row.verifier_provider,
     verifierConfidence:  row.verifier_confidence == null ? null : Number(row.verifier_confidence),
+    // AI triage result (null for the manual verifier).
+    aiRecommendation:    payload.recommendation ?? null,   // 'pass' | 'fail' | 'uncertain'
+    aiReason:            payload.reason ?? null,
     createdAt:           row.created_at,
     updatedAt:           row.updated_at,
   }
@@ -167,12 +176,18 @@ async function documentRoutes(fastify) {
       }
 
       if (result) {
+        // When the verifier reaches a terminal decision on its own (an AI
+        // pass/fail), stamp verified_at so the timeline reads correctly even
+        // though no staff member touched it.
+        const autoDecided = result.status === 'verified' || result.status === 'rejected'
         await fastify.pg.query(
           `UPDATE citizen_documents SET
              verification_status = $2,
+             verification_notes  = COALESCE($9, verification_notes),
              verifier_provider   = $3,
              verifier_payload    = $4::JSONB,
              verifier_confidence = $5,
+             verified_at         = CASE WHEN $10 THEN NOW() ELSE verified_at END,
              extracted_name      = COALESCE($6, extracted_name),
              extracted_id_number = COALESCE($7, extracted_id_number),
              extracted_dob       = COALESCE($8, extracted_dob),
@@ -187,6 +202,8 @@ async function documentRoutes(fastify) {
             result.extracted?.name      ?? null,
             result.extracted?.idNumber  ?? null,
             result.extracted?.dob       ?? null,
+            result.notes ?? null,
+            autoDecided,
           ],
         )
       }

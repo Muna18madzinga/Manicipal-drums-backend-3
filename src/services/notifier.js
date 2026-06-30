@@ -19,6 +19,8 @@
  * follow-ups when a designer wants HTML emails.
  */
 
+const aiClient = require('./aiClient')
+
 const APP_NAME    = 'Vungu Spatial Data Portal'
 const COUNCIL     = 'Vungu Rural District Council'
 const APP_BASE    = process.env.FRONTEND_URL || 'http://localhost:5174'
@@ -37,6 +39,30 @@ function inspectionTrackUrl(applicationId) {
 }
 
 const TEMPLATES = {
+  application_received({ applicationId, reference, devType, standNumber, suburbWard, name }) {
+    const greeting = name ? `Hello ${name},` : 'Hello,'
+    const ref = reference || applicationId
+    return {
+      subject: `${COUNCIL}: application received — ${ref}`,
+      text: [
+        greeting,
+        '',
+        `Thank you for submitting your development application to ${COUNCIL}.`,
+        `We have received it and registered it under reference ${ref}.`,
+        standNumber ? `Site: Stand ${standNumber}${suburbWard ? ', ' + suburbWard : ''}.` : '',
+        devType ? `Type of development: ${prettyStatus(devType)}.` : '',
+        '',
+        'What happens next: a planning clerk will check your documents and acknowledge ' +
+          'your application. Once it is acknowledged, the statutory determination period begins. ' +
+          'We will email you whenever the status changes — you do not need to do anything right now.',
+        '',
+        `You can follow progress at ${appTrackUrl(applicationId)}.`,
+        '',
+        `— ${COUNCIL}`,
+      ].filter(Boolean).join('\n'),
+    }
+  },
+
   application_status_change({ applicationId, fromStatus, toStatus, name }) {
     const greeting = name ? `Hello ${name},` : 'Hello,'
     return {
@@ -172,7 +198,7 @@ async function enqueue(pg, {
   channel = 'email',
   kind,
   templateData = {},
-  subject, text,
+  subject, text, html,
   payload = {},
 }) {
   // Render template if not pre-rendered.
@@ -191,12 +217,89 @@ async function enqueue(pg, {
   }
 
   const { rows } = await pg.query(
-    `INSERT INTO notifications_outbox (user_id, email, channel, kind, subject, body_text, payload)
-     VALUES ($1, $2, $3, $4, $5, $6, $7::JSONB)
+    `INSERT INTO notifications_outbox (user_id, email, channel, kind, subject, body_text, body_html, payload)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::JSONB)
      RETURNING id`,
-    [userId || null, email || null, channel, kind, subject, text, JSON.stringify(payload || {})],
+    [userId || null, email || null, channel, kind, subject, text, html || null, JSON.stringify(payload || {})],
   )
   return rows[0].id
+}
+
+/**
+ * Wrap a plain-text email body in minimal, email-safe HTML. One <p> per
+ * blank-line-separated block; single newlines become <br>. Keeps the council
+ * letterhead simple and inline-styled (email clients ignore <style>).
+ */
+function textToHtml(text) {
+  const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
+  const blocks = String(text).split(/\n{2,}/).map(b => b.trim()).filter(Boolean)
+  const paras = blocks
+    .map(b => `<p style="margin:0 0 1em;">${esc(b).replace(/\n/g, '<br>')}</p>`)
+    .join('\n')
+  return `<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;line-height:1.6;max-width:560px;">
+${paras}
+</div>`
+}
+
+/**
+ * Enqueue the "application received" acknowledgement, optionally fine-tuned
+ * by the Claude text model. The deterministic template is always the floor:
+ * if the model is unconfigured, slow, or returns something unusable, the
+ * citizen still gets a correct, well-formed email.
+ *
+ * The subject stays deterministic (it carries the reference number); only the
+ * body is rephrased, and only when the model preserves the reference + link.
+ */
+async function enqueueApplicationReceived(pg, {
+  userId, email, name,
+  applicationId, reference, devType, standNumber, suburbWard,
+}) {
+  const base = TEMPLATES.application_received({
+    applicationId, reference, devType, standNumber, suburbWard, name,
+  })
+  const ref = reference || applicationId
+  const trackUrl = appTrackUrl(applicationId)
+
+  let bodyText = base.text
+  try {
+    const polished = await aiClient.chatText({
+      system:
+        `You write short, warm, professional acknowledgement emails for ${COUNCIL}, ` +
+        `a Zimbabwean rural district council planning office. Use British English. ` +
+        `No marketing language, no exclamation marks, no emojis, no markdown — plain text only. ` +
+        `Keep it under 160 words. You MUST keep the reference number and the tracking link ` +
+        `exactly as given, and sign off on a final line as "— ${COUNCIL}".`,
+      user:
+        `Write the body of an email confirming we received a citizen's development application.\n` +
+        `Facts:\n` +
+        `- Applicant name: ${name || '(unknown)'}\n` +
+        `- Reference number: ${ref}\n` +
+        `- Development type: ${devType || '(unspecified)'}\n` +
+        `- Site: ${standNumber ? 'Stand ' + standNumber + (suburbWard ? ', ' + suburbWard : '') : '(not given)'}\n` +
+        `- Tracking link: ${trackUrl}\n` +
+        `Explain that the application is registered, a planning clerk will check the documents and ` +
+        `acknowledge it, the statutory determination period starts on acknowledgement, and they will ` +
+        `be emailed when the status changes. Return only the email body text.`,
+      temperature: 0.4,
+      maxTokens: 320,
+    })
+    // Only accept the rewrite if it kept the reference and the tracking link —
+    // otherwise it has drifted and we keep the safe template.
+    if (polished && polished.includes(ref) && polished.includes(trackUrl)) {
+      bodyText = polished
+    }
+  } catch {
+    // keep the template
+  }
+
+  return enqueue(pg, {
+    userId, email,
+    kind: 'application_received',
+    subject: base.subject,
+    text: bodyText,
+    html: textToHtml(bodyText),
+    payload: { applicationId, reference: ref },
+  })
 }
 
 /**
@@ -237,5 +340,6 @@ async function recordApplicationStatusChange(pg, {
 module.exports = {
   TEMPLATES,
   enqueue,
+  enqueueApplicationReceived,
   recordApplicationStatusChange,
 }
