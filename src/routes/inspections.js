@@ -484,7 +484,7 @@ async function inspectionRoutes(fastify) {
     const app = appRows[0]
     if (!app) return reply.code(404).send({ success: false, error: 'application_not_found' })
     const u = request.user
-    const isStaff = ['admin', 'building_inspector', 'planner', 'planning_clerk', 'eo'].includes(u.role)
+    const isStaff = ['admin', 'building_inspector', 'planner', 'planning_clerk', 'eo', 'env_officer', 'surveyor', 'gis_officer'].includes(u.role)
     if (app.user_id !== u.id && !isStaff) {
       return reply.code(403).send({ success: false, error: 'forbidden' })
     }
