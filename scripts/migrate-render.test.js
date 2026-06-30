@@ -19,7 +19,9 @@ describe('Render migration plan', () => {
       '073_score_includes_na_as_zero.sql',
       '074_spatial_tile_indexes.sql',
       '075_v_application_summary_add_created_by.sql',
+      '075_notifications_and_kyc.sql',
       '076_available_stands.sql',
+      '076_production_hardening.sql',
       '077_permit_application_pending_payment.sql',
       '078_missing_gist_indexes.sql',
       '080_survey_tasks.sql',
@@ -36,6 +38,8 @@ describe('Render migration plan', () => {
       '091_gis_editable_features.sql',
       '092_gis_feature_history.sql',
       '093_user_applicant_profile.sql',
+      '094_site_content.sql',
+      '095_planning_projects.sql',
     ])
 
     for (const filename of MIGRATIONS) {

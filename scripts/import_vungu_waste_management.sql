@@ -1,0 +1,14 @@
+-- Auto-generated import for vungu_waste_management
+DROP TABLE IF EXISTS vungu_waste_management CASCADE;
+CREATE TABLE vungu_waste_management (
+  fid SERIAL PRIMARY KEY,
+  id TEXT,
+  USE TEXT,
+  geom GEOMETRY(MULTIPOLYGON, 4326)
+);
+
+INSERT INTO vungu_waste_management (id, USE, geom) VALUES (NULL, 'Sewer Treatment Plant', ST_SetSRID(ST_GeomFromWKB(decode('010600000001000000010300000001000000060000005c8f221ae7cf3d40878964b334a233c08ff7e93597cf3d40fa9c45c858a133c09037fd7482d03d40016f94b7d2a033c0853de91ed9d03d409886addd76a133c04b2859e201d13d40fe03724eeca133c05c8f221ae7cf3d40878964b334a233c0','hex')), 4326));
+INSERT INTO vungu_waste_management (id, USE, geom) VALUES (NULL, 'Landfill Site', ST_SetSRID(ST_GeomFromWKB(decode('010600000001000000010300000001000000070000009037fd7482d03d40016f94b7d2a033c082a7090550d13d4033c41c5afc9f33c04d3e8265bed13d4096beee5bd3a033c02846bfe105d13d4016de0142eba133c04b2859e201d13d40fe03724eeca133c0853de91ed9d03d409886addd76a133c09037fd7482d03d40016f94b7d2a033c0','hex')), 4326));
+
+-- Total: 2 features
+CREATE INDEX IF NOT EXISTS idx_vungu_waste_management_geom ON vungu_waste_management USING GIST(geom);
