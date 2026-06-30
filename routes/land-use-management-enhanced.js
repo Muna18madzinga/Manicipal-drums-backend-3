@@ -2,6 +2,7 @@
 // Supports dynamic zone-land use relationships with three-tier development control
 
 const { Pool } = require('pg');
+const { requireRole } = require('../src/middleware/jwtAuth');
 
 // Initialize route
 async function landUseManagementRoutes(fastify, { auth }) {
@@ -9,10 +10,16 @@ async function landUseManagementRoutes(fastify, { auth }) {
   try {
     const pool = fastify.pg.pool;
     console.log('🔍 DEBUG: Database pool obtained:', !!pool);
-    
-    // Test database connection
-    const testResult = await pool.query('SELECT 1 as test');
-    console.log('🔍 DEBUG: Database test successful:', testResult.rows[0]);
+
+    // NOTE: do NOT run a DB query at registration time. Awaiting a query inside
+    // Fastify/avvio's boot can exceed the plugin timeout and abort the whole
+    // server (AVV_ERR_PLUGIN_EXEC_TIMEOUT). The route handlers below query the
+    // pool lazily per-request, which is the correct place for DB access.
+
+    // Writes to zoning / land-use controls require a planning-editor role. The
+    // previous `auth` option was never passed by server.js, so these mutations
+    // were effectively unauthenticated; this enforces real authorization.
+    const requireLandUseEditor = requireRole(fastify, ['planner', 'admin']);
 
   // ============================================
   // Land Use Groups Management
@@ -232,7 +239,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
         required: ['zone', 'zone_type', 'scale_category']
       }
     },
-    preHandler: auth && auth.requireAuth ? auth.requireAuth : undefined
+    preHandler: requireLandUseEditor
   }, async (request, reply) => {
     try {
       const { zone, zone_type, scale_category, authority } = request.body;
@@ -356,7 +363,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
         }
       }
     },
-    preHandler: auth && auth.requireAuth ? auth.requireAuth : undefined
+    preHandler: requireLandUseEditor
   }, async (request, reply) => {
     try {
       const { zone_id, land_use_group_id, control_type, authority, conditions } = request.body;
@@ -412,7 +419,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
         }
       }
     },
-    preHandler: auth && auth.requireAuth ? auth.requireAuth : undefined
+    preHandler: requireLandUseEditor
   }, async (request, reply) => {
     try {
       const { id } = request.params;
@@ -453,11 +460,11 @@ async function landUseManagementRoutes(fastify, { auth }) {
         required: ['id']
       }
     },
-    preHandler: auth && auth.requireAuth ? auth.requireAuth : undefined
+    preHandler: requireLandUseEditor
   }, async (request, reply) => {
     try {
       const { id } = request.params;
-      
+
       const result = await pool.query(
         'DELETE FROM zone_land_use_controls WHERE id = $1 RETURNING *',
         [id]

@@ -51,6 +51,17 @@ function signRefreshToken(payload) {
   )
 }
 
+// Long-lived, signed token for the QGIS plugin / API integrations.
+// Replaces the old guessable `vungu-api-<random>` format that any client
+// could forge. Carries type:'api' so it can never be used as a user session.
+function signApiToken(payload) {
+  return jwt.sign(
+    { sub: payload.id, type: 'api', plugin: payload.pluginName || null },
+    getSecret(),
+    { expiresIn: '365d', issuer: 'vungu-portal' },
+  )
+}
+
 function verifyToken(token) {
   return jwt.verify(token, getSecret(), { issuer: 'vungu-portal' })
 }
@@ -87,7 +98,8 @@ async function authenticate(fastify, request, reply) {
   // Re-validate against DB: catches suspension, deletion, role changes.
   const { rows } = await fastify.pg.query(
     `SELECT id, email, COALESCE(full_name, name) AS name, role, organization,
-            job_title, department, active, status
+            job_title, department, phone, applicant_type,
+            national_id, physical_address, active, status
      FROM users WHERE id = $1`,
     [claims.sub],
   )
@@ -138,6 +150,7 @@ const requireAdmin = (fastify) => requireRole(fastify, 'admin')
 module.exports = {
   signAccessToken,
   signRefreshToken,
+  signApiToken,
   verifyToken,
   authenticate,
   requireAuth,
