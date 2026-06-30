@@ -29,6 +29,7 @@ const { authRoutes } = require('./src/routes/auth')
 const { standsRoutes } = require('./src/routes/stands')
 const { planningAssistantRoutes } = require('./src/routes/planning-assistant')
 const plannerRoutes = require('./src/routes/planner')
+const { zonesRoutes } = require('./src/routes/zones')
 
 // Turn B: inspection bookings + photos + status notifications.
 // These plug into the existing development_applications table.
@@ -42,6 +43,10 @@ const { documentRoutes } = require('./src/routes/documents')
 // Editable public-site content (CMS) — replaces the static vungurdc.org.zw
 // pages so the IT Admin can change wording, staff lists and committee duties.
 const { siteContentRoutes } = require('./src/routes/site-content')
+
+// Cross-dept notifications + KYC identity verification (migration 075).
+const { notificationsRoutes } = require('./src/routes/notifications')
+const { kycRoutes } = require('./src/routes/kyc')
 
 // Turn D: plan auto-review (PDF + CAD upload + deterministic checks).
 const { planReviewRoutes } = require('./src/routes/plan-review')
@@ -65,6 +70,14 @@ const { citizenPortalRoutes } = require('./src/routes/citizen-portal')
 const { surveyorRoutes } = require('./src/routes/surveyor')
 const { propertyRoutes } = require('./src/routes/properties')
 
+// Intelligent map search: NL queries, stand lookup, POI counts, ward search.
+const { mapSearchRoutes } = require('./src/routes/map-search')
+
+// spatial-data.ts was a TypeScript rewrite of spatial.js and registers the same
+// routes (e.g. /api/coordinate-points). Since spatial.js is already loaded above,
+// loading spatial-data would cause a duplicate-route error. Skip it.
+const spatialDataRoutes = undefined
+
 // Import Development Control Routes
 let developmentControlRoutes
 try {
@@ -80,15 +93,15 @@ try {
 
 // Import Enhanced Land Use Management Routes
 let enhancedLandUseManagementRoutes
-console.log('🔍 DEBUG: About to load Enhanced Land Use Management module...')
 try {
-  enhancedLandUseManagementRoutes = require('./routes/land-use-management-enhanced.js')
-  console.log('✅ Enhanced Land Use Management module loaded:', typeof enhancedLandUseManagementRoutes)
-  console.log('🔍 DEBUG: Module exists:', !!enhancedLandUseManagementRoutes)
+  enhancedLandUseManagementRoutes = require('./src/routes/land-use-management-enhanced.js')
 } catch (error) {
-  console.warn('❌ Could not load Enhanced Land Use Management routes:', error.message)
+  console.warn('Could not load Enhanced Land Use Management routes:', error.message)
 }
 
+// The enhanced version (land-use-management-enhanced.js) supersedes the old file.
+// landUseManagementRoutes kept as undefined so the registration block below is skipped cleanly.
+const landUseManagementRoutes = undefined
 
 // Import Dynamic Layers Routes
 let dynamicLayerRoutes
@@ -146,6 +159,29 @@ async function build() {
       ? ['https://vungu-rdc.org']
       : localOrigins
 
+  // ── Security headers (@fastify/helmet) ──────────────────────────────────
+  // Was installed but never registered. Without this, browsers receive no
+  // X-Content-Type-Options, X-Frame-Options, Referrer-Policy, or
+  // Content-Security-Policy headers — leaving the app open to clickjacking,
+  // MIME sniffing, and data leakage.
+  await server.register(require('@fastify/helmet'), {
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc:    ["'self'"],
+        scriptSrc:     ["'self'", "'unsafe-inline'"], // Vue needs inline scripts
+        styleSrc:      ["'self'", "'unsafe-inline'"],
+        imgSrc:        ["'self'", 'data:', 'blob:', '*.openstreetmap.org', '*.cartocdn.com'],
+        connectSrc:    ["'self'", 'https://api.maptiler.com', 'https://basemaps.cartocdn.com'],
+        workerSrc:     ["'self'", 'blob:'],
+        frameSrc:      ["'none'"],
+        objectSrc:     ["'none'"],
+        upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,
+      },
+    },
+    crossOriginEmbedderPolicy: false,  // MapLibre workers need this off
+    crossOriginResourcePolicy: { policy: 'cross-origin' }, // tile CDN sharing
+  })
+
   // Register CORS. Methods are listed explicitly so the preflight
   // Access-Control-Allow-Methods header includes PATCH/DELETE — the EO
   // determination (PATCH /permit-applications/:id/status) and other writes
@@ -153,22 +189,17 @@ async function build() {
   // VITE_API_BASE_URL bypasses the Vite dev proxy).
   await server.register(require('@fastify/cors'), {
     origin: corsOrigins,
-    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-  })
-
-  // Security headers (audit fix): nosniff, frameguard (clickjacking),
-  // HSTS, Referrer-Policy, etc. CSP is left off here because this process
-  // serves JSON + uploaded files (not the HTML app) and a maps CSP must be
-  // tuned at the frontend host; crossOriginResourcePolicy is relaxed so the
-  // separately-hosted frontend can still load /uploads images.
-  await server.register(require('@fastify/helmet'), {
-    contentSecurityPolicy: false,
-    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    credentials: true,
   })
 
   // Register Compression
-  await server.register(require('@fastify/compress'))
+  await server.register(require('@fastify/compress'), {
+    global: true,
+    threshold: 1024,          // only compress responses > 1 KB
+    encodings: ['gzip', 'deflate'],
+  })
 
   // Register Rate Limiting.
   // - Global cap bumped from 100/min to 1000/min: a map app legitimately
@@ -181,6 +212,12 @@ async function build() {
   await server.register(require('@fastify/rate-limit'), {
     max: 1000,
     timeWindow: '1 minute',
+    keyGenerator: (req) => req.headers['x-forwarded-for']?.split(',')[0] || req.ip,
+    errorResponseBuilder: () => ({
+      success: false,
+      error: 'too_many_requests',
+      message: 'Rate limit exceeded. Please wait before retrying.',
+    }),
     allowList: (req) =>
       req.url.startsWith('/api/tiles/') ||
       req.url.startsWith('/api/wards') ||
@@ -237,13 +274,23 @@ async function build() {
   // leaked the entire route surface to stdout. Use `server.printRoutes()`
   // (already called below) for a one-shot summary.
 
+  // ── HTTP caching (Cache-Control headers + server-side LRU) ──────────
+  const { httpCachePlugin } = require('./src/middleware/httpCache')
+  await server.register(httpCachePlugin)
+
+  // ── Audit logging (onResponse hook — never delays requests) ─────────
+  // Writes every authenticated mutating request to security_audit_log.
+  // Required for Zimbabwe municipal compliance (RTCP Act traceability).
+  const { auditLogPlugin } = require('./src/middleware/auditLog')
+  await server.register(auditLogPlugin)
+
   // Health check - register first
   server.get('/health', async (request, reply) => {
-    return { 
-      status: 'ok', 
+    return {
+      status: 'ok',
       timestamp: new Date().toISOString(),
-      service: 'vungu-unified-backend',
-      version: '1.0.0'
+      service: 'spartialiq-backend',
+      version: '2.0.0'
     }
   })
 
@@ -292,9 +339,10 @@ async function build() {
   // These mount under /api and respect the global rate-limit.
   try {
     await server.register(standsRoutes,            { prefix: '/api' })
+    await server.register(zonesRoutes,             { prefix: '/api' })
     await server.register(planningAssistantRoutes, { prefix: '/api' })
     await server.register(plannerRoutes,           { prefix: '/api' })
-    console.log('✅ Stands + Planning Assistant + Planner notifications routes registered')
+    console.log('✅ Stands + Zones + Planning Assistant + Planner routes registered')
   } catch (error) {
     server.log.error({ err: error }, 'Failed to register stands/planning routes')
   }
@@ -316,6 +364,15 @@ async function build() {
     console.log('✅ Payment + document + site-content routes registered')
   } catch (error) {
     server.log.error({ err: error }, 'Failed to register payment/document routes')
+  }
+
+  // Register cross-dept notifications + KYC (migration 075).
+  try {
+    await server.register(notificationsRoutes, { prefix: '/api' })
+    await server.register(kycRoutes,           { prefix: '/api' })
+    console.log('✅ Notifications + KYC routes registered')
+  } catch (error) {
+    server.log.error({ err: error }, 'Failed to register notifications/kyc routes')
   }
 
   // Register Plan Review (Turn D).
@@ -373,13 +430,18 @@ async function build() {
   }
 
   // Register Enhanced Land Use Management Routes
+  // The plugin function signature is: (fastify, { auth }) so we must pass the
+  // auth helpers in the options object, not just the prefix.
   if (enhancedLandUseManagementRoutes) {
     try {
-      console.log('🔧 About to register Enhanced Land Use Management Routes...')
-      await server.register(enhancedLandUseManagementRoutes, { prefix: '/api/land-use' })
+      const { requireAuth, requireRole } = require('./src/middleware/jwtAuth')
+      await server.register(enhancedLandUseManagementRoutes, {
+        prefix: '/api/land-use',
+        auth: { requireAuth, requireRole },
+      })
       console.log('✅ Enhanced Land Use Management routes registered')
     } catch (error) {
-      console.error('❌ Failed to register Enhanced Land Use Management routes:', error)
+      console.error('❌ Failed to register Enhanced Land Use Management routes:', error.message)
     }
   }
 

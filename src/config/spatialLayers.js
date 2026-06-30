@@ -2,12 +2,11 @@
 // Single source of truth for the PostGIS layers served as vector tiles.
 // `id` is also the MVT source-layer name used by the frontend.
 
-const GEOM_COLUMN = 'geom'   // change if Task 1 reported a different column
-// ogr2ogr imported zimbabwe.gpkg under SRS 900914 — that SRS row is literally
-// WGS 84 (CRS84): "+proj=longlat +datum=WGS84 +no_defs", same coords as EPSG:4326,
-// just a non-standard SRID assigned because the GeoPackage's source CRS lacked
-// an EPSG code. We honour the actual stored SRID rather than rewrite 5.7M rows.
-const GEOM_SRID = 900914
+const GEOM_COLUMN = 'geom'
+// All OSM-derived and master-plan tables are stored as EPSG:4326 (WGS 84).
+// The original import used SRS 900914 (a CRS84 alias) but SRIDs were stored
+// as 0. All geometry columns have been updated via UpdateGeometrySRID to 4326.
+const GEOM_SRID = 4326
 
 /**
  * @typedef {Object} SpatialLayer
@@ -62,6 +61,16 @@ const LAYERS = [
   { id: 'transport_points',         table: 'transport_points',         geomType: 'point', group: 'poi', title: 'Transport Points', attributes: ['fid', 'name', 'fclass'],              minzoom: 13, maxzoom: 22, lowZoomFilter: null },
   { id: 'natural_points',           table: 'natural_points',           geomType: 'point', group: 'poi', title: 'Natural Points',   attributes: ['fid', 'name', 'fclass'],              minzoom: 13, maxzoom: 22, lowZoomFilter: null },
   { id: 'places_of_worship_points', table: 'places_of_worship_points', geomType: 'point', group: 'poi', title: 'Worship Points',   attributes: ['fid', 'name', 'fclass'],              minzoom: 13, maxzoom: 22, lowZoomFilter: null },
+
+  // --- Vungu RDC Stands Register (application data, served as MVT, EPSG:4326) ---
+  // Served via the same tile endpoint as the gpkg layers. The stands table uses
+  // UUID id; we expose it as the string "id" and use row_number() as a synthetic
+  // integer fid so MapLibre's feature-state (hover) works on integer IDs.
+  // area_sqm is cast to int for compact tile encoding.
+  { id: 'stands', table: 'stands_tile_view', geomType: 'polygon', group: 'master_plan',
+    title: 'Stands Register',
+    attributes: ['fid', 'stand_id', 'stand_number', 'ward', 'zone_type_cache', 'use_scale', 'status', 'area_sqm_int', 'price_usd_cents'],
+    minzoom: 9, maxzoom: 22, lowZoomFilter: null, srid: 4326 },
 
   // --- Vungu RDC Master Plan (council planning data, stored as real EPSG:4326) ---
   { id: 'vungu_cemeteries',                table: 'vungu_cemeteries',                geomType: 'polygon', group: 'master_plan', title: 'Cemeteries (Vungu)',          attributes: ['fid', 'name'],                                                                                                                                                          minzoom: 12, maxzoom: 22, lowZoomFilter: null, srid: 4326 },

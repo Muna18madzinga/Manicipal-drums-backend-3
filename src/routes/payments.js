@@ -170,17 +170,85 @@ async function paymentRoutes(fastify) {
         [row.id, initResult.providerRef, initResult.providerStatus || null],
       )
 
+      // Merge provider extras into metadata (pollUrl for polling, ussdCode for display)
+      const extraMeta = {}
+      if (initResult.pollUrl)   extraMeta.pollUrl   = initResult.pollUrl
+      if (initResult.pollId)    extraMeta.pollId    = initResult.pollId
+      if (initResult.ussdCode)  extraMeta.ussdCode  = initResult.ussdCode
+      if (initResult.clientSecret) extraMeta.clientSecret = initResult.clientSecret
+      if (initResult.ussdInstructions) extraMeta.ussdInstructions = initResult.ussdInstructions
+
+      if (Object.keys(extraMeta).length > 0) {
+        await fastify.pg.query(
+          `UPDATE payments SET metadata = metadata || $2::JSONB WHERE id = $1`,
+          [row.id, JSON.stringify(extraMeta)],
+        )
+      }
+
       return reply.send({
         success: true,
         data: {
           ...paymentDTO(updated[0]),
-          redirectUrl: initResult.redirectUrl,
+          redirectUrl:      initResult.redirectUrl  ?? null,
+          ussdCode:         initResult.ussdCode     ?? null,
+          ussdInstructions: initResult.ussdInstructions ?? null,
+          clientSecret:     initResult.clientSecret ?? null,
         },
       })
     } catch (err) {
       request.log.error({ err }, 'payment init failed')
       return reply.code(500).send({ success: false, error: 'internal' })
     }
+  })
+
+  // ── Available payment methods ────────────────────────────────────────
+  // Public — used by the frontend to know which buttons to show.
+  // Returns live status per driver without exposing any credentials.
+  fastify.get('/payments/methods', async (request, reply) => {
+    const { isDriverLive } = driverModule
+    return reply.send({
+      success: true,
+      data: [
+        {
+          id:          'manual',
+          label:       'Manual (dev)',
+          description: 'Development mode — confirm in the UI',
+          live:        isDriverLive('manual'),
+          type:        'dev',
+        },
+        {
+          id:          'paynow',
+          label:       'Paynow',
+          description: 'EcoCash · OneMoney · Visa · Mastercard · ZimSwitch via Paynow',
+          live:        isDriverLive('paynow'),
+          type:        'redirect',
+          methods:     ['ecocash', 'onemoney', 'visa', 'mastercard', 'zimswitch', 'innbucks'],
+        },
+        {
+          id:          'ecocash',
+          label:       'EcoCash Direct',
+          description: 'Pay via EcoCash USSD or merchant push (Econet subscribers)',
+          live:        isDriverLive('ecocash'),
+          type:        'ussd',
+          ussdShortcode: '*151*1*1*',
+        },
+        {
+          id:          'onemoney',
+          label:       'OneMoney Direct',
+          description: 'Pay via OneMoney USSD or merchant push (NetOne subscribers)',
+          live:        isDriverLive('onemoney'),
+          type:        'ussd',
+          ussdShortcode: '*111*2*',
+        },
+        {
+          id:          'stripe',
+          label:       'International Card',
+          description: 'Visa / Mastercard billed in USD via Stripe',
+          live:        isDriverLive('stripe'),
+          type:        'card',
+        },
+      ],
+    })
   })
 
   // ── Read mine / by id ───────────────────────────────────────────────
