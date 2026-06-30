@@ -23,6 +23,7 @@ const { v4: uuidv4 } = require('uuid')
 const {
   signAccessToken,
   signRefreshToken,
+  signApiToken,
   verifyToken,
   requireAuth,
   requireAdmin,
@@ -50,6 +51,17 @@ const VALID_USER_ROLES = new Set([
   'planning_clerk', 'surveyor', 'gis_officer',
 ])
 
+// Council staff = employees. Identical to INVITABLE_ROLES today, but named
+// separately because it answers a different question — "is this an employee,
+// not a citizen?" — used to scope GET /admin/users?staff=true. Derived from
+// INVITABLE_ROLES so the two never drift.
+//
+// NOTE: `viewer` is deliberately a staff role (the IT-admin invite form
+// creates "Viewer" employees), so a citizen carrying a legacy `viewer` role
+// would be counted as staff. Acceptable: customer self-register only ever
+// issues 'public' / 'registered', so this can't happen for new accounts.
+const STAFF_ROLES = [...INVITABLE_ROLES]
+
 // Crude but cheap input checks. Joi/zod is overkill here.
 const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const isString = (v, max = 255) => typeof v === 'string' && v.length > 0 && v.length <= max
@@ -64,6 +76,9 @@ function userToDTO(row) {
     jobTitle:       row.job_title,
     department:     row.department,
     applicantType:  row.applicant_type ?? null,
+    phone:          row.phone ?? null,
+    nationalId:     row.national_id ?? null,
+    address:        row.physical_address ?? null,
   }
 }
 
@@ -97,17 +112,24 @@ async function authRoutes(fastify) {
 
       const passwordHash = await bcrypt.hash(password, 10)
 
+      // Reusable applicant identity, captured once at sign-up.
+      const nationalId = isString(body.national_id, 64) ? body.national_id : null
+      const address    = isString(body.address, 500) ? body.address : null
+
       const { rows } = await fastify.pg.query(
         `INSERT INTO users (
            email, name, full_name, role, organization, phone,
-           applicant_type, password_hash, status, active, created_at
+           applicant_type, national_id, physical_address,
+           password_hash, status, active, created_at
          )
-         VALUES ($1, $2, $2, $3, $4, $5, $6, $7, 'active', true, NOW())
+         VALUES ($1, $2, $2, $3, $4, $5, $6, $7, $8, $9, 'active', true, NOW())
          RETURNING id, email, full_name AS name, role, organization,
-                   job_title, department, applicant_type`,
+                   job_title, department, applicant_type,
+                   phone, national_id, physical_address`,
         [
           email, name, role,
-          organization || null, phone || null, applicantType, passwordHash,
+          organization || null, phone || null, applicantType,
+          nationalId, address, passwordHash,
         ],
       )
 
@@ -139,7 +161,8 @@ async function authRoutes(fastify) {
 
       const { rows } = await fastify.pg.query(
         `SELECT id, email, COALESCE(full_name, name) AS name, role, organization,
-                job_title, department, applicant_type, password_hash, active, status
+                job_title, department, applicant_type, phone,
+                national_id, physical_address, password_hash, active, status
          FROM users WHERE email = $1`,
         [email],
       )
@@ -251,26 +274,31 @@ async function authRoutes(fastify) {
   fastify.put('/auth/profile', { preHandler: requireAuth(fastify) }, async (request, reply) => {
     try {
       const userId = request.user.id
-      const { name, organization, jobTitle, department, phone } = request.body || {}
+      const { name, organization, jobTitle, department, phone, nationalId, address } = request.body || {}
 
       const { rows } = await fastify.pg.query(
         `UPDATE users SET
-           name         = COALESCE($1, name),
-           full_name    = COALESCE($1, full_name),
-           organization = COALESCE($2, organization),
-           job_title    = COALESCE($3, job_title),
-           department   = COALESCE($4, department),
-           phone        = COALESCE($5, phone),
-           updated_at   = NOW()
-         WHERE id = $6
+           name             = COALESCE($1, name),
+           full_name        = COALESCE($1, full_name),
+           organization     = COALESCE($2, organization),
+           job_title        = COALESCE($3, job_title),
+           department       = COALESCE($4, department),
+           phone            = COALESCE($5, phone),
+           national_id      = COALESCE($6, national_id),
+           physical_address = COALESCE($7, physical_address),
+           updated_at       = NOW()
+         WHERE id = $8
          RETURNING id, email, COALESCE(full_name, name) AS name, role, organization,
-                   job_title, department, applicant_type`,
+                   job_title, department, applicant_type,
+                   phone, national_id, physical_address`,
         [
           isString(name, 120) ? name : null,
           isString(organization, 255) ? organization : null,
           isString(jobTitle, 120) ? jobTitle : null,
           isString(department, 120) ? department : null,
           isString(phone, 32) ? phone : null,
+          isString(nationalId, 64) ? nationalId : null,
+          isString(address, 500) ? address : null,
           userId,
         ],
       )
@@ -475,13 +503,29 @@ async function authRoutes(fastify) {
   // ADMIN USER MANAGEMENT
   // ════════════════════════════════════════════════════════════════════
 
-  fastify.get('/admin/users', { preHandler: requireAdmin(fastify) }, async (_request, reply) => {
+  fastify.get('/admin/users', { preHandler: requireAdmin(fastify) }, async (request, reply) => {
     try {
+      // Optional scoping (omit for back-compat: returns everyone):
+      //   ?staff=true  → council employees only (the staff console default)
+      //   ?staff=false → citizens only (everyone not in a staff role)
+      const staff = request.query?.staff
+      const where = []
+      const params = []
+      if (staff === 'true') {
+        params.push(STAFF_ROLES)
+        where.push(`role = ANY($${params.length})`)
+      } else if (staff === 'false') {
+        params.push(STAFF_ROLES)
+        where.push(`(role IS NULL OR NOT (role = ANY($${params.length})))`)
+      }
+      const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+
       const { rows } = await fastify.pg.query(
         `SELECT id, email, COALESCE(full_name, name) AS name, role, organization,
                 job_title, department, applicant_type, active, status,
                 created_at, last_login_at
-         FROM users ORDER BY created_at DESC`,
+         FROM users ${whereSql} ORDER BY created_at DESC`,
+        params,
       )
       return reply.send({
         success: true,
@@ -648,11 +692,14 @@ async function authRoutes(fastify) {
   })
 
   // ════════════════════════════════════════════════════════════════════
-  // QGIS API token (legacy) — now requires authentication.
+  // QGIS API token — admin-provisioned, cryptographically signed (fix F3).
+  // The old format accepted any string starting `vungu-api-`; validation
+  // now verifies an HS256 signature + type:'api' claim, so tokens cannot be
+  // forged. Minting is restricted to admins (they set up the plugin).
   // ════════════════════════════════════════════════════════════════════
-  fastify.post('/auth/generate-api-token', { preHandler: requireAuth(fastify) }, async (request, reply) => {
+  fastify.post('/auth/generate-api-token', { preHandler: requireAdmin(fastify) }, async (request, reply) => {
     const { pluginName } = request.body || {}
-    const apiToken = `vungu-api-${Date.now()}-${Math.random().toString(36).slice(2, 15)}`
+    const apiToken = signApiToken({ id: request.user.id, pluginName })
     return reply.send({
       success: true,
       data: {
@@ -666,11 +713,19 @@ async function authRoutes(fastify) {
 
   fastify.post('/auth/validate-api-token', async (request, reply) => {
     const { token } = request.body || {}
-    if (!isString(token)) return reply.code(400).send({ error: 'token_required' })
-    if (!token.startsWith('vungu-api-')) return reply.code(401).send({ error: 'invalid_format' })
+    if (!isString(token)) return reply.code(400).send({ success: false, error: 'token_required', valid: false })
+    let claims
+    try {
+      claims = verifyToken(token)
+    } catch {
+      return reply.code(401).send({ success: false, error: 'invalid_token', valid: false })
+    }
+    if (claims.type !== 'api') {
+      return reply.code(401).send({ success: false, error: 'wrong_token_type', valid: false })
+    }
     return reply.send({
       success: true,
-      data: { valid: true, token, permissions: ['api.read', 'api.write', 'layers.sync', 'styles.manage'] },
+      data: { valid: true, permissions: ['api.read', 'api.write', 'layers.sync', 'styles.manage'] },
     })
   })
 }

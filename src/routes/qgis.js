@@ -1,40 +1,42 @@
 // QGIS Integration Routes
 // Direct integration with QGIS plugin
 
+const { verifyToken } = require('../middleware/jwtAuth')
+
+// Verify a signed API token (type:'api'). Returns the claims, or sends a 401
+// reply and returns null. Replaces the old "accept any string starting
+// vungu-api-" check, which let anyone forge an API identity (fix F3).
+async function verifyApiToken(request, reply) {
+  const authHeader = request.headers.authorization
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    reply.status(401).send({ success: false, error: 'No token provided', message: 'Authorization header required' })
+    return null
+  }
+  try {
+    const claims = verifyToken(authHeader.slice(7).trim())
+    if (claims.type !== 'api') {
+      reply.status(401).send({ success: false, error: 'Invalid token', message: 'Wrong token type' })
+      return null
+    }
+    return claims
+  } catch {
+    reply.status(401).send({ success: false, error: 'Invalid token', message: 'Token verification failed' })
+    return null
+  }
+}
+
 // QGIS health check endpoint (authenticated)
 async function qgisHealthRoutes(server, options) {
   server.get('/health', async (request, reply) => {
     try {
-      const authHeader = request.headers.authorization;
-      
-      // Simple API token validation for QGIS Plugin
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return reply.status(401).send({
-          success: false,
-          error: 'No token provided',
-          message: 'Authorization header required'
-        });
-      }
+      const claims = await verifyApiToken(request, reply);
+      if (!claims) return;
 
-      const token = authHeader.replace('Bearer ', '');
-      
-      // Check if it's a valid Vungu API token (starts with 'vungu-api-')
-      if (!token.startsWith('vungu-api-')) {
-        return reply.status(401).send({
-          success: false,
-          error: 'Invalid token',
-          message: 'Invalid API token format'
-        });
-      }
-
-      // For now, accept any vungu-api token as valid
-      // In production, validate against database
       return {
         success: true,
         message: 'QGIS API is healthy and authenticated',
         timestamp: new Date().toISOString(),
-        service: 'vungu-qgis-api',
-        token: token.substring(0, 20) + '...' // Show partial token for confirmation
+        service: 'vungu-qgis-api'
       };
     } catch (error) {
       return reply.status(500).send({
@@ -50,6 +52,10 @@ async function qgisHealthRoutes(server, options) {
 async function qgisSyncUploadRoutes(server, options) {
   server.post('/sync/upload', async (request, reply) => {
     try {
+      const claims = await verifyApiToken(request, reply);
+      if (!claims) return;
+      request.user = { id: claims.sub };
+
       const { layer_name, crs, features, field_types } = request.body;
       
       console.log(`[QGIS] 🔄 Sync upload request for layer: ${layer_name}`);

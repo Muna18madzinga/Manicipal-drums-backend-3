@@ -2,8 +2,27 @@
 // Fastify Routes: Development Control Matrix
 // REFACTORED to use proposed_peri_urban_zones
 // ============================================
+//
+// SECURITY (audit fix F2): PII reads, applicant/owner/agent writes, TPD1
+// submissions and zoning/matrix master-data edits now require a valid JWT.
+// Public spatial reference reads (zones, groups, matrix lookup, parcels,
+// permitted-uses, compliance-check, local authorities, live updates) stay
+// open for the public map.
+
+const { requireAuth, requireRole } = require('../middleware/jwtAuth')
+
+// Council staff who may read the PII application register / dashboard.
+const STAFF_ROLES = [
+  'admin', 'planner', 'planning_clerk', 'eo',
+  'gis_officer', 'env_officer', 'building_inspector', 'surveyor',
+]
 
 async function developmentControlRoutes(fastify) {
+  // Auth shortcuts (see F2): authd = any logged-in user; staffOnly = council
+  // staff; adminPlanner = zoning/matrix master-data editors only.
+  const authd = { preHandler: requireAuth(fastify) }
+  const staffOnly = { preHandler: requireRole(fastify, STAFF_ROLES) }
+  const adminPlanner = { preHandler: requireRole(fastify, ['admin', 'planner']) }
 
   // ============================================
   // ZONES (using proposed_peri_urban_zones)
@@ -200,6 +219,7 @@ async function developmentControlRoutes(fastify) {
 
   // POST /api/development-control/matrix
   fastify.post('/matrix', {
+    ...adminPlanner,
     schema: {
       description: 'Create or update matrix rule',
       tags: ['Development Control'],
@@ -468,7 +488,7 @@ async function developmentControlRoutes(fastify) {
   })
 
   // POST /api/development-control/update-compliance
-  fastify.post('/update-compliance', async (request, reply) => {
+  fastify.post('/update-compliance', staffOnly, async (request, reply) => {
     const { parcelId, proposedUseCode } = request.body
     
     try {
@@ -537,7 +557,7 @@ async function developmentControlRoutes(fastify) {
   })
 
   // PUT /api/development-control/parcels/:parcelId/zone
-  fastify.put('/parcels/:parcelId/zone', async (request, reply) => {
+  fastify.put('/parcels/:parcelId/zone', staffOnly, async (request, reply) => {
     const { parcelId } = request.params
     const { zone_id } = request.body
     
@@ -561,7 +581,7 @@ async function developmentControlRoutes(fastify) {
   // ============================================
 
   // GET /api/development-control/applications
-  fastify.get('/applications', async (request, reply) => {
+  fastify.get('/applications', staffOnly, async (request, reply) => {
     const { parcel_id, status } = request.query
     
     let query = `
@@ -599,7 +619,7 @@ async function developmentControlRoutes(fastify) {
   })
 
   // POST /api/development-control/applications
-  fastify.post('/applications', async (request, reply) => {
+  fastify.post('/applications', authd, async (request, reply) => {
     const { parcel_id, proposed_use_code, description, application_type = 'building_permit' } = request.body
     
     const client = await fastify.pg.connect()
@@ -664,7 +684,7 @@ async function developmentControlRoutes(fastify) {
   // ============================================
 
   // GET /api/development-control/dashboard
-  fastify.get('/dashboard', async (request, reply) => {
+  fastify.get('/dashboard', staffOnly, async (request, reply) => {
     const statsQuery = `
       SELECT 
         (SELECT COUNT(*) FROM gweru_rural_farms) AS total_parcels,
@@ -695,7 +715,7 @@ async function developmentControlRoutes(fastify) {
   // ============================================
 
   // POST /api/development-control/applicants - Create applicant
-  fastify.post('/applicants', async (request, reply) => {
+  fastify.post('/applicants', authd, async (request, reply) => {
     const { surname, other_names, company_name, postal_address, telephone, email, is_company } = request.body
     
     const { rows } = await fastify.pg.query(`
@@ -708,7 +728,7 @@ async function developmentControlRoutes(fastify) {
   })
 
   // POST /api/development-control/owners - Create owner
-  fastify.post('/owners', async (request, reply) => {
+  fastify.post('/owners', authd, async (request, reply) => {
     const { surname, other_names, company_name, postal_address, telephone, email, is_company } = request.body
     
     const { rows } = await fastify.pg.query(`
@@ -721,7 +741,7 @@ async function developmentControlRoutes(fastify) {
   })
 
   // POST /api/development-control/agents - Create agent
-  fastify.post('/agents', async (request, reply) => {
+  fastify.post('/agents', authd, async (request, reply) => {
     const { full_name, company_name, postal_address, telephone, email } = request.body
     
     const { rows } = await fastify.pg.query(`
@@ -745,7 +765,7 @@ async function developmentControlRoutes(fastify) {
   })
 
   // POST /api/development-control/tpd1-applications - Full TPD1 submission
-  fastify.post('/tpd1-applications', async (request, reply) => {
+  fastify.post('/tpd1-applications', authd, async (request, reply) => {
     const {
       // Part I: General
       authority_id,
@@ -875,7 +895,7 @@ async function developmentControlRoutes(fastify) {
   })
 
   // POST /api/development-control/applications/:id/validate - Validate completeness
-  fastify.post('/applications/:id/validate', async (request, reply) => {
+  fastify.post('/applications/:id/validate', staffOnly, async (request, reply) => {
     const { id } = request.params
     
     const { rows } = await fastify.pg.query(
@@ -894,7 +914,7 @@ async function developmentControlRoutes(fastify) {
   })
 
   // GET /api/development-control/applications/:id/summary - Get full summary
-  fastify.get('/applications/:id/summary', async (request, reply) => {
+  fastify.get('/applications/:id/summary', authd, async (request, reply) => {
     const { id } = request.params
     
     const { rows } = await fastify.pg.query(
