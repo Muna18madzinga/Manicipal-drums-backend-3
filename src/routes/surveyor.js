@@ -12,6 +12,12 @@
  *   POST  /surveyor/jobs/:id/coordinates      (surveyor)
  *   GET   /surveyor/jobs/:id/beacons          (reader)
  *   POST  /surveyor/jobs/:id/beacons          (surveyor)
+ *   GET   /surveyor/jobs/:id/parcels          (reader)   — cadastral parcels (migration 099)
+ *   POST  /surveyor/jobs/:id/parcels          (surveyor) — area/closure computed server-side
+ *   GET   /surveyor/jobs/:id/control-points   (reader)   — reference monuments used (migration 100)
+ *   POST  /surveyor/jobs/:id/control-points   (surveyor) — attach a control_point to this job
+ *   GET   /surveyor/jobs/:id/documents        (reader)   — generated DSG cert / Report on Survey
+ *   POST  /surveyor/jobs/:id/documents        (surveyor) — persist rendered document content
  *   GET   /surveyor/jobs/:id/comments         (reader)
  *   POST  /surveyor/jobs/:id/comments         (reader)   — cross-role thread
  *   GET   /surveyor/layouts                   (surveyor)
@@ -20,6 +26,7 @@
  */
 
 const { requireRole } = require('../middleware/jwtAuth')
+const { computeAreaConsistency } = require('../utils/area-computation')
 
 const SURVEYOR = ['surveyor', 'admin']
 const ASSIGNERS = ['planner', 'eo', 'planning_clerk', 'admin']
@@ -61,9 +68,12 @@ async function surveyorRoutes(fastify) {
   }
 
   // ── Queue ──────────────────────────────────────────────────────────
-  fastify.get('/surveyor/jobs', { preHandler: requireRole(fastify, SURVEYOR) }, async (request, reply) => {
+  // Surveyors see their own queue (unclaimed + own); assigners (planner/EO/
+  // clerk/admin) see every task — they need oversight across all surveyors,
+  // not just tasks that happen to be assigned to their own user id.
+  fastify.get('/surveyor/jobs', { preHandler: requireRole(fastify, READERS) }, async (request, reply) => {
     const { status, ward } = request.query
-    const isAdmin = request.user.role === 'admin'
+    const isAssigner = ASSIGNERS.includes(request.user.role)
     try {
       const { rows } = await pg.query(
         `SELECT * FROM spatial_planning.v_survey_task
@@ -74,7 +84,7 @@ async function surveyorRoutes(fastify) {
             CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
             due_date NULLS LAST, created_at DESC
           LIMIT 200`,
-        [status || null, ward || null, request.user.id, isAdmin],
+        [status || null, ward || null, request.user.id, isAssigner],
       )
       return reply.send({ success: true, data: rows })
     } catch (err) {
@@ -141,22 +151,38 @@ async function surveyorRoutes(fastify) {
   })
 
   // ── Claim / status ─────────────────────────────────────────────────
-  fastify.patch('/surveyor/jobs/:id', { preHandler: requireRole(fastify, SURVEYOR) }, async (request, reply) => {
+  // Surveyors claim and progress their own tasks. Assigners (planner/EO/
+  // clerk) take the municipal review actions on a submitted report — accept
+  // it, return it for more work, or cancel an instruction — mirroring how a
+  // Town Planning memo to the survey section is closed out in practice.
+  fastify.patch('/surveyor/jobs/:id', { preHandler: requireRole(fastify, READERS) }, async (request, reply) => {
     const task = await loadTask(request, reply); if (!task) return
     const b = request.body || {}
     const VALID = ['assigned', 'in_progress', 'submitted', 'accepted', 'returned', 'cancelled']
     if (b.status && !VALID.includes(b.status)) {
       return reply.code(400).send({ success: false, error: 'bad_status' })
     }
+    const isSurveyorRole = SURVEYOR.includes(request.user.role)
+    if (!isSurveyorRole) {
+      const REVIEW_ONLY = ['accepted', 'returned', 'cancelled']
+      if (b.claim === true || (b.status && !REVIEW_ONLY.includes(b.status))) {
+        return reply.code(403).send({ success: false, error: 'review_actions_only' })
+      }
+    }
+    const ZONES = [25, 27, 29, 31, 33]
+    if (b.gauss_lo && !ZONES.includes(Number(b.gauss_lo))) {
+      return reply.code(400).send({ success: false, error: 'bad_gauss_lo' })
+    }
     const claim = b.claim === true
     try {
       const { rows } = await pg.query(
         `UPDATE spatial_planning.survey_task
             SET status = COALESCE($2, status),
-                assigned_to = CASE WHEN $3 THEN $4 ELSE assigned_to END
+                assigned_to = CASE WHEN $3 THEN $4 ELSE assigned_to END,
+                gauss_lo = COALESCE($5, gauss_lo)
           WHERE id = $1
           RETURNING *`,
-        [task.id, b.status || null, claim, request.user.id],
+        [task.id, b.status || null, claim, request.user.id, b.gauss_lo ? Number(b.gauss_lo) : null],
       )
       return reply.send({ success: true, data: rows[0] })
     } catch (err) {
@@ -243,6 +269,101 @@ async function surveyorRoutes(fastify) {
       return reply.code(201).send({ success: true, data: rows[0] })
     } catch (err) {
       request.log.error({ err }, 'create survey beacon failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    }
+  })
+
+  // ── Parcels (area/closure computed server-side, never trust the client) ──
+  fastify.get('/surveyor/jobs/:id/parcels', { preHandler: requireRole(fastify, READERS) }, async (request, reply) => {
+    const task = await loadTask(request, reply); if (!task) return
+    const { rows } = await pg.query('SELECT * FROM spatial_planning.survey_parcel WHERE survey_task_id=$1 ORDER BY created_at DESC', [task.id])
+    return reply.send({ success: true, data: rows })
+  })
+  fastify.post('/surveyor/jobs/:id/parcels', { preHandler: requireRole(fastify, SURVEYOR) }, async (request, reply) => {
+    const task = await loadTask(request, reply); if (!task) return
+    const b = request.body || {}
+    const points = b.points
+    if (!Array.isArray(points) || points.length < 3
+        || !points.every((p) => p && Number.isFinite(p.y) && Number.isFinite(p.x))) {
+      return reply.code(400).send({ success: false, error: 'points must be an array of at least 3 {y,x} numbers' })
+    }
+    let computed
+    try {
+      computed = computeAreaConsistency(points, { includeResiduals: true })
+    } catch (err) {
+      return reply.code(400).send({ success: false, error: err.message })
+    }
+    try {
+      const { rows } = await pg.query(
+        `INSERT INTO spatial_planning.survey_parcel
+           (survey_task_id, points, area_m2, perimeter_m, closure_error_m, closure_ratio, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+        [task.id, JSON.stringify(points), computed.area.abs_m2, computed.closure.perimeter,
+         computed.closure.error, computed.closure.ratioFormatted, request.user.id],
+      )
+      return reply.code(201).send({ success: true, data: rows[0] })
+    } catch (err) {
+      request.log.error({ err }, 'create survey parcel failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    }
+  })
+
+  // ── Reference control points used on this job ──────────────────────
+  fastify.get('/surveyor/jobs/:id/control-points', { preHandler: requireRole(fastify, READERS) }, async (request, reply) => {
+    const task = await loadTask(request, reply); if (!task) return
+    const { rows } = await pg.query(
+      `SELECT cp.* FROM spatial_planning.survey_task_control_point tcp
+         JOIN spatial_planning.control_point cp ON cp.id = tcp.control_point_id
+        WHERE tcp.survey_task_id = $1 ORDER BY cp.monu_num`,
+      [task.id],
+    )
+    return reply.send({ success: true, data: rows })
+  })
+  fastify.post('/surveyor/jobs/:id/control-points', { preHandler: requireRole(fastify, SURVEYOR) }, async (request, reply) => {
+    const task = await loadTask(request, reply); if (!task) return
+    const controlPointId = Number((request.body || {}).control_point_id)
+    if (!Number.isInteger(controlPointId)) {
+      return reply.code(400).send({ success: false, error: 'control_point_id required' })
+    }
+    try {
+      await pg.query(
+        `INSERT INTO spatial_planning.survey_task_control_point (survey_task_id, control_point_id)
+         VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+        [task.id, controlPointId],
+      )
+      return reply.code(201).send({ success: true })
+    } catch (err) {
+      request.log.error({ err }, 'attach control point failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    }
+  })
+
+  // ── Generated documents (DSG certificate / Report on Survey) ───────
+  fastify.get('/surveyor/jobs/:id/documents', { preHandler: requireRole(fastify, READERS) }, async (request, reply) => {
+    const task = await loadTask(request, reply); if (!task) return
+    const { rows } = await pg.query(
+      `SELECT id, survey_task_id, doc_type, title, content, generated_by, created_at
+         FROM spatial_planning.survey_document WHERE survey_task_id=$1 ORDER BY created_at DESC`,
+      [task.id],
+    )
+    return reply.send({ success: true, data: rows })
+  })
+  fastify.post('/surveyor/jobs/:id/documents', { preHandler: requireRole(fastify, SURVEYOR) }, async (request, reply) => {
+    const task = await loadTask(request, reply); if (!task) return
+    const b = request.body || {}
+    const DOC_TYPES = ['dsg_certificate', 'report_on_survey']
+    if (!DOC_TYPES.includes(b.doc_type)) return reply.code(400).send({ success: false, error: 'bad_doc_type' })
+    if (!isStr(b.title, 200)) return reply.code(400).send({ success: false, error: 'title required' })
+    if (!isStr(b.content, 200000)) return reply.code(400).send({ success: false, error: 'content required' })
+    try {
+      const { rows } = await pg.query(
+        `INSERT INTO spatial_planning.survey_document (survey_task_id, doc_type, title, content, generated_by)
+         VALUES ($1,$2,$3,$4,$5) RETURNING id, survey_task_id, doc_type, title, content, generated_by, created_at`,
+        [task.id, b.doc_type, b.title, b.content, request.user.id],
+      )
+      return reply.code(201).send({ success: true, data: rows[0] })
+    } catch (err) {
+      request.log.error({ err }, 'create survey document failed')
       return reply.code(500).send({ success: false, error: 'internal' })
     }
   })
