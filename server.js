@@ -64,10 +64,17 @@ const { spatialRoutes } = require('./src/routes/spatial')
 // Vector tile service — serves zimbabwe.gpkg PostGIS layers as MVT.
 const { tilesRoutes } = require('./src/routes/tiles')
 const { parcelsRoutes } = require('./src/routes/parcels')
+const { statutoryPlansRoutes } = require('./src/routes/statutory-plans')
+// QGIS Desktop plugin sync API (/api/qgis/sync/upload, /health, etc.). This
+// was only wired in the unused src/index.ts entry point, so the plugin's
+// endpoints 404'd on the running server.js. Register it here so the plugin works.
+const { createQGISRoutes } = require('./src/routes/qgis')
 const { gisRoutes } = require('./src/routes/gis')
 const { planningRoutes } = require('./src/routes/planning')
 const { citizenPortalRoutes } = require('./src/routes/citizen-portal')
 const { surveyorRoutes } = require('./src/routes/surveyor')
+const { surveyorComputeRoutes } = require('./src/routes/surveyorCompute')
+const { controlPointRoutes } = require('./src/routes/controlPoints')
 const { propertyRoutes } = require('./src/routes/properties')
 
 // Intelligent map search: NL queries, stand lookup, POI counts, ward search.
@@ -194,6 +201,13 @@ async function build() {
     credentials: true,
   })
 
+  // Cookie support for httpOnly session cookies (auth.js / jwtAuth.js).
+  // Replaces localStorage token storage — OWASP advises against storing
+  // session/JWT/refresh tokens in localStorage (XSS can read it directly).
+  await server.register(require('@fastify/cookie'), {
+    secret: process.env.COOKIE_SECRET || process.env.JWT_SECRET,
+  })
+
   // Register Compression
   await server.register(require('@fastify/compress'), {
     global: true,
@@ -252,11 +266,13 @@ async function build() {
     }
   }
 
-  // Multipart form support — required by the inspection-photo upload
-  // route (and any future file uploads). Hard-cap files at 10 MB.
+  // Multipart form support — required by the inspection-photo upload route
+  // and the Survey Task Manager document/plan uploads (scanned survey plan
+  // PDFs run large, hence the 50 MB cap; files:1 was dropped for the same
+  // reason — survey CSV/document endpoints accept multiple parts).
   const path = require('node:path')
   await server.register(require('@fastify/multipart'), {
-    limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+    limits: { fileSize: 50 * 1024 * 1024 },
   })
 
   // Static serving for uploaded photos. Mounted at /uploads — the same
@@ -405,8 +421,11 @@ async function build() {
   try {
     await server.register(tilesRoutes, { prefix: '/api' })
     await server.register(parcelsRoutes, { prefix: '/api' })
+    await server.register(statutoryPlansRoutes, { prefix: '/api' })
     await server.register(citizenPortalRoutes, { prefix: '/api' })
     await server.register(surveyorRoutes, { prefix: '/api' })
+    await server.register(surveyorComputeRoutes, { prefix: '/api' })
+    await server.register(controlPointRoutes, { prefix: '/api' })
     await server.register(propertyRoutes, { prefix: '/api' })
     await server.register(gisRoutes, { prefix: '/api' })
     await server.register(planningRoutes, { prefix: '/api' })
@@ -415,12 +434,31 @@ async function build() {
     server.log.error({ err: error }, 'Failed to register tile routes')
   }
 
+  // Survey Task Manager (merged SurveyPro) — ESM plugin, mounted under
+  // /api/survey so its route names never collide with vungu's /api/* set.
+  try {
+    const { default: surveyPlugin } = await import('./src/survey/plugin.js')
+    await server.register(surveyPlugin, { prefix: '/api/survey' })
+    console.log('✅ Survey Task Manager routes registered under /api/survey')
+  } catch (error) {
+    server.log.error({ err: error }, 'Failed to register Survey Task Manager routes')
+    console.error('❌ Failed to register Survey Task Manager routes:', error.message)
+  }
+
   // Register OGC Services Routes (WMS/WFS/WMTS)
   try {
     await server.register(ogcServicesRoutes, { prefix: '/api' })
     console.log('✅ OGC Services routes registered')
   } catch (error) {
     console.error('❌ Failed to register OGC Services routes:', error.message)
+  }
+
+  // Register QGIS Desktop plugin sync API under /api/qgis.
+  try {
+    await server.register(async (s) => { await createQGISRoutes(s) }, { prefix: '/api/qgis' })
+    console.log('✅ QGIS plugin sync routes registered')
+  } catch (error) {
+    console.error('❌ Failed to register QGIS plugin sync routes:', error.message)
   }
 
   // Register Development Control Routes
