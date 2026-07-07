@@ -246,7 +246,14 @@ async function build() {
     throw new Error('[db] DATABASE_URL must be set in production')
   }
   await server.register(require('@fastify/postgres'), {
-    connectionString: databaseUrl || 'postgresql://postgres:postgres@localhost:5432/vungu_master_db_v1'
+    connectionString: databaseUrl || 'postgresql://postgres:postgres@localhost:5432/vungu_master_db_v1',
+    // node-pg defaults to max 10 connections. A cold map load fires dozens
+    // of concurrent ST_AsMVT tile queries across the 24 basemap layers,
+    // which saturated the pool and queued interactive queries (single-
+    // feature popups, auth) past the client's 30 s timeout. 30 connections
+    // lets tile bursts and interactive traffic coexist; Postgres'
+    // max_connections=100 still has headroom for the survey pool (20).
+    max: 30,
   })
 
   // Register Redis when REDIS_URL is set. Used by the MVT tile route as the
