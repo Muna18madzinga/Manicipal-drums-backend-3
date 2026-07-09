@@ -13,6 +13,38 @@ const ultimateBridge = new UltimateQGISBridge({
 })
 const smartExtractor = new SmartQGISExtractor()
 
+// Live QGIS symbology extraction is an OPTIONAL enhancement that needs an
+// external QGIS Server plus a .qgs project and python bridge scripts. When
+// that infrastructure is absent the extractors cascade through 5 strategies
+// with retries per layer, storming the logs on every /layers request. So it
+// is OFF unless QGIS_STYLE_EXTRACTION=true, and even when on it is skipped
+// after a failed liveness probe. Layers always fall back to their stored
+// style_config / default style, so the map is unaffected.
+const QGIS_EXTRACTION_ENABLED = process.env.QGIS_STYLE_EXTRACTION === 'true'
+const QGIS_PROBE_TTL_MS = 60_000
+let qgisProbe = { ok: false, at: 0 }
+
+async function qgisAvailable() {
+  if (!QGIS_EXTRACTION_ENABLED) return false
+  const now = Date.now()
+  if (now - qgisProbe.at < QGIS_PROBE_TTL_MS) return qgisProbe.ok
+  qgisProbe.at = now
+  const base = process.env.QGIS_SERVER_URL || 'http://localhost:8080'
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 1500)
+    const res = await fetch(base, { signal: ctrl.signal })
+    clearTimeout(timer)
+    qgisProbe.ok = res.status < 500
+  } catch {
+    qgisProbe.ok = false
+  }
+  if (!qgisProbe.ok) {
+    console.log('[Layers] QGIS style extraction enabled but server unreachable — using stored styles')
+  }
+  return qgisProbe.ok
+}
+
 async function getTableSchema(fastify, tableName) {
   const query = `
     SELECT column_name, data_type, is_nullable, column_default
@@ -83,11 +115,25 @@ async function dynamicLayerRoutes(fastify) {
       `
       
       const { rows } = await fastify.pg.query(query)
-      
+
+      // Probe once per request (cached ~60s). When QGIS integration is off or
+      // unreachable, skip extraction entirely — no per-layer retry storm.
+      const useQgis = await qgisAvailable()
+
       // Check for QGIS Server layers and merge with ultimate extraction
       const layersWithStyles = await Promise.all(rows.map(async (layer) => {
         let finalStyle = layer.style_config || getDefaultStyle(layer.geometry_type)
-        
+
+        if (!useQgis) {
+          return {
+            id: layer.table_name,
+            name: layer.display_name,
+            type: layer.geometry_type,
+            description: layer.description,
+            style: finalStyle
+          }
+        }
+
         // Try Ultimate QGIS Bridge extraction first (production-grade)
         try {
           console.log(`[Layers] 🚀 Trying Ultimate QGIS Bridge for ${layer.display_name}`)
