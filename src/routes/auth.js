@@ -22,11 +22,20 @@ const { v4: uuidv4 } = require('uuid')
 
 const {
   signAccessToken,
-  signRefreshToken,
   signApiToken,
   verifyToken,
   requireAuth,
   requireAdmin,
+  createSession,
+  revokeSession,
+  listSessions,
+  setAuthCookies,
+  clearAuthCookies,
+  generateMfaSecret,
+  verifyMfaToken,
+  generateBackupCodes,
+  signMfaPendingToken,
+  verifyMfaPendingToken,
 } = require('../middleware/jwtAuth')
 
 // Customer-facing registration is pinned to one of these two roles only.
@@ -134,12 +143,12 @@ async function authRoutes(fastify) {
       )
 
       const user = rows[0]
-      const token = signAccessToken({ id: user.id, role: user.role, email: user.email })
-      const refreshToken = signRefreshToken({ id: user.id })
+      const { accessToken, refreshToken } = await createSession(fastify, user, request)
+      setAuthCookies(reply, { accessToken, refreshToken })
 
       return reply.send({
         success: true,
-        data: { token, refreshToken, user: userToDTO(user) },
+        data: { user: userToDTO(user), token: accessToken },
         message: 'Account created',
       })
     } catch (err) {
@@ -162,7 +171,8 @@ async function authRoutes(fastify) {
       const { rows } = await fastify.pg.query(
         `SELECT id, email, COALESCE(full_name, name) AS name, role, organization,
                 job_title, department, applicant_type, phone,
-                national_id, physical_address, password_hash, active, status
+                national_id, physical_address, password_hash, active, status,
+                mfa_enabled
          FROM users WHERE email = $1`,
         [email],
       )
@@ -201,17 +211,25 @@ async function authRoutes(fastify) {
         })
       }
 
+      if (user.mfa_enabled) {
+        // Second factor required. Issue a short-lived pending token (not a
+        // session) — the client must complete /auth/mfa/challenge with it
+        // before any real access/refresh token or session row is created.
+        const mfaToken = signMfaPendingToken(user.id)
+        return reply.send({ success: true, data: { mfaRequired: true, mfaToken } })
+      }
+
       await fastify.pg.query(
         'UPDATE users SET last_login_at = NOW(), last_login = NOW() WHERE id = $1',
         [user.id],
       )
 
-      const token = signAccessToken({ id: user.id, role: user.role, email: user.email })
-      const refreshToken = signRefreshToken({ id: user.id })
+      const { accessToken, refreshToken } = await createSession(fastify, user, request)
+      setAuthCookies(reply, { accessToken, refreshToken })
 
       return reply.send({
         success: true,
-        data: { token, refreshToken, user: userToDTO(user) },
+        data: { user: userToDTO(user), token: accessToken },
         message: 'Login successful',
       })
     } catch (err) {
@@ -228,19 +246,34 @@ async function authRoutes(fastify) {
   })
 
   // ── Logout ───────────────────────────────────────────────────────────
-  // Stateless JWT — client discards token. We accept the call and respond
-  // 200 so the frontend can flow consistently. (For revocation, switch to
-  // refresh-token rotation with a denylist.)
-  fastify.post('/auth/logout', async (_request, reply) => {
+  // Session-aware: revokes the user_session row behind the refresh cookie
+  // so the access token stops working immediately (authenticate() checks
+  // session liveness on every request) instead of drifting on until its
+  // natural 12h expiry.
+  fastify.post('/auth/logout', async (request, reply) => {
+    const refreshToken = request.cookies?.vungu_rt
+    if (refreshToken) {
+      try {
+        const claims = verifyToken(refreshToken)
+        if (claims.sid) await revokeSession(fastify, claims.sid)
+      } catch (err) {
+        request.log.warn({ err }, 'logout: could not verify refresh cookie (already expired?)')
+      }
+    }
+    clearAuthCookies(reply)
     return reply.send({ success: true, message: 'Logged out' })
   })
 
   // ── Refresh token ────────────────────────────────────────────────────
+  // ponytail: re-mints the access token against the existing session
+  // (bumping last_used_at / resetting the idle clock) rather than rotating
+  // the refresh token itself on every call. Full rotate-on-use is the next
+  // hardening step if a stolen-refresh-token replay scenario needs closing.
   fastify.post('/auth/refresh', async (request, reply) => {
     try {
-      const { refreshToken } = request.body || {}
+      const refreshToken = request.cookies?.vungu_rt || request.body?.refreshToken
       if (!isString(refreshToken)) {
-        return reply.code(400).send({ success: false, message: 'refreshToken required' })
+        return reply.code(400).send({ success: false, message: 'No refresh token' })
       }
 
       let claims
@@ -253,6 +286,16 @@ async function authRoutes(fastify) {
         return reply.code(401).send({ success: false, error: 'wrong_token_type' })
       }
 
+      if (claims.sid) {
+        const { rows: sessionRows } = await fastify.pg.query(
+          'SELECT revoked_at, expires_at FROM public.user_session WHERE id = $1', [claims.sid])
+        const session = sessionRows[0]
+        if (!session || session.revoked_at || new Date(session.expires_at) < new Date()) {
+          clearAuthCookies(reply)
+          return reply.code(401).send({ success: false, error: 'session_revoked' })
+        }
+      }
+
       const { rows } = await fastify.pg.query(
         `SELECT id, email, role, active, status FROM users WHERE id = $1`,
         [claims.sub],
@@ -262,12 +305,125 @@ async function authRoutes(fastify) {
         return reply.code(401).send({ success: false, error: 'invalid_user' })
       }
 
-      const token = signAccessToken({ id: user.id, role: user.role, email: user.email })
-      return reply.send({ success: true, data: { token } })
+      const accessToken = signAccessToken({ id: user.id, role: user.role, email: user.email, sid: claims.sid })
+      reply.setCookie('vungu_at', accessToken, {
+        httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/', maxAge: 12 * 60 * 60,
+      })
+      return reply.send({ success: true, data: { user: userToDTO(user) } })
     } catch (err) {
       request.log.error({ err }, 'refresh failed')
       return reply.code(500).send({ success: false, error: 'internal' })
     }
+  })
+
+  // ── MFA challenge (second step of login when mfa_enabled) ────────────
+  fastify.post('/auth/mfa/challenge', async (request, reply) => {
+    try {
+      const { mfaToken, code } = request.body || {}
+      if (!isString(mfaToken) || !isString(code, 20)) {
+        return reply.code(400).send({ success: false, message: 'mfaToken and code are required' })
+      }
+      let claims
+      try {
+        claims = verifyMfaPendingToken(mfaToken)
+      } catch {
+        return reply.code(401).send({ success: false, error: 'invalid_or_expired_mfa_token' })
+      }
+
+      const { rows } = await fastify.pg.query(
+        `SELECT id, email, COALESCE(full_name, name) AS name, role, organization,
+                job_title, department, applicant_type, phone,
+                national_id, physical_address, active, status,
+                mfa_secret, mfa_backup_codes
+         FROM users WHERE id = $1`,
+        [claims.sub],
+      )
+      const user = rows[0]
+      if (!user || !user.active || user.status === 'suspended') {
+        return reply.code(401).send({ success: false, error: 'invalid_user' })
+      }
+
+      let ok = verifyMfaToken(user.mfa_secret, code)
+      if (!ok && Array.isArray(user.mfa_backup_codes)) {
+        for (let i = 0; i < user.mfa_backup_codes.length; i++) {
+          if (await bcrypt.compare(code, user.mfa_backup_codes[i])) {
+            ok = true
+            const remaining = user.mfa_backup_codes.filter((_, idx) => idx !== i)
+            await fastify.pg.query(
+              'UPDATE users SET mfa_backup_codes = $1::jsonb WHERE id = $2',
+              [JSON.stringify(remaining), user.id],
+            )
+            break
+          }
+        }
+      }
+      if (!ok) return reply.code(401).send({ success: false, error: 'invalid_mfa_code' })
+
+      await fastify.pg.query(
+        'UPDATE users SET last_login_at = NOW(), last_login = NOW() WHERE id = $1', [user.id])
+
+      const { accessToken, refreshToken } = await createSession(fastify, user, request)
+      setAuthCookies(reply, { accessToken, refreshToken })
+      return reply.send({ success: true, data: { user: userToDTO(user), token: accessToken }, message: 'Login successful' })
+    } catch (err) {
+      request.log.error({ err }, 'mfa challenge failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    }
+  })
+
+  // ── MFA enrolment (self-service, staff/admin) ─────────────────────────
+  fastify.post('/auth/mfa/setup', { preHandler: requireAuth(fastify) }, async (request, reply) => {
+    const { secret, otpauthUrl } = generateMfaSecret(request.user.email)
+    await fastify.pg.query('UPDATE users SET mfa_secret = $1 WHERE id = $2', [secret, request.user.id])
+    return reply.send({ success: true, data: { secret, otpauthUrl } })
+  })
+
+  fastify.post('/auth/mfa/verify-setup', { preHandler: requireAuth(fastify) }, async (request, reply) => {
+    const { code } = request.body || {}
+    const { rows } = await fastify.pg.query('SELECT mfa_secret FROM users WHERE id = $1', [request.user.id])
+    const secret = rows[0]?.mfa_secret
+    if (!secret || !verifyMfaToken(secret, code)) {
+      return reply.code(400).send({ success: false, error: 'invalid_code' })
+    }
+    const backupCodes = generateBackupCodes()
+    const hashed = await Promise.all(backupCodes.map((c) => bcrypt.hash(c, 10)))
+    await fastify.pg.query(
+      'UPDATE users SET mfa_enabled = true, mfa_backup_codes = $1::jsonb WHERE id = $2',
+      [JSON.stringify(hashed), request.user.id],
+    )
+    return reply.send({ success: true, data: { backupCodes } })
+  })
+
+  fastify.post('/auth/mfa/disable', { preHandler: requireAuth(fastify) }, async (request, reply) => {
+    const { password } = request.body || {}
+    const { rows } = await fastify.pg.query('SELECT password_hash FROM users WHERE id = $1', [request.user.id])
+    const ok = rows[0]?.password_hash && await bcrypt.compare(password || '', rows[0].password_hash)
+    if (!ok) return reply.code(401).send({ success: false, error: 'invalid_credentials' })
+    await fastify.pg.query(
+      'UPDATE users SET mfa_enabled = false, mfa_secret = NULL, mfa_backup_codes = NULL WHERE id = $1',
+      [request.user.id],
+    )
+    return reply.send({ success: true })
+  })
+
+  // ── Sessions (device/session revocation) ──────────────────────────────
+  fastify.get('/auth/sessions', { preHandler: requireAuth(fastify) }, async (request, reply) => {
+    const sessions = await listSessions(fastify, request.user.id)
+    return reply.send({
+      success: true,
+      data: sessions.map((s) => ({ ...s, current: s.id === request.sessionId })),
+    })
+  })
+
+  fastify.delete('/auth/sessions/:id', { preHandler: requireAuth(fastify) }, async (request, reply) => {
+    // Scope the revoke to the caller's own sessions — no cross-user reach.
+    const { rows } = await fastify.pg.query(
+      'SELECT id FROM public.user_session WHERE id = $1 AND user_id = $2',
+      [request.params.id, request.user.id],
+    )
+    if (!rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
+    await revokeSession(fastify, request.params.id)
+    return reply.send({ success: true })
   })
 
   // ── Update profile ───────────────────────────────────────────────────
@@ -485,12 +641,12 @@ async function authRoutes(fastify) {
       await fastify.pg.query('UPDATE invites SET used = true, used_at = NOW() WHERE id = $1', [invite.id])
 
       const user = userRows[0]
-      const accessToken = signAccessToken({ id: user.id, role: user.role, email: user.email })
-      const refreshToken = signRefreshToken({ id: user.id })
+      const { accessToken, refreshToken } = await createSession(fastify, user, request)
+      setAuthCookies(reply, { accessToken, refreshToken })
 
       return reply.send({
         success: true,
-        data: { token: accessToken, refreshToken, user: userToDTO(user) },
+        data: { user: userToDTO(user), token: accessToken },
         message: `Welcome to Vungu RDC, ${name}.`,
       })
     } catch (err) {

@@ -1,6 +1,7 @@
 require('dotenv').config()
 const Fastify = require('fastify')
 const fastifyPostgres = require('@fastify/postgres')
+const fastifyCookie = require('@fastify/cookie')
 const { paymentRoutes } = require('../../src/routes/payments')
 const { authRoutes } = require('../../src/routes/auth')
 const { developmentManagementRoutes } = require('../../src/routes/development-management')
@@ -8,6 +9,7 @@ const { developmentManagementRoutes } = require('../../src/routes/development-ma
 async function buildAppForTest() {
   const app = Fastify({ logger: false })
   await app.register(fastifyPostgres, { connectionString: process.env.DATABASE_URL })
+  await app.register(fastifyCookie, { secret: process.env.COOKIE_SECRET || process.env.JWT_SECRET })
 
   // Webhook callbacks arrive as application/x-www-form-urlencoded.
   // Fastify has no built-in parser for this content-type, so we add one
