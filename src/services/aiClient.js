@@ -28,7 +28,14 @@
 
 const axios = require('axios')
 
-const BASE_URL  = (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com/v1').replace(/\/+$/, '')
+// The Messages API lives under /v1. A bare-host base URL — or a machine/user
+// env var that shadows .env — 404s every call, so re-add /v1 for the official
+// host. Custom proxies (any other host) are left exactly as configured.
+function normalizeAnthropicBase(u) {
+  const s = (u || 'https://api.anthropic.com/v1').replace(/\/+$/, '')
+  return /\/\/api\.anthropic\.com$/.test(s) ? s + '/v1' : s
+}
+const BASE_URL  = normalizeAnthropicBase(process.env.ANTHROPIC_BASE_URL)
 const API_KEY   = process.env.ANTHROPIC_API_KEY || ''
 const VERSION   = process.env.ANTHROPIC_VERSION || '2023-06-01'
 const TEXT_MODEL   = process.env.ANTHROPIC_TEXT_MODEL   || 'claude-haiku-4-5-20251001'
@@ -76,8 +83,11 @@ function textFromResponse(data) {
  * @param {number} [opts.temperature]  default 0.3
  * @param {number} [opts.maxTokens]    default 700
  * @param {string} [opts.model]        override model
+ * @param {(usage:object)=>void} [opts.onUsage]  called with the response
+ *        `usage` block ({input_tokens, output_tokens}) on success — for
+ *        telemetry. Never throws into the caller.
  */
-async function chatText({ system, user, temperature = 0.3, maxTokens = 700, model } = {}) {
+async function chatText({ system, user, temperature = 0.3, maxTokens = 700, model, onUsage } = {}) {
   if (!isConfigured() || !user) return null
 
   const body = {
@@ -92,6 +102,7 @@ async function chatText({ system, user, temperature = 0.3, maxTokens = 700, mode
     const { data } = await axios.post(`${BASE_URL}/messages`, body, {
       headers: headers(), timeout: TIMEOUT_MS,
     })
+    if (onUsage && data && data.usage) { try { onUsage(data.usage) } catch { /* telemetry must not break the call */ } }
     return textFromResponse(data)
   } catch {
     // Swallow — the caller falls back to a deterministic template / status.
