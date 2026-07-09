@@ -367,18 +367,62 @@ async function developmentManagementRoutes(fastify) {
     }
     if (!sets.length) return reply.code(400).send({ success: false, error: 'no_fields' })
 
+    // Optimistic lock: caller must state the revision it last read. A missing
+    // or mismatched expectedRevision means someone else saved in between —
+    // reject with 409 + the current row rather than silently overwriting.
+    const expectedRevision = Number(b.expectedRevision)
+    if (!Number.isInteger(expectedRevision)) {
+      return reply.code(400).send({ success: false, error: 'expected_revision_required' })
+    }
+
     try {
+      const before = await pg.query(
+        'SELECT assigned_to, revision FROM spatial_planning.permit_application WHERE id = $1',
+        [request.params.id],
+      )
+      if (!before.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
+      if (before.rows[0].revision !== expectedRevision) {
+        const current = await pg.query(
+          'SELECT *, ST_X(location) AS lng, ST_Y(location) AS lat FROM spatial_planning.permit_application WHERE id = $1',
+          [request.params.id],
+        )
+        return reply.code(409).send({
+          success: false, error: 'conflict',
+          message: 'This case was changed by another officer since you loaded it.',
+          data: current.rows[0],
+        })
+      }
+
+      const revisionIdx = vals.length + 1
+      vals.push(expectedRevision)
       const { rows } = await pg.query(
         `UPDATE spatial_planning.permit_application
-            SET ${sets.join(', ')}, updated_at = NOW()
-          WHERE id = $1
+            SET ${sets.join(', ')}, revision = revision + 1, updated_at = NOW()
+          WHERE id = $1 AND revision = $${revisionIdx}
           RETURNING *, ST_X(location) AS lng, ST_Y(location) AS lat`,
         vals,
       )
-      if (!rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
+      if (!rows[0]) {
+        // Lost the race between the check above and this write.
+        const current = await pg.query(
+          'SELECT *, ST_X(location) AS lng, ST_Y(location) AS lat FROM spatial_planning.permit_application WHERE id = $1',
+          [request.params.id],
+        )
+        return reply.code(409).send({
+          success: false, error: 'conflict',
+          message: 'This case was changed by another officer since you loaded it.',
+          data: current.rows[0],
+        })
+      }
+
       await logEvent(request.params.id, 'case_updated', request, {
         fields: sets.map(s => s.split(' ')[0]),
       })
+      if (scalar.assigned_to !== undefined && scalar.assigned_to !== before.rows[0].assigned_to) {
+        await logEvent(request.params.id, 'reassigned', request, {
+          from: before.rows[0].assigned_to, to: scalar.assigned_to,
+        })
+      }
       return reply.send({ success: true, data: rows[0] })
     } catch (err) {
       request.log.error({ err }, 'patch permit case failed')
@@ -427,6 +471,10 @@ async function developmentManagementRoutes(fastify) {
     if (!VALID_STATUSES.includes(status)) {
       return reply.code(400).send({ success: false, error: 'bad_status' })
     }
+    const expectedRevision = Number(request.body?.expectedRevision)
+    if (!Number.isInteger(expectedRevision)) {
+      return reply.code(400).send({ success: false, error: 'expected_revision_required' })
+    }
     try {
       const { rows } = await pg.query(
         `UPDATE spatial_planning.permit_application
@@ -436,15 +484,26 @@ async function developmentManagementRoutes(fastify) {
                 decision_officer    = CASE WHEN $2::varchar IN ('approved','approved_with_conditions','refused')
                                           THEN $5 ELSE decision_officer END,
                 permit_conditions   = COALESCE($6::jsonb, permit_conditions),
+                revision            = revision + 1,
                 updated_at          = NOW()
-          WHERE id = $1
+          WHERE id = $1 AND revision = $7
           RETURNING *`,
         [request.params.id, status, decision_conditions || null,
          isDate(decision_at) ? decision_at : null, request.user.id,
          permit_conditions !== undefined && permit_conditions !== null
-           ? JSON.stringify(permit_conditions) : null],
+           ? JSON.stringify(permit_conditions) : null,
+         expectedRevision],
       )
-      if (!rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
+      if (!rows[0]) {
+        const current = await pg.query(
+          'SELECT * FROM spatial_planning.permit_application WHERE id = $1', [request.params.id])
+        if (!current.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
+        return reply.code(409).send({
+          success: false, error: 'conflict',
+          message: 'This case was changed by another officer since you loaded it.',
+          data: current.rows[0],
+        })
+      }
       await logEvent(request.params.id, 'status_changed', request, {
         status,
         has_conditions: !!permit_conditions,

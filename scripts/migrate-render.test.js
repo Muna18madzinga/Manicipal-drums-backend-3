@@ -40,6 +40,11 @@ describe('Render migration plan', () => {
       '093_user_applicant_profile.sql',
       '094_site_content.sql',
       '095_planning_projects.sql',
+      '096_planning_revisions.sql',
+      '097_case_locking_mfa_sessions.sql',
+      '098_control_points.sql',
+      '099_survey_parcels.sql',
+      '100_survey_task_zone_docs.sql',
     ])
 
     for (const filename of MIGRATIONS) {
