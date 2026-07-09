@@ -23,7 +23,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
         }
       }
     },
-    preHandler: auth.requireAuth
+    preHandler: auth.requireAuth(fastify)
   }, async (request, reply) => {
     try {
       const { development_category, use_scale, is_active, page = 1, limit = 20 } = request.query;
@@ -120,7 +120,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
         }
       }
     },
-    preHandler: auth.requireAuth
+    preHandler: auth.requireAuth(fastify)
   }, async (request, reply) => {
     try {
       const { group_code, description, group_category, development_category, use_scale, notes } = request.body;
@@ -160,7 +160,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
         }
       }
     },
-    preHandler: auth.requireAuth
+    preHandler: auth.requireAuth(fastify)
   }, async (request, reply) => {
     try {
       const { id } = request.params;
@@ -195,7 +195,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
     schema: {
       params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } }, required: ['id'] }
     },
-    preHandler: auth.requireAuth
+    preHandler: auth.requireAuth(fastify)
   }, async (request, reply) => {
     try {
       const { id } = request.params;
@@ -245,7 +245,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
         }
       }
     },
-    preHandler: auth.requireAuth
+    preHandler: auth.requireAuth(fastify)
   }, async (request, reply) => {
     try {
       const { zone_type, scale_category, authority, page = 1, limit = 20 } = request.query;
@@ -336,7 +336,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
         }
       }
     },
-    preHandler: auth.requireAuth
+    preHandler: auth.requireAuth(fastify)
   }, async (request, reply) => {
     try {
       const { zone, zone_type, scale_category, authority, zone_description } = request.body;
@@ -429,7 +429,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
         }
       }
     },
-    preHandler: auth.requireAuth
+    preHandler: auth.requireAuth(fastify)
   }, async (request, reply) => {
     try {
       const { zone_id, land_use_group_id, control_type, authority, conditions } = request.body;
@@ -479,7 +479,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
         }
       }
     },
-    preHandler: auth.requireAuth
+    preHandler: auth.requireAuth(fastify)
   }, async (request, reply) => {
     try {
       const { id } = request.params;
@@ -514,7 +514,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
     schema: {
       params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } }, required: ['id'] }
     },
-    preHandler: auth.requireAuth
+    preHandler: auth.requireAuth(fastify)
   }, async (request, reply) => {
     try {
       const { id } = request.params;
@@ -544,7 +544,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
     schema: {
       params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } }, required: ['id'] }
     },
-    preHandler: auth.requireAuth
+    preHandler: auth.requireAuth(fastify)
   }, async (request, reply) => {
     try {
       const { id } = request.params;
