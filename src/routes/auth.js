@@ -665,7 +665,7 @@ async function authRoutes(fastify) {
       //   ?staff=true  → council employees only (the staff console default)
       //   ?staff=false → citizens only (everyone not in a staff role)
       const staff = request.query?.staff
-      const where = []
+      const where = ['deleted_at IS NULL']
       const params = []
       if (staff === 'true') {
         params.push(STAFF_ROLES)
@@ -775,7 +775,18 @@ async function authRoutes(fastify) {
       if (id === request.user.id) {
         return reply.code(400).send({ success: false, error: 'cannot_delete_self' })
       }
-      await fastify.pg.query('DELETE FROM users WHERE id = $1', [id])
+      // Soft delete (migration 103): the row stays for audit-log attribution and
+      // recovery; active=false + status='deleted' lock the account out of login
+      // and authenticate(). The email stays reserved until an admin restores or
+      // a DBA anonymises the row.
+      const { rowCount } = await fastify.pg.query(
+        `UPDATE users
+            SET active = false, status = 'deleted',
+                deleted_at = NOW(), deleted_by = $2, updated_at = NOW()
+          WHERE id = $1 AND deleted_at IS NULL`,
+        [id, request.user.id],
+      )
+      if (rowCount === 0) return reply.code(404).send({ success: false, error: 'not_found' })
       return reply.send({ success: true })
     } catch (err) {
       request.log.error({ err }, 'delete user failed')

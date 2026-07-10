@@ -61,7 +61,7 @@ async function gisRoutes(fastify) {
         `SELECT id, layer, props, created_by, created_at,
                 ST_AsGeoJSON(geom)::json AS geometry
            FROM spatial_planning.gis_feature
-          WHERE ($1::text IS NULL OR layer = $1)
+          WHERE ($1::text IS NULL OR layer = $1) AND deleted_at IS NULL
           ORDER BY id DESC
           LIMIT 2000`,
         [layer],
@@ -132,7 +132,7 @@ async function gisRoutes(fastify) {
                             ELSE ST_SetSRID(ST_GeomFromGeoJSON($2), 4326) END,
                 props = COALESCE($3::jsonb, props),
                 updated_at = now()
-          WHERE id = $1
+          WHERE id = $1 AND deleted_at IS NULL
         RETURNING id, layer, props, ST_AsGeoJSON(geom) AS geometry`,
         [id, geometry != null ? JSON.stringify(geometry) : null, props != null ? JSON.stringify(props) : null],
       )
@@ -154,10 +154,14 @@ async function gisRoutes(fastify) {
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'bad id' })
     const actor = request.user?.id != null ? String(request.user.id) : null
     try {
+      // Soft delete (migration 103): the feature row stays recoverable; the
+      // history table keeps its full 'delete' entry exactly as before.
       const { rows } = await fastify.pg.query(
-        `DELETE FROM spatial_planning.gis_feature WHERE id = $1
+        `UPDATE spatial_planning.gis_feature
+            SET deleted_at = NOW(), deleted_by = $2
+          WHERE id = $1 AND deleted_at IS NULL
          RETURNING layer, props, ST_AsGeoJSON(geom) AS geometry`,
-        [id],
+        [id, actor],
       )
       if (!rows.length) return reply.code(404).send({ error: 'not found' })
       await logHistory(fastify, {
