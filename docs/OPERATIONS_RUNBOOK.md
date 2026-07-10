@@ -29,9 +29,16 @@ Backend: Fastify + PostgreSQL/PostGIS, deployed on Render. Frontend: Vue 3, depl
 - Render Postgres takes automatic daily snapshots (retention per the Render plan tier — confirm current retention in the Render dashboard, since it varies by plan and may need raising for a statutory records system).
 - **Manual backup before a risky migration or bulk data operation:**
   ```
-  pg_dump "$DATABASE_URL" -Fc -f backup-$(date +%Y%m%d-%H%M).dump
+  npm run backup        # scripts/backup-db.js
   ```
-  Store off-host (not on the same disk/volume as the database).
+  This dumps the database (`backups/db-<ts>.dump`, pg_dump custom format) **and**
+  zips `uploads/` (`backups/uploads-<ts>.zip`) — citizen documents and inspection
+  photos live on the app instance's disk and are NOT covered by Render's database
+  snapshots. Retention: newest 14 of each (override with `BACKUP_KEEP`).
+  Store copies off-host (not on the same disk/volume as the database).
+- **uploads/ on Render**: until uploads move to object storage (roadmap item H7),
+  schedule `npm run backup` (Render cron job or equivalent) so uploaded files are
+  captured at least daily; a redeploy or instance loss otherwise destroys them.
 - **Restore drill (run at least quarterly, not just when something breaks):**
   1. Spin up a scratch Postgres instance (local Docker or a throwaway Render database).
   2. `pg_restore -d "$SCRATCH_DATABASE_URL" backup-*.dump`
