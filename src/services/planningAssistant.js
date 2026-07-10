@@ -86,6 +86,7 @@ async function decideUse(pg, { zoneId, landUseGroupCode }) {
      JOIN land_use_groups lug ON lug.id = zlc.land_use_group_id
      WHERE zlc.zone_id = $1
        AND lug.group_code = $2
+       AND zlc.deleted_at IS NULL
      LIMIT 1`,
     [zoneId, landUseGroupCode],
   )
@@ -146,7 +147,7 @@ async function listPermittedUses(pg, zoneId) {
     `SELECT lug.group_code, lug.group_name, zlc.control_type, zlc.conditions
      FROM zone_land_use_controls zlc
      JOIN land_use_groups lug ON lug.id = zlc.land_use_group_id
-     WHERE zlc.zone_id = $1
+     WHERE zlc.zone_id = $1 AND zlc.deleted_at IS NULL
      ORDER BY
        CASE zlc.control_type
          WHEN 'permitted'       THEN 1
