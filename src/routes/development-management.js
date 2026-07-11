@@ -48,6 +48,24 @@ const path = require('path')
 const crypto = require('crypto')
 const { requireAuth, requireRole } = require('../middleware/jwtAuth')
 const notifier = require('../services/notifier')
+const { canTransition, allowedTransitions } = require('../config/permitWorkflow')
+
+/**
+ * Statutory transition gate, shared by every status write. Returns null when
+ * the move is lawful, otherwise sends the 409 and returns the reply.
+ * Admins may override with body.override=true — the audit event records it.
+ */
+function rejectUnlawfulTransition(reply, request, fromStatus, toStatus) {
+  const isOverride = request.user.role === 'admin' && request.body?.override === true
+  if (isOverride || canTransition(fromStatus, toStatus)) return null
+  return reply.code(409).send({
+    success: false,
+    error: 'invalid_transition',
+    message: `A case in '${fromStatus}' cannot move to '${toStatus}'.`,
+    from: fromStatus,
+    allowed: allowedTransitions(fromStatus),
+  })
+}
 
 const STAFF_ROLES = [
   'admin', 'planner', 'planning_clerk', 'building_inspector',
@@ -476,6 +494,16 @@ async function developmentManagementRoutes(fastify) {
       return reply.code(400).send({ success: false, error: 'expected_revision_required' })
     }
     try {
+      // Statutory gate: read the current status and check the transition is
+      // lawful before writing anything (config/permitWorkflow.js).
+      const cur = await pg.query(
+        'SELECT status FROM spatial_planning.permit_application WHERE id = $1',
+        [request.params.id],
+      )
+      if (!cur.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
+      const fromStatus = cur.rows[0].status
+      if (rejectUnlawfulTransition(reply, request, fromStatus, status)) return
+
       const { rows } = await pg.query(
         `UPDATE spatial_planning.permit_application
             SET status              = $2,
@@ -486,13 +514,13 @@ async function developmentManagementRoutes(fastify) {
                 permit_conditions   = COALESCE($6::jsonb, permit_conditions),
                 revision            = revision + 1,
                 updated_at          = NOW()
-          WHERE id = $1 AND revision = $7
+          WHERE id = $1 AND revision = $7 AND status = $8
           RETURNING *`,
         [request.params.id, status, decision_conditions || null,
          isDate(decision_at) ? decision_at : null, request.user.id,
          permit_conditions !== undefined && permit_conditions !== null
            ? JSON.stringify(permit_conditions) : null,
-         expectedRevision],
+         expectedRevision, fromStatus],
       )
       if (!rows[0]) {
         const current = await pg.query(
@@ -506,6 +534,9 @@ async function developmentManagementRoutes(fastify) {
       }
       await logEvent(request.params.id, 'status_changed', request, {
         status,
+        from_status: fromStatus,
+        override: request.user.role === 'admin' && request.body?.override === true
+          && !canTransition(fromStatus, status) ? true : undefined,
         has_conditions: !!permit_conditions,
         decision_conditions: decision_conditions || null,
       })
@@ -1048,6 +1079,14 @@ async function developmentManagementRoutes(fastify) {
     const conditions = (b.conditions !== undefined && b.conditions !== null)
       ? JSON.stringify(b.conditions) : null
     try {
+      // Statutory gate: a determination is only lawful from a review stage —
+      // never from intake, and never re-deciding an already-decided case.
+      const cur = await pg.query(
+        'SELECT status FROM spatial_planning.permit_application WHERE id = $1', [id])
+      if (!cur.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
+      const fromStatus = cur.rows[0].status
+      if (rejectUnlawfulTransition(reply, request, fromStatus, status)) return
+
       const { rows } = await pg.query(
         `UPDATE spatial_planning.permit_application
             SET status              = $2,
@@ -1056,11 +1095,16 @@ async function developmentManagementRoutes(fastify) {
                 decision_officer    = $4,
                 permit_conditions   = COALESCE($5::jsonb, permit_conditions),
                 updated_at          = NOW()
-          WHERE id = $1
+          WHERE id = $1 AND status = $6
           RETURNING *`,
-        [id, status, notes, request.user.id, conditions],
+        [id, status, notes, request.user.id, conditions, fromStatus],
       )
-      if (!rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
+      if (!rows[0]) {
+        return reply.code(409).send({
+          success: false, error: 'conflict',
+          message: 'This case was changed by another officer since you loaded it.',
+        })
+      }
       // Close the latest open handoff package as decided (best-effort).
       try {
         await pg.query(
@@ -1099,7 +1143,7 @@ async function developmentManagementRoutes(fastify) {
         generatedDoc = ins.rows[0]
       } catch (err) { request.log.error({ err }, 'decision letter generation failed') }
       await logEvent(id, 'eo_decision', request, {
-        decision: b.decision, status, has_conditions: !!conditions,
+        decision: b.decision, status, from_status: fromStatus, has_conditions: !!conditions,
         document_id: generatedDoc ? generatedDoc.id : null,
       })
       return reply.send({ success: true, data: { permit: rows[0], document: generatedDoc } })
@@ -1129,12 +1173,25 @@ async function developmentManagementRoutes(fastify) {
       'refused', 'withdrawn', 'appealed']
     const status = VALID_STATUSES.includes(b.status) ? b.status : (ROLE_STATUS[b.role] || 'under_review')
     try {
+      // Statutory gate: a decided case cannot be quietly reopened by a return —
+      // reopening a determination is an appeal (or an audited admin override).
+      const cur = await pg.query(
+        'SELECT status FROM spatial_planning.permit_application WHERE id = $1', [id])
+      if (!cur.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
+      const fromStatus = cur.rows[0].status
+      if (rejectUnlawfulTransition(reply, request, fromStatus, status)) return
+
       const { rows } = await pg.query(
         `UPDATE spatial_planning.permit_application
-            SET status=$2, updated_at=NOW() WHERE id=$1 RETURNING *`,
-        [id, status],
+            SET status=$2, updated_at=NOW() WHERE id=$1 AND status=$3 RETURNING *`,
+        [id, status, fromStatus],
       )
-      if (!rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
+      if (!rows[0]) {
+        return reply.code(409).send({
+          success: false, error: 'conflict',
+          message: 'This case was changed by another officer since you loaded it.',
+        })
+      }
       // Mark the latest open handoff returned (best-effort).
       try {
         await pg.query(
@@ -1158,7 +1215,7 @@ async function developmentManagementRoutes(fastify) {
           )
         } catch (err) { request.log.error({ err }, 'return case_message insert failed') }
       }
-      await logEvent(id, 'returned_to_role', request, { role: b.role, reason, status })
+      await logEvent(id, 'returned_to_role', request, { role: b.role, reason, status, from_status: fromStatus })
       return reply.send({ success: true, data: rows[0] })
     } catch (err) {
       request.log.error({ err }, 'return-to-role failed')
