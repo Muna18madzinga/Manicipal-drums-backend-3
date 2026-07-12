@@ -308,6 +308,38 @@ async function build() {
   const { auditLogPlugin } = require('./src/middleware/auditLog')
   await server.register(auditLogPlugin)
 
+  // ── OpenAPI / Swagger (H4) ──────────────────────────────────────────
+  // @fastify/swagger was installed but never registered, so no API docs
+  // were served. Registered here — before the route plugins — so it can
+  // collect every route's schema into the generated spec. The interactive
+  // UI is gated: a government deployment should not publish its full API
+  // surface anonymously, so /api/docs is served only outside production
+  // unless ENABLE_API_DOCS=true is set explicitly.
+  await server.register(require('@fastify/swagger'), {
+    openapi: {
+      info: {
+        title: 'Vungu RDC Planning Portal API',
+        description: 'Municipal GIS planning platform — development control, GIS tiles, survey, and citizen services.',
+        version: '2.0.0',
+      },
+      components: {
+        securitySchemes: {
+          // Browser clients authenticate with the httpOnly vungu_at cookie;
+          // the QGIS plugin / integrations use a Bearer API token.
+          cookieAuth: { type: 'apiKey', in: 'cookie', name: 'vungu_at' },
+          bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+        },
+      },
+    },
+  })
+  if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_API_DOCS === 'true') {
+    await server.register(require('@fastify/swagger-ui'), {
+      routePrefix: '/api/docs',
+      uiConfig: { docExpansion: 'list', deepLinking: true },
+    })
+    server.log.info('API docs served at /api/docs')
+  }
+
   // Health check - register first
   server.get('/health', async (request, reply) => {
     return {
