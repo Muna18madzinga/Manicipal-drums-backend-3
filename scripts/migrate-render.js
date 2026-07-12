@@ -56,6 +56,7 @@ const MIGRATIONS = [
   '104_committee_quorum_attendance.sql',
   '105_stand_allocation.sql',
   '106_geometry_validation.sql',
+  '107_stands_topology.sql',
 ]
 
 function createPool(env = process.env) {
