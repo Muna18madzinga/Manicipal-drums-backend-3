@@ -19,7 +19,10 @@ const TEST_WARD = `jesttest-geom-${TEST_USER_ID.slice(0, 8)}`
 const TEST_LAYER = 'jesttest-geom'
 let app, auth
 
-const validPoly  = { type: 'Polygon', coordinates: [[[29.80, -19.45], [29.801, -19.45], [29.801, -19.449], [29.80, -19.449], [29.80, -19.45]]] }
+// Deliberately far from other suites' test stands — the topology trigger
+// (migration 107) rejects overlapping stands globally, so distinct suites must
+// not share ground.
+const validPoly  = { type: 'Polygon', coordinates: [[[31.20, -18.10], [31.201, -18.10], [31.201, -18.099], [31.20, -18.099], [31.20, -18.10]]] }
 const bowtiePoly = { type: 'Polygon', coordinates: [[[0, 0], [1, 1], [1, 0], [0, 1], [0, 0]]] }
 
 beforeAll(async () => {
@@ -73,6 +76,25 @@ test('stand create: bowtie rejected 422', async () => {
   const ok = await app.inject({
     method: 'POST', url: '/api/stands', headers: auth,
     payload: { standNumber: 'GEOM-2', ward: TEST_WARD, geometry: validPoly },
+  })
+  expect(ok.statusCode).toBe(201)
+})
+
+test('topology: overlapping stand rejected 409; adjacent (shared edge) allowed', async () => {
+  // A stand that overlaps GEOM-2 (validPoly, at 31.20/-18.10) — half inside it.
+  const overlap = { type: 'Polygon', coordinates: [[[31.2005, -18.10], [31.2015, -18.10], [31.2015, -18.099], [31.2005, -18.099], [31.2005, -18.10]]] }
+  const bad = await app.inject({
+    method: 'POST', url: '/api/stands', headers: auth,
+    payload: { standNumber: 'GEOM-3', ward: TEST_WARD, geometry: overlap },
+  })
+  expect(bad.statusCode).toBe(409)
+  expect(bad.json().error).toBe('stand_overlap')
+
+  // A stand sharing only the eastern edge of GEOM-2 (touches, no interior overlap).
+  const adjacent = { type: 'Polygon', coordinates: [[[31.201, -18.10], [31.202, -18.10], [31.202, -18.099], [31.201, -18.099], [31.201, -18.10]]] }
+  const ok = await app.inject({
+    method: 'POST', url: '/api/stands', headers: auth,
+    payload: { standNumber: 'GEOM-4', ward: TEST_WARD, geometry: adjacent },
   })
   expect(ok.statusCode).toBe(201)
 })
