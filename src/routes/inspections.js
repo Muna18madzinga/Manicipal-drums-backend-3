@@ -37,6 +37,7 @@ const crypto = require('node:crypto')
 
 const { requireAuth, requireRole } = require('../middleware/jwtAuth')
 const notifier = require('../services/notifier')
+const { scanBuffer } = require('../services/malwareScan')
 
 // ════════════════════════════════════════════════════════════════════
 // Stage catalogue — Manual 2021, Annexure 12
@@ -567,6 +568,13 @@ async function inspectionRoutes(fastify) {
         }
       }
       if (!file) return reply.code(400).send({ success: false, error: 'no_file' })
+
+      // Malware scan (H7) before the photo is persisted.
+      const scan = await scanBuffer(file.buffer, { mime: file.mimetype, log: request.log })
+      if (!scan.clean) {
+        request.log.warn({ signature: scan.signature, engine: scan.engine }, 'rejected infected inspection photo')
+        return reply.code(422).send({ success: false, error: 'malware_detected', message: 'This file failed a security scan and was not accepted.' })
+      }
 
       const sha256 = crypto.createHash('sha256').update(file.buffer).digest('hex')
       const id = crypto.randomUUID()
