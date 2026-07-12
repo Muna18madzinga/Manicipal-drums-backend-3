@@ -54,6 +54,7 @@ const MIGRATIONS = [
   '102_survey_task_manager.sql',
   '103_soft_delete.sql',
   '104_committee_quorum_attendance.sql',
+  '105_stand_allocation.sql',
 ]
 
 function createPool(env = process.env) {
