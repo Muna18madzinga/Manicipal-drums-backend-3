@@ -37,7 +37,7 @@ async function upsertPlan(pg, doc, userId) {
        (id, kind, name, authority_id, status, effective_date, doc, boundary, created_by)
      VALUES ($1, $2, $3, $4, $5, $6, $7,
              CASE WHEN $8::text IS NULL THEN NULL
-                  ELSE ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($8::text), 4326)) END,
+                  ELSE ST_Multi(spatial_planning.geom_from_geojson_checked($8::text, 4326)) END,
              $9)
      ON CONFLICT (id) DO UPDATE SET
        kind = EXCLUDED.kind,
@@ -108,6 +108,7 @@ async function statutoryPlansRoutes(fastify) {
         const data = await upsertPlan(fastify.pg, doc, request.user && request.user.id)
         return { success: true, data }
       } catch (err) {
+        if (err.code === '22023') return reply.code(422).send({ success: false, error: 'invalid_geometry', message: err.message })
         request.log.error({ err }, 'save statutory plan failed')
         return reply.code(500).send({ success: false, error: 'internal' })
       }
