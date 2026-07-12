@@ -68,6 +68,28 @@ function rejectUnlawfulTransition(reply, request, fromStatus, toStatus) {
   })
 }
 
+/**
+ * Has this permit been heard by a quorate committee that recorded a resolution?
+ * True when a live agenda_item for the permit has a non-pending outcome AND a
+ * resolution, on a live (non-deleted) meeting. This is what a statutory
+ * determination must normally be backed by (RTCP Act committee resolution).
+ */
+async function hasCommitteeResolution(pg, permitId) {
+  const { rows } = await pg.query(
+    `SELECT 1
+       FROM spatial_planning.agenda_item a
+       JOIN spatial_planning.committee_meeting m ON m.id = a.meeting_id
+      WHERE a.permit_app_id = $1
+        AND a.outcome <> 'pending'
+        AND a.resolution IS NOT NULL
+        AND a.deleted_at IS NULL
+        AND m.deleted_at IS NULL
+      LIMIT 1`,
+    [permitId],
+  )
+  return rows.length > 0
+}
+
 const STAFF_ROLES = [
   'admin', 'planner', 'planning_clerk', 'building_inspector',
   'eo', 'env_officer', 'surveyor', 'gis_officer',
@@ -1088,6 +1110,23 @@ async function developmentManagementRoutes(fastify) {
       const fromStatus = cur.rows[0].status
       if (rejectUnlawfulTransition(reply, request, fromStatus, status)) return
 
+      // Committee gate (H2): a determination must be backed by a committee
+      // resolution — UNLESS the decider records it as a delegated-authority
+      // decision (a reason string, audited), or an admin overrides. This blocks
+      // the "approved with no committee having heard it" hole while still
+      // allowing lawful delegated decisions for minor applications.
+      const delegated = isStr(b.delegated_authority, 2000) ? b.delegated_authority : null
+      const adminOverride = request.user.role === 'admin' && b.override === true
+      if (!delegated && !adminOverride && !(await hasCommitteeResolution(pg, id))) {
+        return reply.code(409).send({
+          success: false,
+          error: 'committee_resolution_required',
+          message: 'A committee resolution is required before this determination. '
+            + 'Table the application on a committee agenda and record the resolution, '
+            + 'or record this as a delegated-authority decision.',
+        })
+      }
+
       const { rows } = await pg.query(
         `UPDATE spatial_planning.permit_application
             SET status              = $2,
@@ -1146,6 +1185,10 @@ async function developmentManagementRoutes(fastify) {
       await logEvent(id, 'eo_decision', request, {
         decision: b.decision, status, from_status: fromStatus, has_conditions: !!conditions,
         document_id: generatedDoc ? generatedDoc.id : null,
+        // Statutory backing for the determination: committee resolution, an
+        // audited delegated-authority decision, or an admin override.
+        delegated_authority: delegated || undefined,
+        admin_override: adminOverride || undefined,
       })
       return reply.send({ success: true, data: { permit: rows[0], document: generatedDoc } })
     } catch (err) {
@@ -2164,11 +2207,12 @@ async function developmentManagementRoutes(fastify) {
       return reply.code(400).send({ success: false, error: 'title and meeting_date (YYYY-MM-DD) required' })
     }
     try {
+      const quorum = Number.isInteger(b.quorum) && b.quorum > 0 ? b.quorum : null
       const { rows } = await pg.query(
-        `INSERT INTO spatial_planning.committee_meeting (title, meeting_date, location, notes, created_by)
-         VALUES ($1, $2::date, $3, $4, $5) RETURNING *`,
+        `INSERT INTO spatial_planning.committee_meeting (title, meeting_date, location, notes, quorum, created_by)
+         VALUES ($1, $2::date, $3, $4, $5, $6) RETURNING *`,
         [b.title, b.meeting_date, isStr(b.location, 160) ? b.location : null,
-         isStr(b.notes, 4096) ? b.notes : null, request.user.id],
+         isStr(b.notes, 4096) ? b.notes : null, quorum, request.user.id],
       )
       return reply.code(201).send({ success: true, data: rows[0] })
     } catch (err) {
@@ -2181,9 +2225,13 @@ async function developmentManagementRoutes(fastify) {
     const status = request.query?.status
     const { rows } = await pg.query(
       `SELECT m.*,
-              (SELECT COUNT(*) FROM spatial_planning.agenda_item a WHERE a.meeting_id = m.id) AS item_count
+              (SELECT COUNT(*) FROM spatial_planning.agenda_item a
+                WHERE a.meeting_id = m.id AND a.deleted_at IS NULL) AS item_count,
+              (SELECT COUNT(*) FROM spatial_planning.meeting_attendance att
+                WHERE att.meeting_id = m.id AND att.status = 'present') AS present_count
          FROM spatial_planning.committee_meeting m
         WHERE ($1::text IS NULL OR m.status = $1)
+          AND m.deleted_at IS NULL
         ORDER BY m.meeting_date DESC
         LIMIT 100`,
       [typeof status === 'string' ? status : null],
@@ -2222,7 +2270,7 @@ async function developmentManagementRoutes(fastify) {
               p.applicant_name, p.development_type, p.status AS permit_status
          FROM spatial_planning.agenda_item a
          JOIN spatial_planning.permit_application p ON p.id = a.permit_app_id
-        WHERE a.meeting_id = $1
+        WHERE a.meeting_id = $1 AND a.deleted_at IS NULL
         ORDER BY a.item_order ASC`,
       [request.params.id],
     )
@@ -2236,13 +2284,37 @@ async function developmentManagementRoutes(fastify) {
     if (b.outcome !== undefined && !VALID.includes(b.outcome)) {
       return reply.code(400).send({ success: false, error: 'bad_outcome' })
     }
+    const recordsResolution = b.outcome !== undefined && b.outcome !== 'pending'
     try {
+      // Quorum gate (H2): a resolution is only valid if the meeting was quorate.
+      // When the meeting has a quorum set, require present attendance >= quorum
+      // before a non-pending outcome may be recorded.
+      if (recordsResolution) {
+        const q = await pg.query(
+          `SELECT m.id AS meeting_id, m.quorum,
+                  (SELECT COUNT(*) FROM spatial_planning.meeting_attendance att
+                    WHERE att.meeting_id = m.id AND att.status = 'present') AS present_count
+             FROM spatial_planning.agenda_item a
+             JOIN spatial_planning.committee_meeting m ON m.id = a.meeting_id
+            WHERE a.id = $1 AND a.deleted_at IS NULL AND m.deleted_at IS NULL`,
+          [request.params.aid],
+        )
+        if (!q.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
+        const { quorum, present_count } = q.rows[0]
+        if (quorum != null && Number(present_count) < Number(quorum)) {
+          return reply.code(409).send({
+            success: false, error: 'quorum_not_met',
+            message: `Quorum not met: ${present_count} present, ${quorum} required. Record attendance first.`,
+            present: Number(present_count), quorum: Number(quorum),
+          })
+        }
+      }
       const { rows } = await pg.query(
         `UPDATE spatial_planning.agenda_item
             SET outcome    = COALESCE($2, outcome),
                 resolution = COALESCE($3, resolution),
                 heard_at   = CASE WHEN $2 IS NOT NULL AND $2 <> 'pending' THEN NOW() ELSE heard_at END
-          WHERE id = $1
+          WHERE id = $1 AND deleted_at IS NULL
           RETURNING *`,
         [request.params.aid, b.outcome ?? null, isStr(b.resolution, 4096) ? b.resolution : null],
       )
@@ -2271,11 +2343,117 @@ async function developmentManagementRoutes(fastify) {
               m.id AS meeting_id, m.title, m.meeting_date, m.location, m.status AS meeting_status
          FROM spatial_planning.agenda_item a
          JOIN spatial_planning.committee_meeting m ON m.id = a.meeting_id
-        WHERE a.permit_app_id = $1
+        WHERE a.permit_app_id = $1 AND a.deleted_at IS NULL AND m.deleted_at IS NULL
         ORDER BY m.meeting_date DESC`,
       [request.params.id],
     )
     return reply.send({ success: true, data: rows })
+  })
+
+  // ── Committee roster (migration 104) ────────────────────────────────
+  fastify.get('/committee-members', { preHandler: requireRole(fastify, STAFF_ROLES) }, async (request, reply) => {
+    const includeInactive = request.query?.all === 'true'
+    const { rows } = await pg.query(
+      `SELECT id, full_name, title, user_id, active, created_at
+         FROM spatial_planning.committee_member
+        WHERE ($1::bool OR active = TRUE)
+        ORDER BY active DESC, full_name ASC`,
+      [includeInactive],
+    )
+    return reply.send({ success: true, data: rows })
+  })
+
+  fastify.post('/committee-members', { preHandler: requireRole(fastify, SCHEDULERS) }, async (request, reply) => {
+    const b = request.body || {}
+    if (!isStr(b.full_name, 160)) return reply.code(400).send({ success: false, error: 'full_name required' })
+    try {
+      const { rows } = await pg.query(
+        `INSERT INTO spatial_planning.committee_member (full_name, title, user_id, created_by)
+         VALUES ($1, $2, $3, $4) RETURNING *`,
+        [b.full_name, isStr(b.title, 120) ? b.title : null,
+         isUuid(b.user_id) ? b.user_id : null, request.user.id],
+      )
+      return reply.code(201).send({ success: true, data: rows[0] })
+    } catch (err) {
+      request.log.error({ err }, 'create committee member failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    }
+  })
+
+  // Soft-retire a member (active=false). Preserves attendance history.
+  fastify.delete('/committee-members/:id', { preHandler: requireRole(fastify, SCHEDULERS) }, async (request, reply) => {
+    if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
+    const { rowCount } = await pg.query(
+      `UPDATE spatial_planning.committee_member SET active = FALSE, updated_at = NOW() WHERE id = $1 AND active = TRUE`,
+      [request.params.id],
+    )
+    if (!rowCount) return reply.code(404).send({ success: false, error: 'not_found' })
+    return reply.send({ success: true })
+  })
+
+  // ── Attendance (migration 104) ──────────────────────────────────────
+  fastify.get('/committee-meetings/:id/attendance', { preHandler: requireRole(fastify, STAFF_ROLES) }, async (request, reply) => {
+    if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
+    const { rows } = await pg.query(
+      `SELECT att.id, att.member_id, att.status, att.recorded_at,
+              mem.full_name, mem.title
+         FROM spatial_planning.meeting_attendance att
+         JOIN spatial_planning.committee_member mem ON mem.id = att.member_id
+        WHERE att.meeting_id = $1
+        ORDER BY mem.full_name ASC`,
+      [request.params.id],
+    )
+    return reply.send({ success: true, data: rows })
+  })
+
+  // Upsert one member's attendance for a meeting (present/apology/absent).
+  fastify.post('/committee-meetings/:id/attendance', { preHandler: requireRole(fastify, SCHEDULERS) }, async (request, reply) => {
+    if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
+    const b = request.body || {}
+    if (!isUuid(b.member_id)) return reply.code(400).send({ success: false, error: 'member_id required' })
+    const status = ['present', 'apology', 'absent'].includes(b.status) ? b.status : 'present'
+    try {
+      const { rows } = await pg.query(
+        `INSERT INTO spatial_planning.meeting_attendance (meeting_id, member_id, status, recorded_by)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (meeting_id, member_id)
+           DO UPDATE SET status = EXCLUDED.status, recorded_by = EXCLUDED.recorded_by, recorded_at = NOW()
+         RETURNING *`,
+        [request.params.id, b.member_id, status, request.user.id],
+      )
+      return reply.code(201).send({ success: true, data: rows[0] })
+    } catch (err) {
+      if (err.code === '23503') return reply.code(404).send({ success: false, error: 'meeting_or_member_not_found' })
+      request.log.error({ err }, 'record attendance failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    }
+  })
+
+  // ── Soft-delete a meeting / remove an agenda item (migration 104) ───
+  fastify.delete('/committee-meetings/:id', { preHandler: requireRole(fastify, SCHEDULERS) }, async (request, reply) => {
+    if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
+    const { rowCount } = await pg.query(
+      `UPDATE spatial_planning.committee_meeting
+          SET deleted_at = NOW(), deleted_by = $2, updated_at = NOW()
+        WHERE id = $1 AND deleted_at IS NULL`,
+      [request.params.id, request.user.id],
+    )
+    if (!rowCount) return reply.code(404).send({ success: false, error: 'not_found' })
+    return reply.send({ success: true })
+  })
+
+  fastify.delete('/agenda-items/:aid', { preHandler: requireRole(fastify, SCHEDULERS) }, async (request, reply) => {
+    if (!isUuid(request.params.aid)) return reply.code(400).send({ success: false, error: 'bad_id' })
+    const { rows } = await pg.query(
+      `UPDATE spatial_planning.agenda_item
+          SET deleted_at = NOW(), deleted_by = $2
+        WHERE id = $1 AND deleted_at IS NULL
+        RETURNING permit_app_id`,
+      [request.params.aid, request.user.id],
+    )
+    if (!rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
+    await logEvent(rows[0].permit_app_id, 'hearing_unscheduled', request, { agenda_item_id: request.params.aid })
+    return reply.send({ success: true })
   })
 }
 
