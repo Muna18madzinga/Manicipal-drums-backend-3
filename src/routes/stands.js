@@ -280,6 +280,7 @@ async function standsRoutes(fastify) {
     } catch (err) {
       if (err.code === '23505') return reply.code(409).send({ success: false, error: 'stand_number already exists in this ward' })
       if (err.code === '22023') return reply.code(422).send({ success: false, error: 'invalid_geometry', message: err.message })
+      if (err.code === '23P01') return reply.code(409).send({ success: false, error: 'stand_overlap', message: err.message })
       request.log.error({ err }, 'create stand failed')
       return reply.code(500).send({ success: false, error: 'internal' })
     }
@@ -328,6 +329,7 @@ async function standsRoutes(fastify) {
       return reply.send({ success: true, data: rows[0] })
     } catch (err) {
       if (err.code === '22023') return reply.code(422).send({ success: false, error: 'invalid_geometry', message: err.message })
+      if (err.code === '23P01') return reply.code(409).send({ success: false, error: 'stand_overlap', message: err.message })
       request.log.error({ err }, 'update stand failed')
       return reply.code(500).send({ success: false, error: 'internal' })
     }
