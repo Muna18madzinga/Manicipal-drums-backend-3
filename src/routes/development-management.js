@@ -49,6 +49,7 @@ const crypto = require('crypto')
 const { requireAuth, requireRole } = require('../middleware/jwtAuth')
 const notifier = require('../services/notifier')
 const { canTransition, allowedTransitions } = require('../config/permitWorkflow')
+const { scanBuffer } = require('../services/malwareScan')
 
 /**
  * Statutory transition gate, shared by every status write. Returns null when
@@ -1988,6 +1989,13 @@ async function developmentManagementRoutes(fastify) {
       return reply.code(500).send({ success: false, error: 'internal' })
     }
     if (!file) return reply.code(400).send({ success: false, error: 'no_file' })
+
+    // Malware scan (H7) before the photo is persisted.
+    const scan = await scanBuffer(file.buffer, { mime: file.mimetype, log: request.log })
+    if (!scan.clean) {
+      request.log.warn({ signature: scan.signature, engine: scan.engine }, 'rejected infected stage photo')
+      return reply.code(422).send({ success: false, error: 'malware_detected', message: 'This file failed a security scan and was not accepted.' })
+    }
 
     const sha256 = crypto.createHash('sha256').update(file.buffer).digest('hex')
     const id = crypto.randomUUID()

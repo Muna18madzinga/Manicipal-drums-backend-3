@@ -24,6 +24,7 @@ const crypto = require('node:crypto')
 
 const { requireAuth, requireRole } = require('../middleware/jwtAuth')
 const idVerifier = require('../services/idVerifier')
+const { scanBuffer } = require('../services/malwareScan')
 
 const DOC_ROOT = process.env.CITIZEN_DOC_ROOT
   ? path.resolve(process.env.CITIZEN_DOC_ROOT)
@@ -116,6 +117,19 @@ async function documentRoutes(fastify) {
       if (!file) return reply.code(400).send({ success: false, error: 'no_file' })
       if (!docKind || !VALID_KINDS.has(docKind)) {
         return reply.code(400).send({ success: false, error: 'bad_kind' })
+      }
+
+      // Malware scan (H7) before the file touches disk or the DB. Uses clamd
+      // when CLAMAV_HOST is set, else a conservative heuristic. An infected
+      // upload is rejected outright and never persisted.
+      const scan = await scanBuffer(file.buffer, { mime: file.mimetype, log: request.log })
+      if (!scan.clean) {
+        request.log.warn({ signature: scan.signature, engine: scan.engine, userId: request.user.id },
+          'rejected infected upload')
+        return reply.code(422).send({
+          success: false, error: 'malware_detected',
+          message: 'This file failed a security scan and was not accepted.',
+        })
       }
 
       const userId = request.user.id

@@ -24,6 +24,7 @@ const crypto = require('node:crypto')
 
 const { requireAuth, requireRole } = require('../middleware/jwtAuth')
 const planReview = require('../services/planReview')
+const { scanBuffer } = require('../services/malwareScan')
 
 const PLAN_ROOT = process.env.PLAN_REVIEW_ROOT
   ? path.resolve(process.env.PLAN_REVIEW_ROOT)
@@ -103,6 +104,14 @@ async function planReviewRoutes(fastify) {
         }
       }
       if (!file) return reply.code(400).send({ success: false, error: 'no_file' })
+
+      // Malware scan (H7) before the plan is persisted. clamd (when configured)
+      // scans all types; the heuristic fallback covers EICAR + executables.
+      const scan = await scanBuffer(file.buffer, { mime: file.mimetype, log: request.log })
+      if (!scan.clean) {
+        request.log.warn({ signature: scan.signature, engine: scan.engine }, 'rejected infected building plan')
+        return reply.code(422).send({ success: false, error: 'malware_detected', message: 'This file failed a security scan and was not accepted.' })
+      }
 
       // Run deterministic checks BEFORE persisting — gives us the
       // sha256 + the kind so we can de-dup and pick the right extension.
