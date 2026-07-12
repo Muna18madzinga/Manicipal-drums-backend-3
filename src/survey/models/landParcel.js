@@ -69,7 +69,7 @@ export default {
       const result = await dbConnection.query(
         `INSERT INTO land_parcels 
          (project_id, stand, designation, geom, status, metadata) 
-         VALUES ($1, $2, $3, ST_SetSRID(ST_GeomFromGeoJSON($4), ${nativeSrid}), $5, $6) 
+         VALUES ($1, $2, $3, spatial_planning.geom_from_geojson_checked($4, ${nativeSrid}), $5, $6)
          RETURNING *, ST_AsGeoJSON(geom)::jsonb as geom`,
         [projectId, stand, designation, JSON.stringify(geom), status || 'draft', metadata ? JSON.stringify(metadata) : null]
       )
@@ -118,7 +118,7 @@ export default {
           if (prjResult.rows.length > 0) updateSrid = getCapeLoSRID(prjResult.rows[0].central_meridian);
         }
         // Store geometry in project's native SRID (NOT forced to Lo 31)
-        updates.push(`geom = ST_SetSRID(ST_GeomFromGeoJSON($${paramIndex++}), ${updateSrid})`);
+        updates.push(`geom = spatial_planning.geom_from_geojson_checked($${paramIndex++}, ${updateSrid})`);
         values.push(JSON.stringify(geom));
       }
       if (owner !== undefined) {
