@@ -265,8 +265,8 @@ async function standsRoutes(fastify) {
             geom, area_sqm, created_by, status)
          VALUES (
            $1, $2, $3, $4, $5, $6, $7, $8, $9,
-           ST_SetSRID(ST_GeomFromGeoJSON($10), 4326),
-           ROUND(ST_Area(ST_SetSRID(ST_GeomFromGeoJSON($10), 4326)::geography)::numeric, 2),
+           spatial_planning.geom_from_geojson_checked($10, 4326),
+           ROUND(ST_Area(spatial_planning.geom_from_geojson_checked($10, 4326)::geography)::numeric, 2),
            $11, 'available'
          )
          RETURNING id, stand_number, ward, status,
@@ -279,6 +279,7 @@ async function standsRoutes(fastify) {
       return reply.code(201).send({ success: true, data: rows[0] })
     } catch (err) {
       if (err.code === '23505') return reply.code(409).send({ success: false, error: 'stand_number already exists in this ward' })
+      if (err.code === '22023') return reply.code(422).send({ success: false, error: 'invalid_geometry', message: err.message })
       request.log.error({ err }, 'create stand failed')
       return reply.code(500).send({ success: false, error: 'internal' })
     }
@@ -312,8 +313,8 @@ async function standsRoutes(fastify) {
         const g = JSON.stringify(geometry)
         params.push(g)
         const n = params.length
-        sets.push(`geom = ST_SetSRID(ST_GeomFromGeoJSON($${n}), 4326)`)
-        sets.push(`area_sqm = ROUND(ST_Area(ST_SetSRID(ST_GeomFromGeoJSON($${n}), 4326)::geography)::numeric, 2)`)
+        sets.push(`geom = spatial_planning.geom_from_geojson_checked($${n}, 4326)`)
+        sets.push(`area_sqm = ROUND(ST_Area(spatial_planning.geom_from_geojson_checked($${n}, 4326)::geography)::numeric, 2)`)
       }
 
       if (sets.length === 1) return reply.code(400).send({ success: false, error: 'no fields to update' })
@@ -326,6 +327,7 @@ async function standsRoutes(fastify) {
       invalidateTileLayer('stands'); emitMapEvent({ layer: 'stands', action: 'updated' })
       return reply.send({ success: true, data: rows[0] })
     } catch (err) {
+      if (err.code === '22023') return reply.code(422).send({ success: false, error: 'invalid_geometry', message: err.message })
       request.log.error({ err }, 'update stand failed')
       return reply.code(500).send({ success: false, error: 'internal' })
     }
