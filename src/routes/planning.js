@@ -95,7 +95,7 @@ async function planningRoutes(fastify) {
            (id, name, source_parcel_id, area_sqm, lot_count, road_length_m, data, geom, revision, created_by, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb,
                  CASE WHEN $8::text IS NULL THEN NULL
-                      ELSE ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($8), 4326)) END,
+                      ELSE ST_Multi(spatial_planning.geom_from_geojson_checked($8, 4326)) END,
                  $9, $10, now())
          ON CONFLICT (id) DO UPDATE SET
            name             = EXCLUDED.name,
@@ -135,6 +135,7 @@ async function planningRoutes(fastify) {
       return reply.send({ data: { id: p.id, lotCount, revision: newRevision } })
     } catch (err) {
       try { await client.query('ROLLBACK') } catch { /* ignore */ }
+      if (err.code === '22023') return reply.code(422).send({ success: false, error: 'invalid_geometry', message: err.message })
       fastify.log.error({ err }, 'planning save failed')
       return reply.code(500).send({ success: false, error: 'save_failed' })
     } finally {

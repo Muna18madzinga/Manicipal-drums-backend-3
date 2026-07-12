@@ -101,13 +101,14 @@ async function gisRoutes(fastify) {
     try {
       const { rows } = await fastify.pg.query(
         `INSERT INTO spatial_planning.gis_feature (layer, props, geom, created_by)
-         VALUES ($1, $2::jsonb, ST_SetSRID(ST_GeomFromGeoJSON($3), 4326), $4)
+         VALUES ($1, $2::jsonb, spatial_planning.geom_from_geojson_checked($3, 4326), $4)
          RETURNING id, created_at`,
         [layer, JSON.stringify(props), JSON.stringify(geometry), actor],
       )
       await logHistory(fastify, { feature_id: rows[0].id, layer, action: 'create', props, geometry, actor })
       return reply.code(201).send({ success: true, id: rows[0].id, created_at: rows[0].created_at })
     } catch (err) {
+      if (err.code === '22023') return reply.code(422).send({ error: 'invalid_geometry', message: err.message })
       fastify.log.error({ err }, 'gis feature insert failed')
       return reply.code(400).send({ error: 'Invalid geometry or insert failed' })
     }
@@ -129,7 +130,7 @@ async function gisRoutes(fastify) {
       const { rows } = await fastify.pg.query(
         `UPDATE spatial_planning.gis_feature
             SET geom = CASE WHEN $2::text IS NULL THEN geom
-                            ELSE ST_SetSRID(ST_GeomFromGeoJSON($2), 4326) END,
+                            ELSE spatial_planning.geom_from_geojson_checked($2, 4326) END,
                 props = COALESCE($3::jsonb, props),
                 updated_at = now()
           WHERE id = $1 AND deleted_at IS NULL
@@ -143,6 +144,7 @@ async function gisRoutes(fastify) {
       })
       return { success: true, id }
     } catch (err) {
+      if (err.code === '22023') return reply.code(422).send({ error: 'invalid_geometry', message: err.message })
       fastify.log.error({ err }, 'gis feature update failed')
       return reply.code(400).send({ error: 'Invalid geometry or update failed' })
     }
@@ -205,9 +207,12 @@ async function gisRoutes(fastify) {
           const geom = f && f.geometry
           if (!geom || !geom.type || !geom.coordinates) continue
           const props = f.properties && typeof f.properties === 'object' ? f.properties : {}
+          // Bulk import of external files (SHP/KML/GeoJSON) may carry minor
+          // invalidities — repair on the way in (allow_repair := true) rather
+          // than failing the whole file; unrepairable geometry still aborts.
           await client.query(
             `INSERT INTO spatial_planning.gis_feature (layer, props, geom, created_by)
-             VALUES ($1, $2::jsonb, ST_SetSRID(ST_GeomFromGeoJSON($3), 4326), $4)`,
+             VALUES ($1, $2::jsonb, spatial_planning.geom_from_geojson_checked($3, 4326, true), $4)`,
             [layer, JSON.stringify(props), JSON.stringify(geom), createdBy],
           )
           inserted++
@@ -217,6 +222,7 @@ async function gisRoutes(fastify) {
         return reply.code(201).send({ success: true, layer, inserted })
       } catch (err) {
         await client.query('ROLLBACK').catch(() => {})
+        if (err.code === '22023') return reply.code(422).send({ error: 'invalid_geometry', message: err.message })
         fastify.log.error({ err }, 'gis import failed')
         return reply.code(400).send({ error: 'Import failed — check the geometry is valid GeoJSON.' })
       } finally {
