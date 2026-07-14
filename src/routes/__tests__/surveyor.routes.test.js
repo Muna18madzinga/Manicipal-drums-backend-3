@@ -108,4 +108,18 @@ describe('Surveyor survey-task workflow', () => {
       auth(citizenToken)).catch(e => e.response)
     expect(err.status).toBe(403)
   })
+
+  test('surveyor cannot reassign to a named colleague (assigner-only, 403)', async () => {
+    const err = await axios.patch(`${BASE}/surveyor/jobs/${taskId}`,
+      { assigned_to: '00000000-0000-4000-8000-000000000000' },
+      auth(surveyorToken)).catch(e => e.response)
+    expect(err.status).toBe(403)
+  })
+
+  test('planner releases the task back to the unclaimed pool (assigned_to null)', async () => {
+    const r = await axios.patch(`${BASE}/surveyor/jobs/${taskId}`,
+      { assigned_to: null, status: 'assigned' }, auth(plannerToken))
+    expect(r.status).toBe(200)
+    expect(r.data.data.assigned_to).toBeNull()
+  })
 })
