@@ -23,79 +23,63 @@ async function landUseManagementRoutes(fastify, { auth }) {
         }
       }
     },
-    preHandler: auth.requireAuth
+    preHandler: auth.requireAuth(fastify)
   }, async (request, reply) => {
     try {
       const { development_category, use_scale, is_active, page = 1, limit = 20 } = request.query;
-      
-      let query = `
-        SELECT 
-          lug.group_id,
-          lug.group_code,
-          lug.description,
-          lug.group_category,
-          lug.development_category,
-          lug.use_scale,
-          lug.notes,
-          lug.is_active,
-          lug.created_at,
-          COUNT(zlc.id) as land_use_controls_count
-        FROM land_use_groups lug
-        LEFT JOIN zone_land_use_controls zlc ON lug.group_id = zlc.land_use_group_id
-        WHERE 1=1
-      `;
-      
-      const params = [];
+
+      // Shared filter WHERE for both the page query and the count query.
+      // is_active arrives as a real boolean (fastify schema coercion).
+      const where = ['1=1'];
       const values = [];
-      let paramIndex = 1;
-      
       if (development_category) {
-        query += ` AND lug.development_category = $${paramIndex++}`;
-        params.push(development_category);
         values.push(development_category);
+        where.push(`lug.development_category = $${values.length}`);
       }
-      
       if (use_scale) {
-        query += ` AND lug.use_scale = $${paramIndex++}`;
-        params.push(use_scale);
         values.push(use_scale);
+        where.push(`lug.use_scale = $${values.length}`);
       }
-      
       if (is_active !== undefined) {
-        query += ` AND lug.is_active = $${paramIndex++}`;
-        params.push(is_active);
-        values.push(is_active === 'true' ? true : false);
+        values.push(is_active);
+        where.push(`lug.is_active = $${values.length}`);
       }
-      
-      query += ` GROUP BY lug.group_id, lug.group_code, lug.description, lug.group_category, lug.development_category, lug.use_scale, lug.notes, lug.is_active, lug.created_at`;
-      query += ` ORDER BY lug.group_category, lug.group_code`;
-      
-      // Add pagination
-      const offset = (page - 1) * limit;
-      query += ` LIMIT $${limit} OFFSET $${offset}`;
-      
-      const result = await pool.query(query, values);
-      
-      const countQuery = `
-        SELECT COUNT(*) as total
-        FROM land_use_groups lug
-        WHERE 1=1
-      `;
-      
-      if (development_category) countQuery += ` AND lug.development_category = $${paramIndex++}`;
-      if (use_scale) countQuery += ` AND lug.use_scale = $${paramIndex++}`;
-      if (is_active !== undefined) countQuery += ` AND lug.is_active = $${paramIndex++}`;
-      
-      const countResult = await pool.query(countQuery, values.slice(0, paramIndex - 1));
-      
+      const whereSql = where.join(' AND ');
+
+      const lim = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 200);
+      const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+      const offset = (pageNum - 1) * lim;
+
+      const result = await pool.query(
+        `SELECT
+           lug.group_id, lug.group_code, lug.description, lug.group_category,
+           lug.development_category, lug.use_scale, lug.notes, lug.is_active,
+           lug.created_at,
+           COUNT(zlc.id) as land_use_controls_count
+         FROM land_use_groups lug
+         LEFT JOIN zone_land_use_controls zlc
+           ON lug.group_id = zlc.land_use_group_id AND zlc.deleted_at IS NULL
+         WHERE ${whereSql}
+         GROUP BY lug.group_id, lug.group_code, lug.description, lug.group_category,
+                  lug.development_category, lug.use_scale, lug.notes, lug.is_active, lug.created_at
+         ORDER BY lug.group_category, lug.group_code
+         LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+        [...values, lim, offset],
+      );
+
+      const countResult = await pool.query(
+        `SELECT COUNT(*) as total FROM land_use_groups lug WHERE ${whereSql}`,
+        values,
+      );
+
       return reply.send({
         success: true,
         data: result.rows,
         pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
+          page: pageNum,
+          limit: lim,
           total: parseInt(countResult.rows[0].total),
-          totalPages: Math.ceil(countResult.rows[0].total / limit)
+          totalPages: Math.ceil(countResult.rows[0].total / lim)
         }
       });
       
@@ -120,7 +104,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
         }
       }
     },
-    preHandler: auth.requireAuth
+    preHandler: auth.requireAuth(fastify)
   }, async (request, reply) => {
     try {
       const { group_code, description, group_category, development_category, use_scale, notes } = request.body;
@@ -160,7 +144,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
         }
       }
     },
-    preHandler: auth.requireAuth
+    preHandler: auth.requireAuth(fastify)
   }, async (request, reply) => {
     try {
       const { id } = request.params;
@@ -195,32 +179,35 @@ async function landUseManagementRoutes(fastify, { auth }) {
     schema: {
       params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } }, required: ['id'] }
     },
-    preHandler: auth.requireAuth
+    preHandler: auth.requireAuth(fastify)
   }, async (request, reply) => {
     try {
       const { id } = request.params;
       
-      // Check if group is being used in zone controls
+      // Check if group is being used in live (non-deleted) zone controls
       const usageCheck = await pool.query(
-        'SELECT COUNT(*) as count FROM zone_land_use_controls WHERE land_use_group_id = $1',
+        'SELECT COUNT(*) as count FROM zone_land_use_controls WHERE land_use_group_id = $1 AND deleted_at IS NULL',
         [id]
       );
-      
+
       if (parseInt(usageCheck.rows[0].count) > 0) {
-        return reply.code(400).send({ 
+        return reply.code(400).send({
           error: 'Cannot delete land use group that is being used in zone controls',
           usage_count: parseInt(usageCheck.rows[0].count)
         });
       }
-      
-      const result = await pool.query(
-        'DELETE FROM land_use_groups WHERE group_id = $1 RETURNING *',
+
+      // Soft delete: land_use_groups already carries is_active, and every
+      // consumer (development-control, zone joins) filters on it. The row
+      // stays recoverable; nothing statutory is destroyed.
+      await pool.query(
+        'UPDATE land_use_groups SET is_active = FALSE WHERE group_id = $1',
         [id]
       );
-      
+
       reply.send({
         success: true,
-        message: 'Land use group deleted successfully'
+        message: 'Land use group deactivated successfully'
       });
       
     } catch (error) {
@@ -245,7 +232,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
         }
       }
     },
-    preHandler: auth.requireAuth
+    preHandler: auth.requireAuth(fastify)
   }, async (request, reply) => {
     try {
       const { zone_type, scale_category, authority, page = 1, limit = 20 } = request.query;
@@ -336,7 +323,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
         }
       }
     },
-    preHandler: auth.requireAuth
+    preHandler: auth.requireAuth(fastify)
   }, async (request, reply) => {
     try {
       const { zone, zone_type, scale_category, authority, zone_description } = request.body;
@@ -378,38 +365,32 @@ async function landUseManagementRoutes(fastify, { auth }) {
     // Temporarily removed: preHandler: auth.requireAuth
   }, async (request, reply) => {
     try {
-      console.log('🎯 CONTROLS ROUTE CALLED');
       const { page = 1, limit = 20 } = request.query;
-      console.log('📄 Request params:', { page, limit });
+      const lim = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 200);
+      const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+      const offset = (pageNum - 1) * lim;
 
-      // Simple query without JOINs first
-      const offset = (page - 1) * limit;
-      console.log('🔍 Executing query with limit:', limit, 'offset:', offset);
-      
       const result = await pool.query(`
         SELECT * FROM zone_land_use_controls
+        WHERE deleted_at IS NULL
         ORDER BY created_at DESC
         LIMIT $1 OFFSET $2
-      `, [limit, offset]);
-      
-      console.log('✅ Query successful, rows returned:', result.rows.length);
+      `, [lim, offset]);
 
-      const countResult = await pool.query('SELECT COUNT(*) as total FROM zone_land_use_controls');
-      console.log('📊 Count query successful, total:', countResult.rows[0].total);
+      const countResult = await pool.query('SELECT COUNT(*) as total FROM zone_land_use_controls WHERE deleted_at IS NULL');
 
       return reply.send({
         success: true,
         data: result.rows,
         pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
+          page: pageNum,
+          limit: lim,
           total: parseInt(countResult.rows[0].total),
-          totalPages: Math.ceil(countResult.rows[0].total / limit)
+          totalPages: Math.ceil(countResult.rows[0].total / lim)
         }
       });
 
     } catch (error) {
-      console.log('❌ CONTROLS ROUTE ERROR:', error.message);
       fastify.log.error('Zone-land use controls query error:', error);
       reply.code(500).send({ error: 'Failed to fetch zone-land use controls' });
     }
@@ -429,7 +410,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
         }
       }
     },
-    preHandler: auth.requireAuth
+    preHandler: auth.requireAuth(fastify)
   }, async (request, reply) => {
     try {
       const { zone_id, land_use_group_id, control_type, authority, conditions } = request.body;
@@ -437,7 +418,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
       
       // Check if this combination already exists
       const existingCheck = await pool.query(
-        'SELECT COUNT(*) as count FROM zone_land_use_controls WHERE zone_id = $1 AND land_use_group_id = $2 AND control_type = $3 AND authority = COALESCE($4, \'default\')',
+        'SELECT COUNT(*) as count FROM zone_land_use_controls WHERE zone_id = $1 AND land_use_group_id = $2 AND control_type = $3 AND authority = COALESCE($4, \'default\') AND deleted_at IS NULL',
         [zone_id, land_use_group_id, control_type, authority]
       );
       
@@ -479,7 +460,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
         }
       }
     },
-    preHandler: auth.requireAuth
+    preHandler: auth.requireAuth(fastify)
   }, async (request, reply) => {
     try {
       const { id } = request.params;
@@ -514,16 +495,17 @@ async function landUseManagementRoutes(fastify, { auth }) {
     schema: {
       params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } }, required: ['id'] }
     },
-    preHandler: auth.requireAuth
+    preHandler: auth.requireAuth(fastify)
   }, async (request, reply) => {
     try {
       const { id } = request.params;
       
-      const result = await pool.query(
-        'DELETE FROM zone_land_use_controls WHERE id = $1 RETURNING *',
-        [id]
+      // Soft delete (migration 103): zoning controls are planning policy records.
+      await pool.query(
+        'UPDATE zone_land_use_controls SET deleted_at = NOW(), deleted_by = $2 WHERE id = $1 AND deleted_at IS NULL',
+        [id, request.user.id]
       );
-      
+
       reply.send({
         success: true,
         message: 'Zone-land use control deleted successfully'
@@ -544,7 +526,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
     schema: {
       params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } }, required: ['id'] }
     },
-    preHandler: auth.requireAuth
+    preHandler: auth.requireAuth(fastify)
   }, async (request, reply) => {
     try {
       const { id } = request.params;

@@ -49,3 +49,6 @@ data/*.gpkg-shm
 data/*.gpkg-wal
 node_modules
 node_modules
+
+# DB dumps + uploads archives (npm run backup) — never commit; may contain real records
+backups/

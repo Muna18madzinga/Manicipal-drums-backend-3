@@ -37,6 +37,7 @@ const crypto = require('node:crypto')
 
 const { requireAuth, requireRole } = require('../middleware/jwtAuth')
 const notifier = require('../services/notifier')
+const { scanBuffer } = require('../services/malwareScan')
 
 // ════════════════════════════════════════════════════════════════════
 // Stage catalogue — Manual 2021, Annexure 12
@@ -461,7 +462,7 @@ async function inspectionRoutes(fastify) {
     )
     const { rows: photos } = await fastify.pg.query(
       `SELECT id, storage_url, mime_type, bytes, width_px, height_px, caption, taken_at, created_at
-       FROM inspection_photos WHERE booking_id = $1 ORDER BY created_at DESC`,
+       FROM inspection_photos WHERE booking_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC`,
       [booking.id],
     )
     return reply.send({
@@ -568,6 +569,13 @@ async function inspectionRoutes(fastify) {
       }
       if (!file) return reply.code(400).send({ success: false, error: 'no_file' })
 
+      // Malware scan (H7) before the photo is persisted.
+      const scan = await scanBuffer(file.buffer, { mime: file.mimetype, log: request.log })
+      if (!scan.clean) {
+        request.log.warn({ signature: scan.signature, engine: scan.engine }, 'rejected infected inspection photo')
+        return reply.code(422).send({ success: false, error: 'malware_detected', message: 'This file failed a security scan and was not accepted.' })
+      }
+
       const sha256 = crypto.createHash('sha256').update(file.buffer).digest('hex')
       const id = crypto.randomUUID()
       const ext = ({
@@ -614,7 +622,7 @@ async function inspectionRoutes(fastify) {
       `SELECT id, storage_url, mime_type, bytes, width_px, height_px,
               caption, taken_at, taken_lng, taken_lat, created_at
        FROM inspection_photos
-       WHERE booking_id = $1
+       WHERE booking_id = $1 AND deleted_at IS NULL
        ORDER BY created_at DESC`,
       [booking.id],
     )
@@ -629,22 +637,15 @@ async function inspectionRoutes(fastify) {
       if (!booking) return
       const { photoId } = request.params
       if (!isUuid(photoId)) return reply.code(400).send({ success: false, error: 'bad_id' })
+      // Soft delete (migration 103): inspection photos are statutory evidence —
+      // the row and the stored file both stay; reads filter deleted_at IS NULL.
       const { rows } = await fastify.pg.query(
-        `DELETE FROM inspection_photos WHERE id = $1 AND booking_id = $2
-         RETURNING storage_url`,
-        [photoId, booking.id],
+        `UPDATE inspection_photos SET deleted_at = NOW(), deleted_by = $3
+         WHERE id = $1 AND booking_id = $2 AND deleted_at IS NULL
+         RETURNING id`,
+        [photoId, booking.id, request.user.id],
       )
-      const removed = rows[0]
-      if (!removed) return reply.code(404).send({ success: false, error: 'not_found' })
-      // Best-effort: also remove the file. Failure to remove must not
-      // poison the response; a periodic prune job catches stragglers.
-      try {
-        const rel = removed.storage_url.replace(/^\/uploads\/inspection-photos\//, '')
-        const abs = path.join(PHOTO_ROOT, rel)
-        if (fsSync.existsSync(abs)) await fs.unlink(abs)
-      } catch (err) {
-        request.log.warn({ err }, 'photo file unlink failed')
-      }
+      if (!rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
       return reply.send({ success: true })
     } catch (err) {
       request.log.error({ err }, 'photo delete failed')

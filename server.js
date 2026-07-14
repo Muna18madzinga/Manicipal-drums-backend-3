@@ -64,10 +64,18 @@ const { spatialRoutes } = require('./src/routes/spatial')
 // Vector tile service — serves zimbabwe.gpkg PostGIS layers as MVT.
 const { tilesRoutes } = require('./src/routes/tiles')
 const { parcelsRoutes } = require('./src/routes/parcels')
+const { statutoryPlansRoutes } = require('./src/routes/statutory-plans')
+// QGIS Desktop plugin sync API (/api/qgis/sync/upload, /health, etc.). This
+// was only wired in the unused src/index.ts entry point, so the plugin's
+// endpoints 404'd on the running server.js. Register it here so the plugin works.
+const { createQGISRoutes } = require('./src/routes/qgis')
 const { gisRoutes } = require('./src/routes/gis')
 const { planningRoutes } = require('./src/routes/planning')
+const { planningSuggestRoutes } = require('./src/routes/planning-suggest')
 const { citizenPortalRoutes } = require('./src/routes/citizen-portal')
 const { surveyorRoutes } = require('./src/routes/surveyor')
+const { surveyorComputeRoutes } = require('./src/routes/surveyorCompute')
+const { controlPointRoutes } = require('./src/routes/controlPoints')
 const { propertyRoutes } = require('./src/routes/properties')
 
 // Intelligent map search: NL queries, stand lookup, POI counts, ward search.
@@ -194,6 +202,13 @@ async function build() {
     credentials: true,
   })
 
+  // Cookie support for httpOnly session cookies (auth.js / jwtAuth.js).
+  // Replaces localStorage token storage — OWASP advises against storing
+  // session/JWT/refresh tokens in localStorage (XSS can read it directly).
+  await server.register(require('@fastify/cookie'), {
+    secret: process.env.COOKIE_SECRET || process.env.JWT_SECRET,
+  })
+
   // Register Compression
   await server.register(require('@fastify/compress'), {
     global: true,
@@ -232,7 +247,14 @@ async function build() {
     throw new Error('[db] DATABASE_URL must be set in production')
   }
   await server.register(require('@fastify/postgres'), {
-    connectionString: databaseUrl || 'postgresql://postgres:postgres@localhost:5432/vungu_master_db_v1'
+    connectionString: databaseUrl || 'postgresql://postgres:postgres@localhost:5432/vungu_master_db_v1',
+    // node-pg defaults to max 10 connections. A cold map load fires dozens
+    // of concurrent ST_AsMVT tile queries across the 24 basemap layers,
+    // which saturated the pool and queued interactive queries (single-
+    // feature popups, auth) past the client's 30 s timeout. 30 connections
+    // lets tile bursts and interactive traffic coexist; Postgres'
+    // max_connections=100 still has headroom for the survey pool (20).
+    max: 30,
   })
 
   // Register Redis when REDIS_URL is set. Used by the MVT tile route as the
@@ -252,11 +274,13 @@ async function build() {
     }
   }
 
-  // Multipart form support — required by the inspection-photo upload
-  // route (and any future file uploads). Hard-cap files at 10 MB.
+  // Multipart form support — required by the inspection-photo upload route
+  // and the Survey Task Manager document/plan uploads (scanned survey plan
+  // PDFs run large, hence the 50 MB cap; files:1 was dropped for the same
+  // reason — survey CSV/document endpoints accept multiple parts).
   const path = require('node:path')
   await server.register(require('@fastify/multipart'), {
-    limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+    limits: { fileSize: 50 * 1024 * 1024 },
   })
 
   // Static serving for uploaded photos. Mounted at /uploads — the same
@@ -283,6 +307,38 @@ async function build() {
   // Required for Zimbabwe municipal compliance (RTCP Act traceability).
   const { auditLogPlugin } = require('./src/middleware/auditLog')
   await server.register(auditLogPlugin)
+
+  // ── OpenAPI / Swagger (H4) ──────────────────────────────────────────
+  // @fastify/swagger was installed but never registered, so no API docs
+  // were served. Registered here — before the route plugins — so it can
+  // collect every route's schema into the generated spec. The interactive
+  // UI is gated: a government deployment should not publish its full API
+  // surface anonymously, so /api/docs is served only outside production
+  // unless ENABLE_API_DOCS=true is set explicitly.
+  await server.register(require('@fastify/swagger'), {
+    openapi: {
+      info: {
+        title: 'Vungu RDC Planning Portal API',
+        description: 'Municipal GIS planning platform — development control, GIS tiles, survey, and citizen services.',
+        version: '2.0.0',
+      },
+      components: {
+        securitySchemes: {
+          // Browser clients authenticate with the httpOnly vungu_at cookie;
+          // the QGIS plugin / integrations use a Bearer API token.
+          cookieAuth: { type: 'apiKey', in: 'cookie', name: 'vungu_at' },
+          bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+        },
+      },
+    },
+  })
+  if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_API_DOCS === 'true') {
+    await server.register(require('@fastify/swagger-ui'), {
+      routePrefix: '/api/docs',
+      uiConfig: { docExpansion: 'list', deepLinking: true },
+    })
+    server.log.info('API docs served at /api/docs')
+  }
 
   // Health check - register first
   server.get('/health', async (request, reply) => {
@@ -341,6 +397,7 @@ async function build() {
     await server.register(standsRoutes,            { prefix: '/api' })
     await server.register(zonesRoutes,             { prefix: '/api' })
     await server.register(planningAssistantRoutes, { prefix: '/api' })
+    await server.register(planningSuggestRoutes,   { prefix: '/api' })
     await server.register(plannerRoutes,           { prefix: '/api' })
     console.log('✅ Stands + Zones + Planning Assistant + Planner routes registered')
   } catch (error) {
@@ -405,8 +462,11 @@ async function build() {
   try {
     await server.register(tilesRoutes, { prefix: '/api' })
     await server.register(parcelsRoutes, { prefix: '/api' })
+    await server.register(statutoryPlansRoutes, { prefix: '/api' })
     await server.register(citizenPortalRoutes, { prefix: '/api' })
     await server.register(surveyorRoutes, { prefix: '/api' })
+    await server.register(surveyorComputeRoutes, { prefix: '/api' })
+    await server.register(controlPointRoutes, { prefix: '/api' })
     await server.register(propertyRoutes, { prefix: '/api' })
     await server.register(gisRoutes, { prefix: '/api' })
     await server.register(planningRoutes, { prefix: '/api' })
@@ -415,12 +475,31 @@ async function build() {
     server.log.error({ err: error }, 'Failed to register tile routes')
   }
 
+  // Survey Task Manager (merged SurveySuite) — ESM plugin, mounted under
+  // /api/survey so its route names never collide with vungu's /api/* set.
+  try {
+    const { default: surveyPlugin } = await import('./src/survey/plugin.js')
+    await server.register(surveyPlugin, { prefix: '/api/survey' })
+    console.log('✅ Survey Task Manager routes registered under /api/survey')
+  } catch (error) {
+    server.log.error({ err: error }, 'Failed to register Survey Task Manager routes')
+    console.error('❌ Failed to register Survey Task Manager routes:', error.message)
+  }
+
   // Register OGC Services Routes (WMS/WFS/WMTS)
   try {
     await server.register(ogcServicesRoutes, { prefix: '/api' })
     console.log('✅ OGC Services routes registered')
   } catch (error) {
     console.error('❌ Failed to register OGC Services routes:', error.message)
+  }
+
+  // Register QGIS Desktop plugin sync API under /api/qgis.
+  try {
+    await server.register(async (s) => { await createQGISRoutes(s) }, { prefix: '/api/qgis' })
+    console.log('✅ QGIS plugin sync routes registered')
+  } catch (error) {
+    console.error('❌ Failed to register QGIS plugin sync routes:', error.message)
   }
 
   // Register Development Control Routes

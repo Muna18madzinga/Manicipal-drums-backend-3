@@ -28,6 +28,7 @@ async function planningRoutes(fastify) {
       const { rows } = await fastify.pg.query(
         `SELECT id, name, source_parcel_id, area_sqm, lot_count, road_length_m, updated_at
            FROM spatial_planning.planning_project
+          WHERE deleted_at IS NULL
           ORDER BY updated_at DESC
           LIMIT 200`,
       )
@@ -42,7 +43,7 @@ async function planningRoutes(fastify) {
   fastify.get('/planning/projects/:id', { preHandler: requireRole(fastify, READERS) }, async (request, reply) => {
     try {
       const { rows } = await fastify.pg.query(
-        `SELECT data, revision FROM spatial_planning.planning_project WHERE id = $1`,
+        `SELECT data, revision FROM spatial_planning.planning_project WHERE id = $1 AND deleted_at IS NULL`,
         [String(request.params.id)],
       )
       if (!rows.length) return reply.code(404).send({ success: false, error: 'not_found' })
@@ -94,7 +95,7 @@ async function planningRoutes(fastify) {
            (id, name, source_parcel_id, area_sqm, lot_count, road_length_m, data, geom, revision, created_by, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb,
                  CASE WHEN $8::text IS NULL THEN NULL
-                      ELSE ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($8), 4326)) END,
+                      ELSE ST_Multi(spatial_planning.geom_from_geojson_checked($8, 4326)) END,
                  $9, $10, now())
          ON CONFLICT (id) DO UPDATE SET
            name             = EXCLUDED.name,
@@ -105,6 +106,8 @@ async function planningRoutes(fastify) {
            data             = EXCLUDED.data,
            geom             = EXCLUDED.geom,
            revision         = EXCLUDED.revision,
+           deleted_at       = NULL,
+           deleted_by       = NULL,
            updated_at       = now()`,
         [
           String(p.id),
@@ -132,6 +135,7 @@ async function planningRoutes(fastify) {
       return reply.send({ data: { id: p.id, lotCount, revision: newRevision } })
     } catch (err) {
       try { await client.query('ROLLBACK') } catch { /* ignore */ }
+      if (err.code === '22023') return reply.code(422).send({ success: false, error: 'invalid_geometry', message: err.message })
       fastify.log.error({ err }, 'planning save failed')
       return reply.code(500).send({ success: false, error: 'save_failed' })
     } finally {
@@ -142,9 +146,13 @@ async function planningRoutes(fastify) {
   // ── delete ───────────────────────────────────────────────────────────────
   fastify.delete('/planning/projects/:id', { preHandler: requireRole(fastify, EDITORS) }, async (request, reply) => {
     try {
+      // Soft delete (migration 103): the snapshot and its revision history stay;
+      // re-saving the same project id resurrects it (upsert clears deleted_at).
       await fastify.pg.query(
-        `DELETE FROM spatial_planning.planning_project WHERE id = $1`,
-        [String(request.params.id)],
+        `UPDATE spatial_planning.planning_project
+            SET deleted_at = NOW(), deleted_by = $2
+          WHERE id = $1 AND deleted_at IS NULL`,
+        [String(request.params.id), request.user?.id != null ? String(request.user.id) : null],
       )
       return reply.send({ data: { ok: true } })
     } catch (err) {
@@ -159,7 +167,7 @@ async function planningRoutes(fastify) {
       const { rows } = await fastify.pg.query(
         `SELECT data->'lots' AS lots
            FROM spatial_planning.planning_project
-          WHERE data->'planningArea'->>'id' = $1
+          WHERE data->'planningArea'->>'id' = $1 AND deleted_at IS NULL
           ORDER BY updated_at DESC
           LIMIT 1`,
         [String(request.params.areaId)],
