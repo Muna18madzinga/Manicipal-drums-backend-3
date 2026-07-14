@@ -15,7 +15,6 @@
  * - QGIS color format parsing (R,G,B,A)
  * - MapLibre GL JS style generation
  * 
- * Author: SurveySuite Development Team
  * Version: 2.0 - Refined Production Release
  */
 

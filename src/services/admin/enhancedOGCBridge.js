@@ -9,7 +9,6 @@
  * - Automatic layer name mapping
  * - Robust fallback mechanisms
  * 
- * Author: SurveySuite Development Team
  * Purpose: Complete QGIS-to-Web styling pipeline
  */
 

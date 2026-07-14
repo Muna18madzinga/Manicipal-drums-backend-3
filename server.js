@@ -475,7 +475,7 @@ async function build() {
     server.log.error({ err: error }, 'Failed to register tile routes')
   }
 
-  // Survey Task Manager (merged SurveySuite) — ESM plugin, mounted under
+  // Survey Task Manager — ESM plugin, mounted under
   // /api/survey so its route names never collide with vungu's /api/* set.
   try {
     const { default: surveyPlugin } = await import('./src/survey/plugin.js')

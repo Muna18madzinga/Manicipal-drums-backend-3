@@ -59,7 +59,7 @@ export default async function spatialRoutes(app) {
           `4. Name: Survey Task Manager - ${project.name}`,
           `5. Host: ${process.env.DB_HOST || 'localhost'}`,
           `6. Port: ${process.env.DB_PORT || 5432}`,
-          `7. Database: ${process.env.DB_NAME || 'survey-suite'}`,
+          ``,
           `8. Username: ${process.env.DB_USER || 'postgres'}`,
           '9. Click "Test Connection"',
           '10. Click "Connect"',

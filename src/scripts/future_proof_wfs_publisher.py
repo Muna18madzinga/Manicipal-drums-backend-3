@@ -11,7 +11,6 @@ Strategy:
 2. Secondary: QGIS Server API approach (modern versions)
 3. Fallback: Traditional PyQGIS approach (legacy versions)
 
-Author: SurveySuite Development Team
 Version: 1.0.0
 Compatible: QGIS 3.x (including 3.44.x)
 """
