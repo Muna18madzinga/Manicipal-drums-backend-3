@@ -56,6 +56,11 @@ CREATE INDEX IF NOT EXISTS idx_survey_document_task ON spatial_planning.survey_d
 
 -- v_survey_task (080) lists columns explicitly rather than st.* — add the
 -- new column here too or loadTask() in src/routes/surveyor.js never sees it.
+-- gauss_lo is appended at the end, not inlined where it reads naturally
+-- next to lng/lat: CREATE OR REPLACE VIEW requires every pre-existing
+-- output column to keep its name AND position, so inserting a new column
+-- ahead of "lng" makes Postgres see that slot's name changing (lng ->
+-- gauss_lo) and reject the migration ("cannot change name of view column").
 CREATE OR REPLACE VIEW spatial_planning.v_survey_task AS
 SELECT
   st.id,
@@ -63,7 +68,6 @@ SELECT
   st.task_type,
   st.stand_number,
   st.suburb_ward,
-  st.gauss_lo,
   ST_X(st.location)    AS lng,
   ST_Y(st.location)    AS lat,
   st.instructions,
@@ -83,7 +87,8 @@ SELECT
   pa.site_plan_url,
   pa.dev_register_no,
   pa.tpd_reference,
-  (SELECT COUNT(*) FROM spatial_planning.survey_finding f WHERE f.survey_task_id = st.id) AS finding_count
+  (SELECT COUNT(*) FROM spatial_planning.survey_finding f WHERE f.survey_task_id = st.id) AS finding_count,
+  st.gauss_lo
 FROM spatial_planning.survey_task st
 LEFT JOIN spatial_planning.permit_application pa ON pa.id = st.permit_app_id;
 
