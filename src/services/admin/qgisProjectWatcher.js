@@ -25,11 +25,13 @@ class QGISProjectWatcher {
   }
 
   getProjectPath() {
-    // Use the same path as ogcServices.js
-    const projectPath = process.platform === 'win32'
+    // Honor QGIS_PROJECT — the same env var the OGC / Ultimate bridges read —
+    // so the watcher and the bridges always point at the same project. Only
+    // fall back to a platform default when the env var is unset.
+    if (process.env.QGIS_PROJECT) return process.env.QGIS_PROJECT
+    return process.platform === 'win32'
       ? 'c:\\mataranyika\\vungu-master-alpha-qgis-server\\qgis-projects\\vungu-docker-minimal.qgs'
       : '/etc/qgisserver/vungu-docker-minimal.qgs'
-    return projectPath
   }
 
   start() {
@@ -39,7 +41,7 @@ class QGISProjectWatcher {
     }
 
     if (!fs.existsSync(this.projectPath)) {
-      console.error(`[Project Watcher] ❌ Project file not found: ${this.projectPath}`)
+      console.log(`[Project Watcher] QGIS project not present (${this.projectPath}) — live symbology watch disabled; layers use stored styles`)
       return
     }
 

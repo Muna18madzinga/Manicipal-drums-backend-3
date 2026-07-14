@@ -102,7 +102,7 @@ async function zonesRoutes(fastify) {
                 lug.development_category, lug.use_scale
          FROM zone_land_use_controls zlc
          JOIN land_use_groups lug ON lug.group_id = zlc.land_use_group_id
-         WHERE zlc.zone_id = $1
+         WHERE zlc.zone_id = $1 AND zlc.deleted_at IS NULL
          ORDER BY zlc.control_type, lug.group_code`,
         [id],
       )
@@ -141,8 +141,8 @@ async function zonesRoutes(fastify) {
             zone_description, ward, geom, area_ha, is_active, created_at, updated_at)
          VALUES (
            $1, $2, $3, $4, $5, $6, $7,
-           ST_SetSRID(ST_GeomFromGeoJSON($8), 4326),
-           ROUND(ST_Area(ST_SetSRID(ST_GeomFromGeoJSON($8), 4326)::geography)::numeric / 10000, 4),
+           spatial_planning.geom_from_geojson_checked($8, 4326),
+           ROUND(ST_Area(spatial_planning.geom_from_geojson_checked($8, 4326)::geography)::numeric / 10000, 4),
            true, NOW(), NOW()
          )
          RETURNING id, zone, zone_type, scale_category, ward`,
@@ -151,6 +151,7 @@ async function zonesRoutes(fastify) {
       )
       return reply.code(201).send({ success: true, data: rows[0] })
     } catch (err) {
+      if (err.code === '22023') return reply.code(422).send({ success: false, error: 'invalid_geometry', message: err.message })
       request.log.error({ err }, 'create zone failed')
       return reply.code(500).send({ success: false, error: 'internal' })
     }
@@ -182,8 +183,8 @@ async function zonesRoutes(fastify) {
         const g = JSON.stringify(geometry)
         params.push(g)
         const n = params.length
-        sets.push(`geom = ST_SetSRID(ST_GeomFromGeoJSON($${n}), 4326)`)
-        sets.push(`area_ha = ROUND(ST_Area(ST_SetSRID(ST_GeomFromGeoJSON($${n}), 4326)::geography)::numeric / 10000, 4)`)
+        sets.push(`geom = spatial_planning.geom_from_geojson_checked($${n}, 4326)`)
+        sets.push(`area_ha = ROUND(ST_Area(spatial_planning.geom_from_geojson_checked($${n}, 4326)::geography)::numeric / 10000, 4)`)
       }
 
       if (sets.length === 1) return reply.code(400).send({ success: false, error: 'no fields to update' })
@@ -196,6 +197,7 @@ async function zonesRoutes(fastify) {
       if (!rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
       return reply.send({ success: true, data: rows[0] })
     } catch (err) {
+      if (err.code === '22023') return reply.code(422).send({ success: false, error: 'invalid_geometry', message: err.message })
       request.log.error({ err }, 'update zone failed')
       return reply.code(500).send({ success: false, error: 'internal' })
     }
@@ -232,7 +234,7 @@ async function zonesRoutes(fastify) {
                 lug.development_category, lug.use_scale
          FROM zone_land_use_controls zlc
          JOIN land_use_groups lug ON lug.group_id = zlc.land_use_group_id
-         WHERE zlc.zone_id = $1
+         WHERE zlc.zone_id = $1 AND zlc.deleted_at IS NULL
          ORDER BY
            CASE zlc.control_type
              WHEN 'permitted'       THEN 1
@@ -270,6 +272,8 @@ async function zonesRoutes(fastify) {
            DO UPDATE SET control_type = EXCLUDED.control_type,
                          authority    = COALESCE(EXCLUDED.authority, zone_land_use_controls.authority),
                          notes        = EXCLUDED.notes,
+                         deleted_at   = NULL,
+                         deleted_by   = NULL,
                          updated_at   = NOW()
          RETURNING id, control_type`,
         [id, landUseGroupId, controlType, authority || 'Vungu RDC', notes || null],
@@ -287,9 +291,13 @@ async function zonesRoutes(fastify) {
   }, async (request, reply) => {
     try {
       const { id, cid } = request.params
+      // Soft delete (migration 103): zoning controls are planning policy records.
+      // Re-adding the same zone/group pair resurrects the row via the upsert above.
       const { rowCount } = await fastify.pg.query(
-        `DELETE FROM zone_land_use_controls WHERE id = $1 AND zone_id = $2`,
-        [cid, id],
+        `UPDATE zone_land_use_controls
+            SET deleted_at = NOW(), deleted_by = $3
+          WHERE id = $1 AND zone_id = $2 AND deleted_at IS NULL`,
+        [cid, id, request.user.id],
       )
       if (rowCount === 0) return reply.code(404).send({ success: false, error: 'not_found' })
       return reply.send({ success: true })

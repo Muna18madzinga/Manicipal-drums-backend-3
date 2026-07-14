@@ -24,6 +24,7 @@ const crypto = require('node:crypto')
 
 const { requireAuth, requireRole } = require('../middleware/jwtAuth')
 const idVerifier = require('../services/idVerifier')
+const { scanBuffer } = require('../services/malwareScan')
 
 const DOC_ROOT = process.env.CITIZEN_DOC_ROOT
   ? path.resolve(process.env.CITIZEN_DOC_ROOT)
@@ -118,13 +119,26 @@ async function documentRoutes(fastify) {
         return reply.code(400).send({ success: false, error: 'bad_kind' })
       }
 
+      // Malware scan (H7) before the file touches disk or the DB. Uses clamd
+      // when CLAMAV_HOST is set, else a conservative heuristic. An infected
+      // upload is rejected outright and never persisted.
+      const scan = await scanBuffer(file.buffer, { mime: file.mimetype, log: request.log })
+      if (!scan.clean) {
+        request.log.warn({ signature: scan.signature, engine: scan.engine, userId: request.user.id },
+          'rejected infected upload')
+        return reply.code(422).send({
+          success: false, error: 'malware_detected',
+          message: 'This file failed a security scan and was not accepted.',
+        })
+      }
+
       const userId = request.user.id
       const sha256 = crypto.createHash('sha256').update(file.buffer).digest('hex')
 
       // Reject duplicate for same user.
       const dupRes = await fastify.pg.query(
         `SELECT id, verification_status FROM citizen_documents
-         WHERE user_id = $1 AND sha256_hex = $2`,
+         WHERE user_id = $1 AND sha256_hex = $2 AND deleted_at IS NULL`,
         [userId, sha256],
       )
       if (dupRes.rows[0]) {
@@ -225,7 +239,7 @@ async function documentRoutes(fastify) {
   fastify.get('/documents/mine', { preHandler: requireAuth(fastify) }, async (request, reply) => {
     try {
       const { rows } = await fastify.pg.query(
-        `SELECT * FROM citizen_documents WHERE user_id = $1 ORDER BY created_at DESC`,
+        `SELECT * FROM citizen_documents WHERE user_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC`,
         [request.user.id],
       )
       return reply.send({ success: true, data: rows.map(docDTO) })
@@ -239,7 +253,7 @@ async function documentRoutes(fastify) {
   fastify.get('/documents/:id', { preHandler: requireAuth(fastify) }, async (request, reply) => {
     try {
       const { rows } = await fastify.pg.query(
-        `SELECT * FROM citizen_documents WHERE id = $1`,
+        `SELECT * FROM citizen_documents WHERE id = $1 AND deleted_at IS NULL`,
         [request.params.id],
       )
       const row = rows[0]
@@ -263,6 +277,7 @@ async function documentRoutes(fastify) {
          FROM citizen_documents cd
          LEFT JOIN users u ON u.id = cd.user_id
          WHERE cd.verification_status IN ('pending', 'under_review')
+           AND cd.deleted_at IS NULL
          ORDER BY cd.created_at ASC
          LIMIT 200`,
       )
@@ -323,7 +338,7 @@ async function documentRoutes(fastify) {
   fastify.delete('/documents/:id', { preHandler: requireAuth(fastify) }, async (request, reply) => {
     try {
       const { rows } = await fastify.pg.query(
-        `SELECT * FROM citizen_documents WHERE id = $1`,
+        `SELECT * FROM citizen_documents WHERE id = $1 AND deleted_at IS NULL`,
         [request.params.id],
       )
       const row = rows[0]
@@ -338,14 +353,12 @@ async function documentRoutes(fastify) {
       if (isOwner && !['pending', 'under_review'].includes(row.verification_status)) {
         return reply.code(409).send({ success: false, error: 'not_deletable' })
       }
-      await fastify.pg.query(`DELETE FROM citizen_documents WHERE id = $1`, [row.id])
-      try {
-        const rel = row.storage_url.replace(/^\/uploads\/citizen-documents\//, '')
-        const abs = path.join(DOC_ROOT, rel)
-        if (fsSync.existsSync(abs)) await fs.unlink(abs)
-      } catch (err) {
-        request.log.warn({ err }, 'doc unlink failed')
-      }
+      // Soft delete (migration 103): the row and the stored file both stay so
+      // the record is recoverable; every read filters deleted_at IS NULL.
+      await fastify.pg.query(
+        `UPDATE citizen_documents SET deleted_at = NOW(), deleted_by = $2 WHERE id = $1`,
+        [row.id, u.id],
+      )
       return reply.send({ success: true })
     } catch (err) {
       request.log.error({ err }, 'doc delete failed')
