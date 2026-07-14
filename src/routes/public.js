@@ -115,6 +115,28 @@ async function publicRoutes(fastify) {
       return reply.code(500).send({ error: 'Failed to fetch statistics' })
     }
   })
+
+  // Portal analytics for the public landing page (HomeView getStats).
+  // Each metric is independently guarded so a table missing in a given
+  // environment degrades to 0 rather than 404/500 — the frontend then
+  // shows "—" ("we never invent numbers"). Returned in the { data } envelope
+  // the frontend unwraps.
+  fastify.get('/admin/analytics', async (_request, reply) => {
+    const count = async (sql) => {
+      try {
+        const { rows } = await fastify.pg.query(sql)
+        return parseInt(rows[0].count, 10) || 0
+      } catch {
+        return 0
+      }
+    }
+    const [layers, places, users] = await Promise.all([
+      count("SELECT COUNT(*) AS count FROM layers WHERE published = true"),
+      count("SELECT COUNT(*) AS count FROM places"),
+      count("SELECT COUNT(*) AS count FROM users WHERE active = true"),
+    ])
+    return { data: { layers, places, downloads: 0, users } }
+  })
 }
 
 module.exports = { publicRoutes }
