@@ -163,6 +163,7 @@ async function surveyorRoutes(fastify) {
       return reply.code(400).send({ success: false, error: 'bad_status' })
     }
     const isSurveyorRole = SURVEYOR.includes(request.user.role)
+    const isAssigner = ASSIGNERS.includes(request.user.role)
     if (!isSurveyorRole) {
       const REVIEW_ONLY = ['accepted', 'returned', 'cancelled']
       if (b.claim === true || (b.status && !REVIEW_ONLY.includes(b.status))) {
@@ -173,16 +174,32 @@ async function surveyorRoutes(fastify) {
     if (b.gauss_lo && !ZONES.includes(Number(b.gauss_lo))) {
       return reply.code(400).send({ success: false, error: 'bad_gauss_lo' })
     }
+    // Reassignment: `assigned_to` uuid hands the task to a named surveyor (an
+    // assigner/supervisor action); `assigned_to: null` releases it back to the
+    // unclaimed pool. A surveyor may only release — not push work onto a named
+    // colleague — mirroring how the survey section reallocates a memo.
+    const reassign = Object.prototype.hasOwnProperty.call(b, 'assigned_to')
+    if (reassign) {
+      if (b.assigned_to !== null && !isUuid(b.assigned_to)) {
+        return reply.code(400).send({ success: false, error: 'bad_assigned_to' })
+      }
+      if (b.assigned_to !== null && !isAssigner) {
+        return reply.code(403).send({ success: false, error: 'reassign_requires_assigner' })
+      }
+    }
     const claim = b.claim === true
     try {
       const { rows } = await pg.query(
         `UPDATE spatial_planning.survey_task
             SET status = COALESCE($2, status),
-                assigned_to = CASE WHEN $3 THEN $4 ELSE assigned_to END,
+                assigned_to = CASE WHEN $3 THEN $4
+                                   WHEN $6 THEN $7::uuid
+                                   ELSE assigned_to END,
                 gauss_lo = COALESCE($5, gauss_lo)
           WHERE id = $1
           RETURNING *`,
-        [task.id, b.status || null, claim, request.user.id, b.gauss_lo ? Number(b.gauss_lo) : null],
+        [task.id, b.status || null, claim, request.user.id, b.gauss_lo ? Number(b.gauss_lo) : null,
+         reassign, reassign ? b.assigned_to : null],
       )
       return reply.send({ success: true, data: rows[0] })
     } catch (err) {
