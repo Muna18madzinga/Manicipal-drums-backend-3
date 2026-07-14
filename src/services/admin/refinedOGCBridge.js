@@ -17,7 +17,6 @@
  * - Multiple fallback mechanisms
  * - Caching for performance
  * 
- * Author: SurveySuite Development Team
  * Version: 2.0 - Refined Production Release
  */
 

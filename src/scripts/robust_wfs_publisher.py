@@ -13,7 +13,6 @@ This is the ULTIMATE solution that provides:
 Strategy: Use proven PyQGIS methods with comprehensive property setting
 and graceful fallbacks for maximum compatibility.
 
-Author: SurveySuite Development Team
 Version: 2.0.0 - Production Ready
 Compatible: QGIS 3.x (3.10 - 3.44+)
 """
