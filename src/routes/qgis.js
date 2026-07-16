@@ -1,5 +1,11 @@
 // QGIS Integration Routes
-// Direct integration with QGIS plugin
+// Push/pull sync between QGIS Desktop (PyQGIS plugin) and the portal.
+// Pushed layers land in real PostGIS tables (prefixed qgis_) and are
+// registered in spatial_layers, so they immediately appear in the portal's
+// dynamic layer catalogue and can be pulled back down by the plugin.
+//
+// All paths here are ABSOLUTE (/api/qgis/..., /api/qgis-plugin/...); the
+// module must be registered WITHOUT a prefix or the routes double-prefix.
 
 const { verifyToken } = require('../middleware/jwtAuth')
 
@@ -25,320 +31,175 @@ async function verifyApiToken(request, reply) {
   }
 }
 
-// QGIS health check endpoint (authenticated)
-async function qgisHealthRoutes(server, options) {
-  server.get('/health', async (request, reply) => {
-    try {
-      const claims = await verifyApiToken(request, reply);
-      if (!claims) return;
-
-      return {
-        success: true,
-        message: 'QGIS API is healthy and authenticated',
-        timestamp: new Date().toISOString(),
-        service: 'vungu-qgis-api'
-      };
-    } catch (error) {
-      return reply.status(500).send({
-        success: false,
-        error: 'Health check failed',
-        message: error.message
-      });
-    }
-  });
+// Strict identifier sanitizer — table and column names built from user input
+// must survive this or the request is rejected. Never interpolate anything
+// else into SQL.
+function sanitizeIdentifier(name) {
+  const s = String(name || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 48)
+  return s && /^[a-z_]/.test(s) ? s : null
 }
 
-// QGIS sync endpoint
-async function qgisSyncUploadRoutes(server, options) {
-  server.post('/sync/upload', async (request, reply) => {
-    try {
-      const claims = await verifyApiToken(request, reply);
-      if (!claims) return;
-      request.user = { id: claims.sub };
+function pgTypeFor(qgisType) {
+  const t = String(qgisType || '').toLowerCase()
+  if (/int|long/.test(t)) return 'BIGINT'
+  if (/double|float|real|decimal|numeric/.test(t)) return 'DOUBLE PRECISION'
+  if (/bool/.test(t)) return 'BOOLEAN'
+  return 'TEXT'
+}
 
-      const { layer_name, crs, features, field_types } = request.body;
-      
-      console.log(`[QGIS] 🔄 Sync upload request for layer: ${layer_name}`);
-      console.log(`[QGIS] 📊 Features: ${features?.length || 0}`);
-      console.log(`[QGIS] 🌐 CRS: ${crs}`);
-      
-      // Validate input
-      if (!layer_name || !features || !Array.isArray(features)) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Invalid input data'
-        });
+function geomTypeOf(features) {
+  const f = features.find(f => f && f.geometry && f.geometry.type)
+  const t = f ? f.geometry.type : 'Polygon'
+  if (/point/i.test(t)) return 'point'
+  if (/line/i.test(t)) return 'line'
+  return 'polygon'
+}
+
+async function createQGISRoutes(server) {
+  // ------------------------------------------------------------
+  // Push: QGIS Desktop -> portal
+  // ------------------------------------------------------------
+  server.post('/api/qgis/sync/upload', async (request, reply) => {
+    const claims = await verifyApiToken(request, reply)
+    if (!claims) return
+
+    const { layer_name, crs, features, field_types, style } = request.body || {}
+    if (!layer_name || !Array.isArray(features)) {
+      return reply.status(400).send({ success: false, error: 'layer_name and features[] are required' })
+    }
+    const base = sanitizeIdentifier(layer_name)
+    if (!base) return reply.status(400).send({ success: false, error: 'Invalid layer name' })
+    // ponytail: pushed layers live in qgis_* staging tables so a push can
+    // never clobber a core table; promote to authoritative via migration.
+    const table = base.startsWith('qgis_') ? base : `qgis_${base}`
+
+    const fields = Object.entries(field_types || {})
+      .map(([orig, t]) => ({ orig, safe: sanitizeIdentifier(orig), type: pgTypeFor(t) }))
+      .filter(f => f.safe && f.safe !== 'id' && f.safe !== 'geom')
+
+    const client = await server.pg.connect()
+    try {
+      await client.query('BEGIN')
+      await client.query(`DROP TABLE IF EXISTS "${table}"`)
+      const colDefs = fields.map(f => `"${f.safe}" ${f.type}`).join(', ')
+      await client.query(
+        `CREATE TABLE "${table}" (id SERIAL PRIMARY KEY${colDefs ? ', ' + colDefs : ''}, geom geometry(Geometry, 4326))`
+      )
+      await client.query(`CREATE INDEX "idx_${table}_geom" ON "${table}" USING GIST (geom)`)
+
+      let inserted = 0
+      for (const f of features) {
+        if (!f || !f.geometry) continue
+        const props = f.properties || {}
+        const cols = ['geom']
+        const params = [JSON.stringify(f.geometry)]
+        const vals = ['ST_SetSRID(ST_GeomFromGeoJSON($1), 4326)']
+        for (const field of fields) {
+          cols.push(`"${field.safe}"`)
+          params.push(props[field.orig] !== undefined ? props[field.orig] : null)
+          vals.push(`$${params.length}`)
+        }
+        await client.query(`INSERT INTO "${table}" (${cols.join(', ')}) VALUES (${vals.join(', ')})`, params)
+        inserted++
       }
-      
-      // Create or update layer in database
-      const layerId = await createOrUpdateLayer(layer_name, crs, field_types, request.user.id);
-      
-      // Process features
-      const processedFeatures = [];
-      for (const feature of features) {
-        const processedFeature = await processFeature(feature, layerId, request.user.id);
-        processedFeatures.push(processedFeature);
-      }
-      
-      // Update layer statistics
-      await updateLayerStatistics(layerId, processedFeatures);
-      
-      console.log(`[QGIS] ✅ Successfully synced ${processedFeatures.length} features to layer ${layer_name}`);
-      
+
+      // Register in the dynamic layer catalogue (delete+insert: table_name
+      // has no unique constraint to upsert against).
+      await client.query('DELETE FROM spatial_layers WHERE table_name = $1', [table])
+      await client.query(
+        `INSERT INTO spatial_layers (table_name, display_name, geometry_type, description, style_config, is_visible)
+         VALUES ($1, $2, $3, $4, $5, true)`,
+        [table, String(layer_name).slice(0, 100), geomTypeOf(features),
+         `Pushed from QGIS Desktop (${crs || 'EPSG:4326'})`, JSON.stringify(style || {})]
+      )
+      await client.query('COMMIT')
+
+      request.log.info(`[QGIS] Synced ${inserted} features into ${table}`)
       return reply.send({
         success: true,
         data: {
-          layer_id: layerId,
-          features_processed: processedFeatures.length,
-          layer_name: layer_name,
+          layer_id: table,
+          features_processed: inserted,
+          layer_name,
           sync_time: new Date().toISOString()
         }
-      });
-      
+      })
     } catch (error) {
-      console.error('[QGIS] ❌ Sync upload failed:', error);
-      return reply.status(500).send({
-        success: false,
-        error: 'Sync upload failed',
-        details: error.message
-      });
-    }
-  });
-}
-
-// QGIS download endpoint
-async function qgisSyncDownloadRoutes(server, options) {
-  server.get('/sync/download/:layerName', async (request, reply) => {
-    try {
-      const { layerName } = request.params;
-      
-      console.log(`[QGIS] 📥 Sync download request for layer: ${layerName}`);
-      
-      // Get layer from database
-      const layer = await getLayerByName(layerName, request.user.id);
-      if (!layer) {
-        return reply.status(404).send({
-          success: false,
-          error: 'Layer not found'
-        });
-      }
-      
-      // Get layer features
-      const features = await getLayerFeatures(layer.id);
-      
-      console.log(`[QGIS] ✅ Successfully downloaded ${features.length} features from layer ${layerName}`);
-      
-      return reply.send({
-        success: true,
-        data: {
-          layer_name: layer.name,
-          crs: layer.crs,
-          field_types: layer.field_types,
-          features: features
-        }
-      });
-      
-    } catch (error) {
-      console.error('[QGIS] ❌ Sync download failed:', error);
-      return reply.status(500).send({
-        success: false,
-        error: 'Sync download failed',
-        details: error.message
-      });
-    }
-  });
-}
-
-// QML batch upload endpoint
-async function qmlBatchUploadRoutes(server, options) {
-  server.post('/qml-templates/batch-upload', async (request, reply) => {
-    try {
-      const { styles } = request.body;
-      
-      console.log(`[QGIS] 🎨 Batch QML upload request: ${styles?.length || 0} styles`);
-      
-      if (!styles || !Array.isArray(styles)) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Invalid styles data'
-        });
-      }
-      
-      const uploadedStyles = [];
-      
-      for (const style of styles) {
-        try {
-          const styleId = await createQMLTemplate(style, request.user.id);
-          uploadedStyles.push({
-            id: styleId,
-            layer_name: style.layer_name,
-            style_name: style.style_name
-          });
-        } catch (error) {
-          console.error(`[QGIS] ❌ Failed to upload style for ${style.layer_name}:`, error);
-        }
-      }
-      
-      console.log(`[QGIS] ✅ Successfully uploaded ${uploadedStyles.length} QML templates`);
-      
-      return reply.send({
-        success: true,
-        data: {
-          uploaded_styles: uploadedStyles,
-          total_requested: styles.length,
-          upload_time: new Date().toISOString()
-        }
-      });
-      
-    } catch (error) {
-      console.error('[QGIS] ❌ Batch QML upload failed:', error);
-      return reply.status(500).send({
-        success: false,
-        error: 'Batch QML upload failed',
-        details: error.message
-      });
-    }
-  });
-}
-
-// QML export endpoint
-async function qmlExportRoutes(server, options) {
-  server.get('/qml-templates/export', async (request, reply) => {
-    try {
-      console.log('[QGIS] 📤 QML export request');
-      
-      // Get all QML templates
-      const templates = await getAllQMLTemplates(request.user.id);
-      
-      console.log(`[QGIS] ✅ Exported ${templates.length} QML templates`);
-      
-      return reply.send({
-        success: true,
-        data: {
-          styles: templates,
-          export_time: new Date().toISOString()
-        }
-      });
-      
-    } catch (error) {
-      console.error('[QGIS] ❌ QML export failed:', error);
-      return reply.status(500).send({
-        success: false,
-        error: 'QML export failed',
-        details: error.message
-      });
-    }
-  });
-}
-
-// QGIS health check
-async function qgisHealthCheckRoutes(server, options) {
-  server.get('/health', async (request, reply) => {
-    try {
-      // Test database connection
-      const dbStatus = await testDatabaseConnection();
-      
-      // Test file system
-      const fsStatus = await testFileSystem();
-      
-      return reply.send({
-        success: true,
-        data: {
-          status: 'healthy',
-          timestamp: new Date().toISOString(),
-          services: {
-            database: dbStatus,
-            filesystem: fsStatus
-          }
-        }
-      });
-      
-    } catch (error) {
-      return reply.status(500).send({
-        success: false,
-        error: 'Health check failed'
-      });
-    }
-  });
-}
-
-// Helper functions
-async function createOrUpdateLayer(layerName, crs, fieldTypes, userId) {
-  // This would integrate with your existing layer system
-  // For now, return a mock layer ID
-  return `layer_${Date.now()}`;
-}
-
-async function processFeature(feature, layerId, userId) {
-  // Process individual feature
-  return {
-    ...feature,
-    layer_id: layerId,
-    created_by: userId,
-    created_at: new Date().toISOString()
-  };
-}
-
-async function updateLayerStatistics(layerId, features) {
-  // Update layer statistics
-  console.log(`[QGIS] 📊 Updated statistics for layer ${layerId}: ${features.length} features`);
-}
-
-async function getLayerByName(layerName, userId) {
-  // Get layer from database
-  return {
-    id: 'mock_layer_id',
-    name: layerName,
-    crs: 'EPSG:4326',
-    field_types: {}
-  };
-}
-
-async function getLayerFeatures(layerId) {
-  // Get features for layer
-  return [];
-}
-
-async function createQMLTemplate(style, userId) {
-  // Create QML template
-  return `qml_${Date.now()}`;
-}
-
-async function getAllQMLTemplates(userId) {
-  // Get all QML templates
-  return [];
-}
-
-async function testDatabaseConnection() {
-  // Test database connection
-  return 'healthy';
-}
-
-async function testFileSystem() {
-  // Test file system access
-  return 'healthy';
-}
-
-// Export the route creators
-async function createQGISRoutes(server) {
-  await qgisSyncUploadRoutes(server);
-  await qgisSyncDownloadRoutes(server);
-  await qmlBatchUploadRoutes(server);
-  await qmlExportRoutes(server);
-  await qgisHealthCheckRoutes(server);
-  
-  // Add QGIS plugin routes that frontend expects
-  server.get('/api/qgis/health', async (request, reply) => {
-    return {
-      success: true,
-      data: {
-        status: 'healthy',
-        timestamp: new Date().toISOString()
-      }
+      await client.query('ROLLBACK').catch(() => {})
+      request.log.error({ err: error }, '[QGIS] Sync upload failed')
+      return reply.status(500).send({ success: false, error: 'Sync upload failed', details: error.message })
+    } finally {
+      client.release()
     }
   })
-  
-  server.get('/api/qgis-plugin/style-sync/status', async (request, reply) => {
+
+  // ------------------------------------------------------------
+  // Pull: portal -> QGIS Desktop
+  // ------------------------------------------------------------
+  server.get('/api/qgis/sync/download/:layerName', async (request, reply) => {
+    const claims = await verifyApiToken(request, reply)
+    if (!claims) return
+
+    const base = sanitizeIdentifier(request.params.layerName)
+    if (!base) return reply.status(400).send({ success: false, error: 'Invalid layer name' })
+
+    try {
+      const { rows: tables } = await server.pg.query(
+        `SELECT table_name FROM information_schema.tables
+         WHERE table_schema = 'public' AND table_name = ANY($1)
+         ORDER BY (table_name = $2) DESC LIMIT 1`,
+        [[base, `qgis_${base}`], base]
+      )
+      if (!tables.length) return reply.status(404).send({ success: false, error: 'Layer not found' })
+      const table = tables[0].table_name
+
+      const { rows: cols } = await server.pg.query(
+        `SELECT column_name, data_type FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = $1
+           AND data_type NOT IN ('geometry', 'geography')`,
+        [table]
+      )
+      const colList = cols.map(c => `"${c.column_name}"`).join(', ')
+      const { rows } = await server.pg.query(
+        `SELECT ${colList ? colList + ',' : ''} ST_AsGeoJSON(ST_Transform(geom, 4326), 8)::json AS geometry
+         FROM "${table}" WHERE geom IS NOT NULL LIMIT 50000`
+      )
+      const features = rows.map((row, i) => {
+        const { geometry, ...properties } = row
+        return { type: 'Feature', id: properties.id !== undefined ? properties.id : i, geometry, properties }
+      })
+
+      request.log.info(`[QGIS] Downloaded ${features.length} features from ${table}`)
+      return reply.send({
+        success: true,
+        data: {
+          layer_name: table,
+          crs: 'EPSG:4326',
+          field_types: Object.fromEntries(cols.map(c => [c.column_name, c.data_type])),
+          features
+        }
+      })
+    } catch (error) {
+      request.log.error({ err: error }, '[QGIS] Sync download failed')
+      return reply.status(500).send({ success: false, error: 'Sync download failed', details: error.message })
+    }
+  })
+
+  // ------------------------------------------------------------
+  // Health + plugin dashboard endpoints (paths the admin UI calls)
+  // ------------------------------------------------------------
+  server.get('/api/qgis/health', async () => {
+    return {
+      success: true,
+      data: { status: 'healthy', timestamp: new Date().toISOString() }
+    }
+  })
+
+  server.get('/api/qgis-plugin/style-sync/status', async () => {
     return {
       success: true,
       status: 'idle',
@@ -346,41 +207,36 @@ async function createQGISRoutes(server) {
       pendingStyles: 0
     }
   })
-  
-  server.post('/api/qgis-plugin/style-sync/force', async (request, reply) => {
+
+  server.post('/api/qgis-plugin/style-sync/force', async () => {
     return {
       success: true,
       message: 'Style sync forced',
       timestamp: new Date().toISOString()
     }
   })
-  
-  server.get('/api/qgis-plugin/metrics', async (request, reply) => {
+
+  server.get('/api/qgis-plugin/metrics', async () => {
     return {
       success: true,
       data: {
-        requestsPerMinute: Math.floor(Math.random() * 100),
-        averageResponseTime: Math.floor(Math.random() * 200) + 'ms',
         uptime: process.uptime(),
         memoryUsage: process.memoryUsage()
       }
     }
   })
-  
-  server.get('/api/qgis-plugin/security/metrics', async (request, reply) => {
+
+  server.get('/api/qgis-plugin/security/metrics', async () => {
     return {
       success: true,
       data: {
-        authenticationAttempts: Math.floor(Math.random() * 50),
-        failedLogins: Math.floor(Math.random() * 5),
-        securityEvents: Math.floor(Math.random() * 10),
         lastSecurityScan: new Date().toISOString()
       }
     }
   })
-  
-  server.post('/api/qgis-plugin/security/audit-log', async (request, reply) => {
-    const { event, severity } = request.body
+
+  server.post('/api/qgis-plugin/security/audit-log', async (request) => {
+    request.log.info({ event: request.body && request.body.event }, '[QGIS] plugin audit event')
     return {
       success: true,
       message: 'Security event logged',
@@ -388,37 +244,24 @@ async function createQGISRoutes(server) {
       timestamp: new Date().toISOString()
     }
   })
-  
+
   server.get('/api/qgis-plugin/download/plugin', async (request, reply) => {
     try {
       const fs = require('fs')
       const path = require('path')
-      
-      // Path to the actual plugin zip file
-      const pluginPath = path.join(__dirname, '../../../vungu-qgis-plugin.zip')
-      
+      // repo root (src/routes -> ../..)
+      const pluginPath = path.join(__dirname, '..', '..', 'vungu-qgis-plugin.zip')
+
       if (!fs.existsSync(pluginPath)) {
-        return reply.status(404).send({
-          success: false,
-          error: 'Plugin file not found'
-        })
+        return reply.status(404).send({ success: false, error: 'Plugin file not found' })
       }
-      
-      // Serve the actual plugin file
-      const pluginBuffer = fs.readFileSync(pluginPath)
-      
+
       reply.header('Content-Type', 'application/zip')
       reply.header('Content-Disposition', 'attachment; filename="vungu-qgis-plugin.zip"')
-      reply.header('Content-Length', pluginBuffer.length)
-      
-      return reply.send(pluginBuffer)
+      return reply.send(fs.createReadStream(pluginPath))
     } catch (error) {
-      console.error('[QGIS] Plugin download error:', error)
-      return reply.status(500).send({
-        success: false,
-        error: 'Plugin download failed',
-        details: error.message
-      })
+      request.log.error({ err: error }, '[QGIS] Plugin download error')
+      return reply.status(500).send({ success: false, error: 'Plugin download failed', details: error.message })
     }
   })
 }

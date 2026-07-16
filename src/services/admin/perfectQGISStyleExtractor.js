@@ -44,11 +44,20 @@ class PerfectQGISStyleExtractor {
     console.log(`[Perfect Style] 📁 Project: ${projectPath}`)
 
     try {
-      // Step 1: Load and parse project file
-      const projectContent = this.loadProjectFile(projectPath)
-      
-      // Step 2: Find layer in project
-      const layerXML = this.findLayerInProject(projectContent, layerName)
+      // Step 1+2: Locate the layer's style XML. A per-layer QML sidecar
+      // (qgis-projects/styles/<layer>.qml — the council's exported
+      // symbology) takes priority over the project file; QML roots contain
+      // <renderer-v2> and <labeling> directly, so downstream parsing is
+      // identical.
+      let layerXML
+      const qmlPath = path.join(path.dirname(projectPath), 'styles', `${layerName}.qml`)
+      if (fs.existsSync(qmlPath)) {
+        console.log(`[Perfect Style] 📄 Using QML sidecar: ${qmlPath}`)
+        layerXML = fs.readFileSync(qmlPath, 'utf-8')
+      } else {
+        const projectContent = this.loadProjectFile(projectPath)
+        layerXML = this.findLayerInProject(projectContent, layerName)
+      }
       
       // Step 3: Extract renderer information
       const qgisStyle = this.extractRenderer(layerXML, layerName)
@@ -757,18 +766,27 @@ class PerfectQGISStyleExtractor {
    */
   extractRanges(rendererContent, symbols) {
     const ranges = []
-    const rangeRegex = /<range[^>]*symbol="([^"]*)"[^>]*lower="([^"]*)"[^>]*upper="([^"]*)"[^>]*label="([^"]*)"[^>]*(?:render="([^"]*)")?[^>]*\/>/gi
-    
+    // Attribute order varies between QGIS versions — extract each one independently
+    const rangeRegex = /<range\s+([^/>]+)\/>/gi
+
     let match
     while ((match = rangeRegex.exec(rendererContent)) !== null) {
-      const [, symbolName, lower, upper, label, render] = match
+      const attrs = match[1]
+      const get = (name) => {
+        const m = attrs.match(new RegExp(`${name}="([^"]*)"`))
+        return m ? m[1] : null
+      }
+      const symbolName = get('symbol')
+      const lower = get('lower')
+      const upper = get('upper')
+      if (symbolName === null || lower === null) continue
       const symbol = symbols.find(s => s.name === symbolName) || this.getDefaultSymbol()
-      
+
       ranges.push({
         lower: parseFloat(lower),
         upper: parseFloat(upper),
-        label,
-        render: render !== 'false',
+        label: get('label') || `${lower} - ${upper}`,
+        render: get('render') !== 'false',
         symbol
       })
     }
@@ -781,19 +799,26 @@ class PerfectQGISStyleExtractor {
    */
   extractRules(rendererContent, symbols) {
     const rules = []
-    const ruleRegex = /<rule[^>]*symbol="([^"]*)"[^>]*(?:filter="([^"]*)")?[^>]*(?:label="([^"]*)")?[^>]*(?:scalemaxdenom="([^"]*)")?[^>]*(?:scalemindenom="([^"]*)")?[^>]*\/>/gi
-    
+    // Attribute order varies between QGIS versions — extract each one independently
+    const ruleRegex = /<rule\s+([^/>]+)\/>/gi
+
     let match
     while ((match = ruleRegex.exec(rendererContent)) !== null) {
-      const [, symbolName, filter, label, scaleMax, scaleMin] = match
+      const attrs = match[1]
+      const get = (name) => {
+        const m = attrs.match(new RegExp(`${name}="([^"]*)"`))
+        return m ? m[1] : null
+      }
+      const symbolName = get('symbol')
+      if (symbolName === null) continue
       const symbol = symbols.find(s => s.name === symbolName) || this.getDefaultSymbol()
-      
+
       rules.push({
         symbol,
-        filter: filter || null,
-        label: label || 'Rule',
-        scaleMaxDenom: scaleMax ? parseInt(scaleMax) : null,
-        scaleMinDenom: scaleMin ? parseInt(scaleMin) : null
+        filter: get('filter'),
+        label: get('label') || 'Rule',
+        scaleMaxDenom: get('scalemaxdenom') ? parseInt(get('scalemaxdenom')) : null,
+        scaleMinDenom: get('scalemindenom') ? parseInt(get('scalemindenom')) : null
       })
     }
 
@@ -913,8 +938,15 @@ class PerfectQGISStyleExtractor {
       strokeLayers: [] // Store multiple line layers for complex outlines
     }
 
-    // Check if this is an outline-only symbol (fill type but only SimpleLine layers)
-    const hasSimpleFill = (symbol.layers || []).some(l => l.class === 'SimpleFill')
+    // Graduated ranges carry numeric bounds instead of a category value
+    if (categoryInfo.lower !== undefined) webSymbol.lower = parseFloat(categoryInfo.lower)
+    if (categoryInfo.upper !== undefined) webSymbol.upper = parseFloat(categoryInfo.upper)
+
+    // Check if this is an outline-only symbol (fill type but only SimpleLine
+    // layers). Pattern and gradient fills ARE fills — without this a hatched
+    // or gradient polygon degrades to a bare outline.
+    const FILL_CLASSES = ['SimpleFill', 'GradientFill', 'LinePatternFill', 'PointPatternFill', 'ShapeburstFill', 'SVGFill']
+    const hasSimpleFill = (symbol.layers || []).some(l => FILL_CLASSES.includes(l.class))
     const hasSimpleLine = (symbol.layers || []).some(l => l.class === 'SimpleLine')
     const isOutlineOnly = !hasSimpleFill && hasSimpleLine && symbol.type === 'fill'
 
@@ -997,17 +1029,63 @@ class PerfectQGISStyleExtractor {
     if (webStyle.symbols.length === 1 || webStyle.rendererType === 'singleSymbol') {
       // Simple style
       maplibreStyle.paint = this.generateSimplePaint(webStyle.symbols[0], maplibreStyle.type)
-      
+
       // For outline-only with multiple line layers, generate additional layers
       if (isOutlineOnly && symbol.strokeLayers && symbol.strokeLayers.length > 1) {
         maplibreStyle.additionalLayers = this.generateMultiLineLayerStyles(symbol.strokeLayers, webStyle.layerName)
       }
+    } else if (webStyle.rendererType === 'graduatedSymbol') {
+      // Graduated ranges: numeric step expression, not a category match
+      maplibreStyle.paint = this.generateGraduatedPaint(webStyle, maplibreStyle.type)
+    } else if (webStyle.rendererType === 'RuleRenderer') {
+      // QGIS rule filters don't translate to MapLibre expressions reliably;
+      // render the primary rule's symbol and let GetLegendGraphic carry the
+      // full legend (the documented pixel-perfect fallback).
+      const primary = webStyle.symbols.find(s => s.render) || webStyle.symbols[0]
+      maplibreStyle.paint = this.generateSimplePaint(primary, maplibreStyle.type)
+      maplibreStyle.metadata['qgis:ruleCount'] = webStyle.symbols.length
     } else {
-      // Data-driven style
+      // Data-driven style (categorized)
       maplibreStyle.paint = this.generateDataDrivenPaint(webStyle, maplibreStyle.type)
     }
 
     return maplibreStyle
+  }
+
+  /**
+   * Graduated renderer -> MapLibre step expression on the numeric attribute.
+   * ["step", input, color0, upper0, color1, upper1, color2, ...]
+   */
+  generateGraduatedPaint(webStyle, layerType) {
+    const attr = (webStyle.attributeName || 'value').toLowerCase()
+    const ranges = webStyle.symbols
+      .filter(s => s.render && Number.isFinite(s.lower))
+      .sort((a, b) => a.lower - b.lower)
+    if (!ranges.length) return this.generateSimplePaint(webStyle.symbols[0], layerType)
+
+    const input = ['to-number', ['get', attr], 0]
+    const colorExpr = ['step', input, this.symbolFillColor(ranges[0])]
+    for (let i = 1; i < ranges.length; i++) {
+      colorExpr.push(ranges[i].lower, this.symbolFillColor(ranges[i]))
+    }
+
+    const first = ranges[0]
+    switch (layerType) {
+      case 'line':
+        return { 'line-color': colorExpr, 'line-width': first.stroke?.width || 2, 'line-opacity': first.stroke?.opacity ?? 1 }
+      case 'circle':
+        return { 'circle-color': colorExpr, 'circle-radius': 6, 'circle-opacity': first.fill?.opacity ?? 0.8 }
+      default:
+        return {
+          'fill-color': colorExpr,
+          'fill-opacity': first.fill?.opacity ?? 0.5,
+          'fill-outline-color': first.stroke?.color || '#2c3e50'
+        }
+    }
+  }
+
+  symbolFillColor(symbol) {
+    return symbol.fill?.color || symbol.fill?.pattern?.color || symbol.fill?.gradient?.color2 || symbol.stroke?.color || '#45B7D1'
   }
 
   /**
@@ -1073,7 +1151,10 @@ class PerfectQGISStyleExtractor {
 
     switch (layerType) {
       case 'fill':
-        paint['fill-color'] = symbol.fill?.color || '#45B7D1'
+        // Pattern/gradient fills flatten to their dominant colour here; the
+        // patterns/legend payload carries the exact symbology for clients
+        // that can render it.
+        paint['fill-color'] = this.symbolFillColor(symbol)
         paint['fill-opacity'] = symbol.fill?.opacity ?? 0.5
         if (symbol.stroke?.color) {
           paint['fill-outline-color'] = symbol.stroke.color
