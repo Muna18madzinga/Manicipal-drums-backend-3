@@ -69,6 +69,9 @@ async function planningRoutes(fastify) {
     // Optimistic-lock base: the revision the client last loaded/saved (null = don't check).
     const baseRevision = Number.isInteger(p.baseRevision) ? p.baseRevision : null
     const status = (p.status && String(p.status)) || 'draft'
+    // Statutory case link (migration 108). Validate shape here; the FK validates existence.
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    const permitAppId = (typeof p.permitAppId === 'string' && UUID_RE.test(p.permitAppId)) ? p.permitAppId : null
 
     const client = await fastify.pg.connect()
     try {
@@ -76,7 +79,7 @@ async function planningRoutes(fastify) {
 
       // Lock the row (if any) and read the authoritative current revision.
       const cur = await client.query(
-        `SELECT revision FROM spatial_planning.planning_project WHERE id = $1 FOR UPDATE`,
+        `SELECT revision, permit_app_id FROM spatial_planning.planning_project WHERE id = $1 FOR UPDATE`,
         [String(p.id)],
       )
       const exists = cur.rows.length > 0
@@ -92,11 +95,11 @@ async function planningRoutes(fastify) {
 
       await client.query(
         `INSERT INTO spatial_planning.planning_project
-           (id, name, source_parcel_id, area_sqm, lot_count, road_length_m, data, geom, revision, created_by, updated_at)
+           (id, name, source_parcel_id, area_sqm, lot_count, road_length_m, data, geom, revision, created_by, permit_app_id, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb,
                  CASE WHEN $8::text IS NULL THEN NULL
                       ELSE ST_Multi(spatial_planning.geom_from_geojson_checked($8, 4326)) END,
-                 $9, $10, now())
+                 $9, $10, $11, now())
          ON CONFLICT (id) DO UPDATE SET
            name             = EXCLUDED.name,
            source_parcel_id = EXCLUDED.source_parcel_id,
@@ -106,6 +109,7 @@ async function planningRoutes(fastify) {
            data             = EXCLUDED.data,
            geom             = EXCLUDED.geom,
            revision         = EXCLUDED.revision,
+           permit_app_id    = COALESCE(EXCLUDED.permit_app_id, planning_project.permit_app_id),
            deleted_at       = NULL,
            deleted_by       = NULL,
            updated_at       = now()`,
@@ -120,6 +124,7 @@ async function planningRoutes(fastify) {
           geom,
           newRevision,
           actor,
+          permitAppId,
         ],
       )
 
@@ -131,11 +136,33 @@ async function planningRoutes(fastify) {
         [String(p.id), newRevision, p.name || 'Untitled subdivision', status, JSON.stringify({ ...p, revision: newRevision }), actor],
       )
 
+      // Statutory hand-off: a submitted revision linked to a permit case writes
+      // the case audit event (migration 082) in the SAME transaction — the
+      // submission and its audit row commit or roll back together.
+      const linkedCase = permitAppId || (exists ? cur.rows[0].permit_app_id : null)
+      if (status === 'submitted' && linkedCase) {
+        await client.query(
+          `INSERT INTO spatial_planning.permit_event
+             (permit_app_id, event_type, actor_id, actor_role, detail)
+           VALUES ($1, 'gis_proposal_submitted', $2, $3, $4::jsonb)`,
+          [linkedCase, request.user?.id || null, request.user?.role || null,
+           JSON.stringify({
+             project_id: String(p.id),
+             name: p.name || 'Untitled subdivision',
+             revision: newRevision,
+             lot_count: lotCount,
+             area_sqm: area.areaSqm != null ? Number(area.areaSqm) : null,
+             road_length_m: roadLen,
+           })],
+        )
+      }
+
       await client.query('COMMIT')
-      return reply.send({ data: { id: p.id, lotCount, revision: newRevision } })
+      return reply.send({ data: { id: p.id, lotCount, revision: newRevision, permitAppId: linkedCase } })
     } catch (err) {
       try { await client.query('ROLLBACK') } catch { /* ignore */ }
       if (err.code === '22023') return reply.code(422).send({ success: false, error: 'invalid_geometry', message: err.message })
+      if (err.code === '23503') return reply.code(422).send({ success: false, error: 'bad_case_link' })
       fastify.log.error({ err }, 'planning save failed')
       return reply.code(500).send({ success: false, error: 'save_failed' })
     } finally {

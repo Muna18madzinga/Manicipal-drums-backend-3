@@ -494,9 +494,11 @@ async function build() {
     console.error('❌ Failed to register OGC Services routes:', error.message)
   }
 
-  // Register QGIS Desktop plugin sync API under /api/qgis.
+  // Register QGIS Desktop plugin sync API. NO prefix: qgis.js declares
+  // absolute /api/qgis/* and /api/qgis-plugin/* paths (a prefix here would
+  // double-prefix them, 404ing the admin dashboard and the PyQGIS plugin).
   try {
-    await server.register(async (s) => { await createQGISRoutes(s) }, { prefix: '/api/qgis' })
+    await server.register(async (s) => { await createQGISRoutes(s) })
     console.log('✅ QGIS plugin sync routes registered')
   } catch (error) {
     console.error('❌ Failed to register QGIS plugin sync routes:', error.message)
