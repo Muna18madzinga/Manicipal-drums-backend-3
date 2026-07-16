@@ -148,6 +148,31 @@ const TEMPLATES = {
     }
   },
 
+  staff_invite({ inviteUrl, role, jobTitle, department, invitedByName, expiresAt }) {
+    const roleLabel = prettyStatus(role)
+    const asWhat = jobTitle ? `${jobTitle} (${roleLabel})` : roleLabel
+    return {
+      subject: `${COUNCIL}: you have been invited to the ${APP_NAME}`,
+      text: [
+        'Hello,',
+        '',
+        `${invitedByName || 'An administrator'} has invited you to join the ${APP_NAME} ` +
+          `as ${asWhat}${department ? `, ${department} department` : ''}.`,
+        '',
+        'To activate your account, open the link below, enter your full name and choose a password:',
+        inviteUrl,
+        '',
+        expiresAt
+          ? `This invitation expires on ${formatDate(expiresAt)} and can be used once.`
+          : 'The link can be used once.',
+        '',
+        'If you were not expecting this invitation, you can safely ignore this email.',
+        '',
+        `— ${COUNCIL}`,
+      ].filter(Boolean).join('\n'),
+    }
+  },
+
   inspection_completed({ applicationId, stageNumber, stageName, passed, notes, name }) {
     const greeting = name ? `Hello ${name},` : 'Hello,'
     const verdict = passed ? 'PASSED' : 'FAILED'
@@ -337,9 +362,32 @@ async function recordApplicationStatusChange(pg, {
   }
 }
 
+/**
+ * Enqueue a staff-invite email. The invite row itself is created by the
+ * caller (POST /auth/invite); this only queues the notification so the
+ * emailWorker delivers it. `inviteUrl` must be absolute so the link works
+ * from an email client.
+ */
+async function enqueueStaffInvite(pg, {
+  email, inviteUrl, role, jobTitle, department, invitedByName, expiresAt,
+}) {
+  const base = TEMPLATES.staff_invite({
+    inviteUrl, role, jobTitle, department, invitedByName, expiresAt,
+  })
+  return enqueue(pg, {
+    email,
+    kind: 'staff_invite',
+    subject: base.subject,
+    text: base.text,
+    html: textToHtml(base.text),
+    payload: { role, inviteUrl },
+  })
+}
+
 module.exports = {
   TEMPLATES,
   enqueue,
   enqueueApplicationReceived,
+  enqueueStaffInvite,
   recordApplicationStatusChange,
 }

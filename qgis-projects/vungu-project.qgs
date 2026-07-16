@@ -1,0 +1,388 @@
+<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>
+<qgis projectname="Vungu RDC Master Plan" version="3.34.0-Prizren" saveUser="planning" saveUserFull="Vungu RDC Planning Department">
+  <homePath path=""/>
+  <title>Vungu RDC Master Plan — Development Control Layers</title>
+  <projectCrs>
+    <spatialrefsys>
+      <authid>EPSG:4326</authid>
+      <description>WGS 84</description>
+    </spatialrefsys>
+  </projectCrs>
+  <layer-tree-group>
+    <layer-tree-layer name="gweru_health_centres" id="gweru_health_centres_demo" checked="Qt::Checked" expanded="1"/>
+    <layer-tree-layer name="gweru_rivers" id="gweru_rivers_demo" checked="Qt::Checked" expanded="1"/>
+    <layer-tree-layer name="proposed_peri_urban_zones" id="proposed_peri_urban_zones_demo" checked="Qt::Checked" expanded="1"/>
+    <layer-tree-layer name="gweru_peri_urban_zone" id="gweru_peri_urban_zone_demo" checked="Qt::Checked" expanded="1"/>
+    <layer-tree-layer name="gweru_rural_farms" id="gweru_rural_farms_demo" checked="Qt::Checked" expanded="1"/>
+    <layer-tree-layer name="gweru_chiefdoms" id="gweru_chiefdoms_demo" checked="Qt::Checked" expanded="1"/>
+    <layer-tree-layer name="gweru_beyond_periurban_zones" id="gweru_beyond_periurban_zones_demo" checked="Qt::Checked" expanded="1"/>
+    <layer-tree-layer name="gweru_rural_planning_boundary" id="gweru_rural_planning_boundary_demo" checked="Qt::Checked" expanded="1"/>
+    <layer-tree-layer name="zimbabwe" id="zimbabwe_demo" checked="Qt::Checked" expanded="1"/>
+  </layer-tree-group>
+  <projectlayers>
+
+    <maplayer type="vector" geometry="Point" refreshOnNotifyEnabled="0" autoRefreshEnabled="0" readOnly="0">
+      <id>gweru_health_centres_demo</id>
+      <datasource>dbname='Vungu_spatial333' host=localhost port=5432 user='postgres' sslmode=disable key='id' srid=4326 type=Point checkPrimaryKeyUnicity='1' table="public"."gweru_health_centres" (geom)</datasource>
+      <layername>gweru_health_centres</layername>
+      <srs><spatialrefsys><authid>EPSG:4326</authid><description>WGS 84</description></spatialrefsys></srs>
+      <provider encoding="UTF-8">postgres</provider>
+      <renderer-v2 type="singleSymbol" symbollevels="0" forceraster="0" enableorderby="0">
+        <symbols>
+          <symbol type="marker" name="0" alpha="1" clip_to_extent="1">
+            <layer pass="0" class="SimpleMarker" locked="0">
+              <prop k="name" v="circle"/>
+              <prop k="color" v="211,47,47,255"/>
+              <prop k="outline_color" v="255,255,255,255"/>
+              <prop k="outline_width" v="0.4"/>
+              <prop k="size" v="2.6"/>
+              <prop k="angle" v="0"/>
+            </layer>
+          </symbol>
+        </symbols>
+      </renderer-v2>
+    </maplayer>
+
+    <maplayer type="vector" geometry="Line" refreshOnNotifyEnabled="0" autoRefreshEnabled="0" readOnly="0">
+      <id>gweru_rivers_demo</id>
+      <datasource>dbname='Vungu_spatial333' host=localhost port=5432 user='postgres' sslmode=disable key='id' srid=4326 type=MultiLineString checkPrimaryKeyUnicity='1' table="public"."gweru_rivers" (geom)</datasource>
+      <layername>gweru_rivers</layername>
+      <srs><spatialrefsys><authid>EPSG:4326</authid><description>WGS 84</description></spatialrefsys></srs>
+      <provider encoding="UTF-8">postgres</provider>
+      <renderer-v2 type="singleSymbol" symbollevels="0" forceraster="0" enableorderby="0">
+        <symbols>
+          <symbol type="line" name="0" alpha="1" clip_to_extent="1">
+            <layer pass="0" class="SimpleLine" locked="0">
+              <prop k="line_color" v="66,133,244,255"/>
+              <prop k="line_width" v="0.6"/>
+              <prop k="line_style" v="solid"/>
+              <prop k="capstyle" v="round"/>
+              <prop k="joinstyle" v="round"/>
+            </layer>
+          </symbol>
+        </symbols>
+      </renderer-v2>
+    </maplayer>
+
+    <maplayer type="vector" geometry="Polygon" refreshOnNotifyEnabled="0" autoRefreshEnabled="0" readOnly="0">
+      <id>proposed_peri_urban_zones_demo</id>
+      <datasource>dbname='Vungu_spatial333' host=localhost port=5432 user='postgres' sslmode=disable key='id' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."proposed_peri_urban_zones" (geom)</datasource>
+      <layername>proposed_peri_urban_zones</layername>
+      <srs><spatialrefsys><authid>EPSG:4326</authid><description>WGS 84</description></spatialrefsys></srs>
+      <provider encoding="UTF-8">postgres</provider>
+      <renderer-v2 type="categorizedSymbol" attr="zone" symbollevels="0" forceraster="0" enableorderby="0">
+        <categories>
+          <category render="true" symbol="0" value="High Density Residential" label="High Density Residential"/>
+          <category render="true" symbol="1" value="Medium Density Residential" label="Medium Density Residential"/>
+          <category render="true" symbol="2" value="Mixed Density Residential" label="Mixed Density Residential"/>
+          <category render="true" symbol="3" value="Low Density Residential" label="Low Density Residential"/>
+          <category render="true" symbol="4" value="Residential Agricultural Plots" label="Residential Agricultural Plots"/>
+          <category render="true" symbol="5" value="Economic Corridor [Mixed Business]" label="Economic Corridor (Mixed Business)"/>
+          <category render="true" symbol="6" value="Light Industry" label="Light Industry"/>
+          <category render="true" symbol="7" value="Institutional" label="Institutional"/>
+          <category render="true" symbol="8" value="Railways Common User Facilities" label="Railways Common User Facilities"/>
+          <category render="true" symbol="9" value="Cemetry" label="Cemetery"/>
+          <category render="true" symbol="10" value="Densification Zone [LDR]" label="Densification Zone (LDR)"/>
+        </categories>
+        <symbols>
+          <symbol type="fill" name="0" alpha="1" clip_to_extent="1">
+            <layer pass="0" class="SimpleFill" locked="0">
+              <prop k="color" v="230,126,34,255"/>
+              <prop k="style" v="solid"/>
+              <prop k="outline_color" v="120,66,18,255"/>
+              <prop k="outline_width" v="0.2"/>
+              <prop k="outline_style" v="solid"/>
+            </layer>
+          </symbol>
+          <symbol type="fill" name="1" alpha="1" clip_to_extent="1">
+            <layer pass="0" class="SimpleFill" locked="0">
+              <prop k="color" v="139,195,74,255"/>
+              <prop k="style" v="solid"/>
+              <prop k="outline_color" v="85,120,45,255"/>
+              <prop k="outline_width" v="0.2"/>
+              <prop k="outline_style" v="solid"/>
+            </layer>
+          </symbol>
+          <symbol type="fill" name="2" alpha="1" clip_to_extent="1">
+            <layer pass="0" class="SimpleFill" locked="0">
+              <prop k="color" v="205,220,57,255"/>
+              <prop k="style" v="solid"/>
+              <prop k="outline_color" v="130,140,36,255"/>
+              <prop k="outline_width" v="0.2"/>
+              <prop k="outline_style" v="solid"/>
+            </layer>
+          </symbol>
+          <symbol type="fill" name="3" alpha="1" clip_to_extent="1">
+            <layer pass="0" class="SimpleFill" locked="0">
+              <prop k="color" v="46,125,50,255"/>
+              <prop k="style" v="solid"/>
+              <prop k="outline_color" v="27,74,30,255"/>
+              <prop k="outline_width" v="0.2"/>
+              <prop k="outline_style" v="solid"/>
+            </layer>
+          </symbol>
+          <symbol type="fill" name="4" alpha="1" clip_to_extent="1">
+            <layer pass="0" class="SimpleFill" locked="0">
+              <prop k="color" v="174,213,129,255"/>
+              <prop k="style" v="solid"/>
+              <prop k="outline_color" v="104,128,77,255"/>
+              <prop k="outline_width" v="0.2"/>
+              <prop k="outline_style" v="solid"/>
+            </layer>
+          </symbol>
+          <symbol type="fill" name="5" alpha="1" clip_to_extent="1">
+            <layer pass="0" class="SimpleFill" locked="0">
+              <prop k="color" v="33,150,243,255"/>
+              <prop k="style" v="solid"/>
+              <prop k="outline_color" v="17,82,133,255"/>
+              <prop k="outline_width" v="0.2"/>
+              <prop k="outline_style" v="solid"/>
+            </layer>
+          </symbol>
+          <symbol type="fill" name="6" alpha="1" clip_to_extent="1">
+            <layer pass="0" class="SimpleFill" locked="0">
+              <prop k="color" v="121,85,72,255"/>
+              <prop k="style" v="solid"/>
+              <prop k="outline_color" v="62,44,37,255"/>
+              <prop k="outline_width" v="0.2"/>
+              <prop k="outline_style" v="solid"/>
+            </layer>
+          </symbol>
+          <symbol type="fill" name="7" alpha="1" clip_to_extent="1">
+            <layer pass="0" class="SimpleFill" locked="0">
+              <prop k="color" v="156,39,176,255"/>
+              <prop k="style" v="solid"/>
+              <prop k="outline_color" v="87,22,98,255"/>
+              <prop k="outline_width" v="0.2"/>
+              <prop k="outline_style" v="solid"/>
+            </layer>
+          </symbol>
+          <symbol type="fill" name="8" alpha="1" clip_to_extent="1">
+            <layer pass="0" class="SimpleFill" locked="0">
+              <prop k="color" v="96,125,139,255"/>
+              <prop k="style" v="solid"/>
+              <prop k="outline_color" v="52,68,76,255"/>
+              <prop k="outline_width" v="0.2"/>
+              <prop k="outline_style" v="solid"/>
+            </layer>
+          </symbol>
+          <symbol type="fill" name="9" alpha="1" clip_to_extent="1">
+            <layer pass="0" class="SimpleFill" locked="0">
+              <prop k="color" v="117,117,117,255"/>
+              <prop k="style" v="solid"/>
+              <prop k="outline_color" v="66,66,66,255"/>
+              <prop k="outline_width" v="0.2"/>
+              <prop k="outline_style" v="solid"/>
+            </layer>
+          </symbol>
+          <symbol type="fill" name="10" alpha="1" clip_to_extent="1">
+            <layer pass="0" class="SimpleFill" locked="0">
+              <prop k="color" v="255,193,7,255"/>
+              <prop k="style" v="solid"/>
+              <prop k="outline_color" v="153,116,4,255"/>
+              <prop k="outline_width" v="0.2"/>
+              <prop k="outline_style" v="solid"/>
+            </layer>
+          </symbol>
+        </symbols>
+      </renderer-v2>
+      <labeling type="simple">
+        <settings calloutType="simple">
+          <text-style fieldName="zone" fontFamily="Segoe UI" fontSize="9" namedStyle="Regular" textColor="50,50,50,255" fontWeight="50" fontItalic="0">
+          </text-style>
+        </settings>
+      </labeling>
+    </maplayer>
+
+    <maplayer type="vector" geometry="Polygon" refreshOnNotifyEnabled="0" autoRefreshEnabled="0" readOnly="0">
+      <id>gweru_peri_urban_zone_demo</id>
+      <datasource>dbname='Vungu_spatial333' host=localhost port=5432 user='postgres' sslmode=disable key='id' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."gweru_peri_urban_zone" (geom)</datasource>
+      <layername>gweru_peri_urban_zone</layername>
+      <srs><spatialrefsys><authid>EPSG:4326</authid><description>WGS 84</description></spatialrefsys></srs>
+      <provider encoding="UTF-8">postgres</provider>
+      <renderer-v2 type="RuleRenderer" symbollevels="0" forceraster="0" enableorderby="0">
+        <rules key="{a1b2c3d4-vungu-rules}">
+          <rule symbol="0" filter="&quot;id&quot; IS NOT NULL" label="Gazetted peri-urban zone"/>
+          <rule symbol="1" filter="ELSE" label="Ungazetted extension"/>
+        </rules>
+        <symbols>
+          <symbol type="fill" name="0" alpha="0.85" clip_to_extent="1">
+            <layer pass="0" class="SimpleFill" locked="0">
+              <prop k="color" v="255,224,130,255"/>
+              <prop k="style" v="solid"/>
+              <prop k="outline_color" v="191,144,0,255"/>
+              <prop k="outline_width" v="0.35"/>
+              <prop k="outline_style" v="solid"/>
+            </layer>
+          </symbol>
+          <symbol type="fill" name="1" alpha="0.85" clip_to_extent="1">
+            <layer pass="0" class="SimpleFill" locked="0">
+              <prop k="color" v="255,241,118,120"/>
+              <prop k="style" v="solid"/>
+              <prop k="outline_color" v="191,144,0,255"/>
+              <prop k="outline_width" v="0.2"/>
+              <prop k="outline_style" v="dash"/>
+            </layer>
+          </symbol>
+        </symbols>
+      </renderer-v2>
+    </maplayer>
+
+    <maplayer type="vector" geometry="Polygon" refreshOnNotifyEnabled="0" autoRefreshEnabled="0" readOnly="0">
+      <id>gweru_rural_farms_demo</id>
+      <datasource>dbname='Vungu_spatial333' host=localhost port=5432 user='postgres' sslmode=disable key='id' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."gweru_rural_farms" (geom)</datasource>
+      <layername>gweru_rural_farms</layername>
+      <srs><spatialrefsys><authid>EPSG:4326</authid><description>WGS 84</description></spatialrefsys></srs>
+      <provider encoding="UTF-8">postgres</provider>
+      <renderer-v2 type="graduatedSymbol" attr="area_ha" symbollevels="0" forceraster="0" enableorderby="0" graduatedMethod="GraduatedColor">
+        <ranges>
+          <range symbol="0" lower="0.000000" upper="500.000000" label="Smallholding (0 - 500 ha)" render="true"/>
+          <range symbol="1" lower="500.000000" upper="2000.000000" label="Small farm (500 - 2 000 ha)" render="true"/>
+          <range symbol="2" lower="2000.000000" upper="10000.000000" label="Medium farm (2 000 - 10 000 ha)" render="true"/>
+          <range symbol="3" lower="10000.000000" upper="500000.000000" label="Large estate (over 10 000 ha)" render="true"/>
+        </ranges>
+        <symbols>
+          <symbol type="fill" name="0" alpha="1" clip_to_extent="1">
+            <layer pass="0" class="SimpleFill" locked="0">
+              <prop k="color" v="255,255,204,255"/>
+              <prop k="style" v="solid"/>
+              <prop k="outline_color" v="140,140,110,255"/>
+              <prop k="outline_width" v="0.15"/>
+              <prop k="outline_style" v="solid"/>
+            </layer>
+          </symbol>
+          <symbol type="fill" name="1" alpha="1" clip_to_extent="1">
+            <layer pass="0" class="SimpleFill" locked="0">
+              <prop k="color" v="194,230,153,255"/>
+              <prop k="style" v="solid"/>
+              <prop k="outline_color" v="120,145,95,255"/>
+              <prop k="outline_width" v="0.15"/>
+              <prop k="outline_style" v="solid"/>
+            </layer>
+          </symbol>
+          <symbol type="fill" name="2" alpha="1" clip_to_extent="1">
+            <layer pass="0" class="SimpleFill" locked="0">
+              <prop k="color" v="120,198,121,255"/>
+              <prop k="style" v="solid"/>
+              <prop k="outline_color" v="70,120,72,255"/>
+              <prop k="outline_width" v="0.15"/>
+              <prop k="outline_style" v="solid"/>
+            </layer>
+          </symbol>
+          <symbol type="fill" name="3" alpha="1" clip_to_extent="1">
+            <layer pass="0" class="SimpleFill" locked="0">
+              <prop k="color" v="35,132,67,255"/>
+              <prop k="style" v="solid"/>
+              <prop k="outline_color" v="20,75,38,255"/>
+              <prop k="outline_width" v="0.15"/>
+              <prop k="outline_style" v="solid"/>
+            </layer>
+          </symbol>
+        </symbols>
+      </renderer-v2>
+      <labeling type="simple">
+        <settings calloutType="simple">
+          <text-style fieldName="name" fontFamily="Segoe UI" fontSize="8" namedStyle="Italic" textColor="60,60,60,255" fontWeight="50" fontItalic="1">
+          </text-style>
+        </settings>
+      </labeling>
+    </maplayer>
+
+    <maplayer type="vector" geometry="Polygon" refreshOnNotifyEnabled="0" autoRefreshEnabled="0" readOnly="0">
+      <id>gweru_chiefdoms_demo</id>
+      <datasource>dbname='Vungu_spatial333' host=localhost port=5432 user='postgres' sslmode=disable key='id' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."gweru_chiefdoms" (geom)</datasource>
+      <layername>gweru_chiefdoms</layername>
+      <srs><spatialrefsys><authid>EPSG:4326</authid><description>WGS 84</description></spatialrefsys></srs>
+      <provider encoding="UTF-8">postgres</provider>
+      <renderer-v2 type="singleSymbol" symbollevels="0" forceraster="0" enableorderby="0">
+        <symbols>
+          <symbol type="fill" name="0" alpha="1" clip_to_extent="1">
+            <layer pass="0" class="LinePatternFill" locked="0">
+              <prop k="angle" v="45"/>
+              <prop k="distance" v="3"/>
+              <prop k="line_width" v="0.4"/>
+              <prop k="color" v="141,110,99,255"/>
+            </layer>
+            <layer pass="1" class="SimpleLine" locked="0">
+              <prop k="line_color" v="93,64,55,255"/>
+              <prop k="line_width" v="0.5"/>
+              <prop k="line_style" v="dash_dot"/>
+              <prop k="joinstyle" v="bevel"/>
+            </layer>
+          </symbol>
+        </symbols>
+      </renderer-v2>
+    </maplayer>
+
+    <maplayer type="vector" geometry="Polygon" refreshOnNotifyEnabled="0" autoRefreshEnabled="0" readOnly="0">
+      <id>gweru_beyond_periurban_zones_demo</id>
+      <datasource>dbname='Vungu_spatial333' host=localhost port=5432 user='postgres' sslmode=disable key='id' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."gweru_beyond_periurban_zones" (geom)</datasource>
+      <layername>gweru_beyond_periurban_zones</layername>
+      <srs><spatialrefsys><authid>EPSG:4326</authid><description>WGS 84</description></spatialrefsys></srs>
+      <provider encoding="UTF-8">postgres</provider>
+      <renderer-v2 type="singleSymbol" symbollevels="0" forceraster="0" enableorderby="0">
+        <symbols>
+          <symbol type="fill" name="0" alpha="0.9" clip_to_extent="1">
+            <layer pass="0" class="GradientFill" locked="0">
+              <prop k="gradient_type" v="linear"/>
+              <prop k="type" v="0"/>
+              <prop k="spread" v="pad"/>
+              <prop k="color1" v="255,236,179,255"/>
+              <prop k="color2" v="255,183,77,255"/>
+              <prop k="reference_point1" v="0,0"/>
+              <prop k="reference_point2" v="1,1"/>
+            </layer>
+            <layer pass="1" class="SimpleLine" locked="0">
+              <prop k="line_color" v="230,145,56,255"/>
+              <prop k="line_width" v="0.25"/>
+              <prop k="line_style" v="solid"/>
+            </layer>
+          </symbol>
+        </symbols>
+      </renderer-v2>
+    </maplayer>
+
+    <maplayer type="vector" geometry="Polygon" refreshOnNotifyEnabled="0" autoRefreshEnabled="0" readOnly="0">
+      <id>gweru_rural_planning_boundary_demo</id>
+      <datasource>dbname='Vungu_spatial333' host=localhost port=5432 user='postgres' sslmode=disable key='id' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."gweru_rural_planning_boundary" (geom)</datasource>
+      <layername>gweru_rural_planning_boundary</layername>
+      <srs><spatialrefsys><authid>EPSG:4326</authid><description>WGS 84</description></spatialrefsys></srs>
+      <provider encoding="UTF-8">postgres</provider>
+      <renderer-v2 type="singleSymbol" symbollevels="0" forceraster="0" enableorderby="0">
+        <symbols>
+          <symbol type="fill" name="0" alpha="1" clip_to_extent="1">
+            <layer pass="0" class="SimpleFill" locked="0">
+              <prop k="color" v="0,0,0,0"/>
+              <prop k="style" v="no"/>
+              <prop k="outline_color" v="26,115,232,255"/>
+              <prop k="outline_width" v="0.8"/>
+              <prop k="outline_style" v="solid"/>
+            </layer>
+          </symbol>
+        </symbols>
+      </renderer-v2>
+    </maplayer>
+
+    <maplayer type="vector" geometry="Polygon" refreshOnNotifyEnabled="0" autoRefreshEnabled="0" readOnly="0">
+      <id>zimbabwe_demo</id>
+      <datasource>dbname='Vungu_spatial333' host=localhost port=5432 user='postgres' sslmode=disable key='id' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."zimbabwe" (geom)</datasource>
+      <layername>zimbabwe</layername>
+      <srs><spatialrefsys><authid>EPSG:4326</authid><description>WGS 84</description></spatialrefsys></srs>
+      <provider encoding="UTF-8">postgres</provider>
+      <renderer-v2 type="singleSymbol" symbollevels="0" forceraster="0" enableorderby="0">
+        <symbols>
+          <symbol type="fill" name="0" alpha="1" clip_to_extent="1">
+            <layer pass="0" class="SimpleFill" locked="0">
+              <prop k="color" v="248,246,240,255"/>
+              <prop k="style" v="solid"/>
+              <prop k="outline_color" v="189,189,189,255"/>
+              <prop k="outline_width" v="0.3"/>
+              <prop k="outline_style" v="solid"/>
+            </layer>
+          </symbol>
+        </symbols>
+      </renderer-v2>
+    </maplayer>
+
+  </projectlayers>
+</qgis>

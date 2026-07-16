@@ -25,13 +25,16 @@ class QGISProjectWatcher {
   }
 
   getProjectPath() {
-    // Honor QGIS_PROJECT — the same env var the OGC / Ultimate bridges read —
-    // so the watcher and the bridges always point at the same project. Only
-    // fall back to a platform default when the env var is unset.
-    if (process.env.QGIS_PROJECT) return process.env.QGIS_PROJECT
-    return process.platform === 'win32'
-      ? 'c:\\mataranyika\\vungu-master-alpha-qgis-server\\qgis-projects\\vungu-docker-minimal.qgs'
-      : '/etc/qgisserver/vungu-docker-minimal.qgs'
+    // Watch the LOCAL copy of the project file (QGIS_PROJECT is the
+    // server-side path inside the QGIS Server container, which usually does
+    // not exist on this machine). Resolution mirrors ogcServices.localProjectPath.
+    if (process.env.QGIS_PROJECT_LOCAL) return process.env.QGIS_PROJECT_LOCAL
+    if (process.env.QGIS_PROJECT && fs.existsSync(process.env.QGIS_PROJECT)) return process.env.QGIS_PROJECT
+    const dir = path.join(__dirname, '..', '..', '..', 'qgis-projects')
+    const candidate = path.join(dir, path.basename(process.env.QGIS_PROJECT || 'vungu-project.qgs'))
+    if (fs.existsSync(candidate)) return candidate
+    const projects = fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => /\.(qgs|qgz)$/i.test(f)) : []
+    return projects.length ? path.join(dir, projects[0]) : candidate
   }
 
   start() {

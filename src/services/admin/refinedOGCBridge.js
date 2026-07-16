@@ -35,7 +35,7 @@ class RefinedOGCBridge {
       wfsVersion: config.wfsVersion || '2.0.0',
       wmtsVersion: config.wmtsVersion || '1.0.0',
       project: config.project || process.env.QGIS_PROJECT || '/etc/qgisserver/test-wfs.qgs',
-      projectLocalPath: config.projectLocalPath || 'c:/mataranyika/vungu-master-alpha-qgis-server/qgis-projects',
+      projectLocalPath: config.projectLocalPath || process.env.QGIS_PROJECT_LOCAL_DIR || path.join(__dirname, '..', '..', '..', 'qgis-projects'),
       timeout: config.timeout || 30000,
       maxRetries: config.maxRetries || 3,
       defaultSRS: config.defaultSRS || 'EPSG:4326',
@@ -675,13 +675,14 @@ class RefinedOGCBridge {
    * Get local project path from server path
    */
   getLocalProjectPath() {
-    const serverPath = this.serverConfig.project
+    if (process.env.QGIS_PROJECT_LOCAL) return process.env.QGIS_PROJECT_LOCAL
     const localBase = this.serverConfig.projectLocalPath
-
-    // Extract filename from server path
-    const filename = path.basename(serverPath)
-    
-    return path.join(localBase, filename)
+    const candidate = path.join(localBase, path.basename(this.serverConfig.project))
+    if (fs.existsSync(candidate)) return candidate
+    // Server-side and local filenames can differ; a lone project in the
+    // folder is unambiguous.
+    const projects = fs.existsSync(localBase) ? fs.readdirSync(localBase).filter(f => /\.(qgs|qgz)$/i.test(f)) : []
+    return projects.length ? path.join(localBase, projects[0]) : candidate
   }
 
   /**
@@ -962,9 +963,9 @@ class RefinedOGCBridge {
         schema: this.parseResponse(response.data)
       }
     } catch (error) {
-      // Fallback: Get schema from PostgreSQL
+      // Fallback: Get schema from PostgreSQL (same DATABASE_URL preference as getDirectFeatures)
       const { Pool } = require('pg')
-      const pool = new Pool(this.dbConfig)
+      const pool = new Pool(process.env.DATABASE_URL ? { connectionString: process.env.DATABASE_URL } : this.dbConfig)
 
       try {
         const tableName = this.mapLayerName(layerName)
