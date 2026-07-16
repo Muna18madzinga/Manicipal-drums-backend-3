@@ -3,9 +3,26 @@
  * RESTful API endpoints for WMS, WFS, WMTS, and OGC API access
  */
 
+const path = require('path')
 const { topology } = require('topojson-server')
 const { RefinedOGCBridge } = require('../services/admin/refinedOGCBridge')
 const { startProjectWatcher, getWatcherStatus } = require('../services/admin/qgisProjectWatcher')
+
+// Local path of the QGIS project file used for style extraction and
+// capabilities fallback when QGIS Server is unreachable. Override with
+// QGIS_PROJECT_LOCAL; otherwise the repo's qgis-projects folder, using the
+// same filename as the server-side QGIS_PROJECT path.
+function localProjectPath() {
+  if (process.env.QGIS_PROJECT_LOCAL) return process.env.QGIS_PROJECT_LOCAL
+  const fs = require('fs')
+  const dir = path.join(__dirname, '..', '..', 'qgis-projects')
+  const candidate = path.join(dir, path.basename(process.env.QGIS_PROJECT || 'vungu-project.qgs'))
+  if (fs.existsSync(candidate)) return candidate
+  // Server-side and local filenames can differ; if the folder holds exactly
+  // one project, that is the project.
+  const projects = fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => /\.(qgs|qgz)$/i.test(f)) : []
+  return projects.length ? path.join(dir, projects[0]) : candidate
+}
 
 // Generate a simple placeholder image when QGIS Server is not available
 function generatePlaceholderImage(width, height, layerName) {
@@ -217,10 +234,7 @@ async function ogcServicesRoutes(fastify, options) {
       const { PerfectQGISStyleExtractor } = require('../services/admin/perfectQGISStyleExtractor')
       const extractor = new PerfectQGISStyleExtractor()
       
-      // Get project path - use Windows path for local development
-      const projectPath = process.platform === 'win32' 
-        ? 'c:\\mataranyika\\vungu-master-alpha-qgis-server\\qgis-projects\\vungu-minimal.qgs'
-        : '/etc/qgisserver/vungu-minimal.qgs'
+      const projectPath = localProjectPath()
       
       const layers = extractor.listProjectLayers(projectPath)
       
@@ -265,9 +279,7 @@ async function ogcServicesRoutes(fastify, options) {
           
           const { PerfectQGISStyleExtractor } = require('../services/admin/perfectQGISStyleExtractor')
           const extractor = new PerfectQGISStyleExtractor()
-          const projectPath = process.platform === 'win32' 
-            ? 'c:\\mataranyika\\vungu-master-alpha-qgis-server\\qgis-projects\\vungu-minimal.qgs'
-            : '/etc/qgisserver/vungu-minimal.qgs'
+          const projectPath = localProjectPath()
           
           const projectLayers = extractor.listProjectLayers(projectPath)
           
@@ -303,9 +315,7 @@ async function ogcServicesRoutes(fastify, options) {
         try {
           const { PerfectQGISStyleExtractor } = require('../services/admin/perfectQGISStyleExtractor')
           const extractor = new PerfectQGISStyleExtractor()
-          const projectPath = process.platform === 'win32' 
-            ? 'c:\\mataranyika\\vungu-master-alpha-qgis-server\\qgis-projects\\vungu-minimal.qgs'
-            : '/etc/qgisserver/vungu-minimal.qgs'
+          const projectPath = localProjectPath()
           
           const projectLayers = extractor.listProjectLayers(projectPath)
           
@@ -552,9 +562,7 @@ async function ogcServicesRoutes(fastify, options) {
         try {
           const { PerfectQGISStyleExtractor } = require('../services/admin/perfectQGISStyleExtractor')
           const extractor = new PerfectQGISStyleExtractor()
-          const projectPath = process.platform === 'win32' 
-            ? 'c:\\mataranyika\\vungu-master-alpha-qgis-server\\qgis-projects\\vungu-minimal.qgs'
-            : '/etc/qgisserver/vungu-minimal.qgs'
+          const projectPath = localProjectPath()
           
           const projectLayers = extractor.listProjectLayers(projectPath)
           

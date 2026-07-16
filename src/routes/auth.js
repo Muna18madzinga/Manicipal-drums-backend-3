@@ -38,6 +38,8 @@ const {
   verifyMfaPendingToken,
 } = require('../middleware/jwtAuth')
 
+const notifier = require('../services/notifier')
+
 // Customer-facing registration is pinned to one of these two roles only.
 // Anything else (including 'admin', 'planner', etc.) coming from the body
 // is silently ignored. Internal roles flow exclusively through invites.
@@ -541,6 +543,27 @@ async function authRoutes(fastify) {
       )
       const invite = rows[0]
 
+      // Queue the invite email (outbox → emailWorker → SMTP). The link must be
+      // absolute so it works from an email client. A notifier failure must not
+      // fail the invite — the admin still gets the copyable link below.
+      const appBase = process.env.FRONTEND_URL || 'http://localhost:5174'
+      const absoluteUrl = `${appBase}/invite?token=${invite.token}`
+      let emailQueued = false
+      try {
+        await notifier.enqueueStaffInvite(fastify.pg, {
+          email:         invite.email,
+          inviteUrl:     absoluteUrl,
+          role:          invite.role,
+          jobTitle:      invite.job_title,
+          department:    invite.department,
+          invitedByName: admin.name || admin.full_name || admin.email,
+          expiresAt:     invite.expires_at,
+        })
+        emailQueued = true
+      } catch (err) {
+        request.log.error({ err }, 'invite email enqueue failed')
+      }
+
       return reply.send({
         success: true,
         data: {
@@ -551,6 +574,7 @@ async function authRoutes(fastify) {
           department: invite.department,
           expiresAt: invite.expires_at,
           inviteUrl: `/invite?token=${invite.token}`,
+          emailQueued,
         },
       })
     } catch (err) {
