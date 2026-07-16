@@ -160,7 +160,7 @@ async function createQGISRoutes(server) {
       const { rows: cols } = await server.pg.query(
         `SELECT column_name, data_type FROM information_schema.columns
          WHERE table_schema = 'public' AND table_name = $1
-           AND data_type NOT IN ('geometry', 'geography')`,
+           AND udt_name NOT IN ('geometry', 'geography')`,
         [table]
       )
       const colList = cols.map(c => `"${c.column_name}"`).join(', ')

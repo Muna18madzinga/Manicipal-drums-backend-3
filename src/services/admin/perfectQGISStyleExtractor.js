@@ -271,17 +271,20 @@ class PerfectQGISStyleExtractor {
    * Extract renderer information from layer XML
    */
   extractRenderer(layerXML, layerName) {
-    // Find renderer-v2 element
-    const rendererMatch = layerXML.match(/<renderer-v2[^>]*type="([^"]*)"([^>]*)>(.*?)<\/renderer-v2>/is)
-    
+    // Find renderer-v2 element. Attribute order varies between QGIS
+    // versions (attr= can precede type=), so capture the whole opening tag
+    // and pick attributes out of it individually.
+    const rendererMatch = layerXML.match(/<renderer-v2([^>]*)>(.*?)<\/renderer-v2>/is)
+
     if (!rendererMatch) {
       console.log(`[Perfect Style] ⚠️ No renderer found, using default style`)
       return this.getDefaultStyle(layerName)
     }
 
-    const rendererType = rendererMatch[1]
-    const rendererAttrs = rendererMatch[2]
-    const rendererContent = rendererMatch[3]
+    const rendererAttrs = rendererMatch[1]
+    const typeMatch = rendererAttrs.match(/type="([^"]*)"/)
+    const rendererType = typeMatch ? typeMatch[1] : ''
+    const rendererContent = rendererMatch[2]
 
     console.log(`[Perfect Style] 🔍 Renderer type: ${rendererType}`)
 
@@ -1206,9 +1209,10 @@ class PerfectQGISStyleExtractor {
 
     for (const symbol of webStyle.symbols) {
       if (!symbol.render) continue
-      
-      // Get fill color - check multiple locations (SimpleFill uses fill.color, patterns use fill.pattern.color)
-      const fillColor = symbol.fill?.color || symbol.fill?.pattern?.color || symbol.stroke?.color || '#45B7D1'
+
+      // Get fill color - check multiple locations (SimpleFill uses fill.color,
+      // patterns use fill.pattern.color, point symbols use marker.color)
+      const fillColor = symbol.fill?.color || symbol.fill?.pattern?.color || symbol.marker?.color || symbol.stroke?.color || '#45B7D1'
       
       colorExpr.push(symbol.category)
       colorExpr.push(fillColor)
@@ -1221,6 +1225,12 @@ class PerfectQGISStyleExtractor {
       
       strokeColorExpr.push(symbol.category)
       strokeColorExpr.push(symbol.stroke?.color || '#2c3e50')
+    }
+
+    // All categories unchecked in QGIS → an empty match is invalid MapLibre;
+    // fall back to the first symbol's flat style.
+    if (colorExpr.length === 2) {
+      return this.generateSimplePaint(webStyle.symbols[0] || {}, layerType)
     }
 
     // Add defaults
