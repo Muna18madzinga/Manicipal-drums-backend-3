@@ -20,10 +20,11 @@
  *
  * Environment variables
  * ─────────────────────
- *   PAYNOW_ID            Paynow integration ID  (from paynow.co.zw dashboard)
- *   PAYNOW_KEY           Paynow integration key
- *   PAYNOW_RETURN_URL    URL Paynow redirects to after payment
- *   PAYNOW_RESULT_URL    Webhook URL Paynow POSTs status updates to
+ *   PAYNOW_INTEGRATION_ID   Paynow integration ID  (from paynow.co.zw dashboard)
+ *   PAYNOW_INTEGRATION_KEY  Paynow integration key
+ *   PAYNOW_API_BASE         Gateway base URL (default https://www.paynow.co.zw)
+ *   PAYNOW_RETURN_URL       URL Paynow redirects to after payment
+ *   PAYNOW_RESULT_URL       Webhook URL Paynow POSTs status updates to
  *
  *   ECOCASH_MERCHANT_CODE  EcoCash C2B merchant code (from Econet)
  *   ECOCASH_API_KEY        EcoCash merchant API key
@@ -162,112 +163,127 @@ const manualDriver = {
 //    Integration type: Web (redirect to Paynow hosted checkout)
 // ════════════════════════════════════════════════════════════════════════════
 
-const PAYNOW_INIT_URL = 'https://www.paynow.co.zw/interface/initiatetransaction'
-const PAYNOW_POLL_URL = 'https://www.paynow.co.zw/interface/remotetransaction'
+// Env accessors are functions (not consts) so tests and late-loaded .env
+// files are honoured. Names match .env.example: PAYNOW_INTEGRATION_ID/KEY.
+const PAYNOW_API_BASE = () => process.env.PAYNOW_API_BASE || 'https://www.paynow.co.zw'
+const PAYNOW_ID       = () => process.env.PAYNOW_INTEGRATION_ID
+const PAYNOW_KEY      = () => process.env.PAYNOW_INTEGRATION_KEY
+const PAYNOW_RETURN   = () => process.env.PAYNOW_RETURN_URL
+const PAYNOW_RESULT   = () => process.env.PAYNOW_RESULT_URL
 
-function paynowHash(values, integrationKey) {
-  // Paynow hash: MD5 of all values concatenated + the integration key
-  const str = values.join('') + integrationKey
-  return crypto.createHash('md5').update(str).digest('hex').toUpperCase()
-}
-
-function verifyPaynowHash(params, integrationKey) {
-  const receivedHash = (params.hash || '').toUpperCase()
-  const fields = Object.entries(params)
-    .filter(([k]) => k.toLowerCase() !== 'hash')
-    .map(([, v]) => v)
-  const expected = paynowHash(fields, integrationKey)
-  return crypto.timingSafeEqual(
-    Buffer.from(receivedHash),
-    Buffer.from(expected),
-  )
+// Paynow hash: SHA-512 (uppercase hex) of all field values concatenated, in
+// request order, followed by the integration key. (Not MD5 — a bad merge
+// once regressed this and every real callback failed verification.)
+function paynowHash(fields, integrationKey) {
+  const concat = Object.values(fields).join('') + integrationKey
+  return crypto.createHash('sha512').update(concat, 'utf8').digest('hex').toUpperCase()
 }
 
 const paynowDriver = {
   name: 'paynow',
 
   _cfg() {
-    const id  = process.env.PAYNOW_ID
-    const key = process.env.PAYNOW_KEY
-    if (!id || !key) throw NOT_IMPLEMENTED('paynow')
-    return {
-      id,
-      key,
-      returnUrl: process.env.PAYNOW_RETURN_URL || 'https://spartialiq.com/payments/return',
-      resultUrl: process.env.PAYNOW_RESULT_URL || 'https://spartialiq.com/api/payments/webhook/paynow',
-    }
+    if (!PAYNOW_ID() || !PAYNOW_KEY()) throw NOT_IMPLEMENTED('paynow')
   },
 
+  // Express Checkout: push a USSD prompt straight to the payer's wallet
+  // (ecocash / onemoney / innbucks) — no hosted-checkout redirect. The
+  // returned providerRef IS the Paynow poll URL; pollPayment GETs it.
   async initPayment({ payment }) {
-    const cfg = this._cfg()
-    const ref = `VRDC-${payment.id.slice(0, 12).toUpperCase()}`
+    this._cfg()
+    const wallet = String(payment?.metadata?.wallet || '').toLowerCase()
+    const phone  = String(payment?.metadata?.phone  || '').replace(/^\+/, '')
+    if (!['ecocash', 'onemoney', 'innbucks'].includes(wallet)) {
+      throw Object.assign(new Error('paynow: unsupported wallet'), { code: 'bad_wallet' })
+    }
+    if (!/^263(71|73|77|78|86)\d{7}$/.test(phone)) {
+      throw Object.assign(new Error('paynow: bad phone for wallet'), { code: 'bad_phone' })
+    }
+
+    const amount = payment.wallet_ccy === 'USD'
+      ? Number(payment.amount_usd).toFixed(2)
+      : Number(payment.amount_zwg).toFixed(2)
 
     const fields = {
-      id:             cfg.id,
-      reference:      ref,
-      amount:         Number(payment.amount_usd).toFixed(2),
-      additionalinfo: `Council fee — ${payment.purpose.replace(/_/g, ' ')}`,
-      returnurl:      cfg.returnUrl,
-      resulturl:      cfg.resultUrl,
+      id:             PAYNOW_ID(),
+      reference:      String(payment.id),
+      amount:         amount,
+      additionalinfo: `Vungu RDC application fee ${payment.id}`,
+      returnurl:      PAYNOW_RETURN(),
+      resulturl:      PAYNOW_RESULT(),
+      authemail:      payment.payer_email || '',
+      phone:          phone,
+      method:         wallet,
       status:         'Message',
     }
-    fields.hash = paynowHash(Object.values(fields), cfg.key)
+    fields.hash = paynowHash(fields, PAYNOW_KEY())
 
-    const res = await httpPost(PAYNOW_INIT_URL, fields)
-    if (res.status !== 200) {
-      throw Object.assign(new Error('Paynow initiate failed'), { httpStatus: res.status })
-    }
+    const res    = await httpPost(`${PAYNOW_API_BASE()}/interface/remotetransaction`, fields)
+    const parsed = parsePaynowResponse(res.body)
 
-    const data = parsePaynowResponse(res.body)
-    if (data.status?.toLowerCase() !== 'ok') {
+    if (String(parsed.status || '').toLowerCase() !== 'ok' || !parsed.pollurl) {
       throw Object.assign(
-        new Error(`Paynow rejected: ${data.error || data.status}`),
-        { code: 'gateway_rejected', detail: data },
+        new Error(`paynow init failed: ${parsed.error || parsed.status || res.body}`),
+        { code: 'gateway_rejected', detail: parsed },
       )
     }
 
     return {
-      providerRef:    ref,
-      providerStatus: 'redirected',
-      redirectUrl:    data.browserurl,
-      pollUrl:        data.pollurl,
+      providerRef:    parsed.pollurl,
+      providerStatus: 'sent',
+      redirectUrl:    null,
       ussdCode:       null,
     }
   },
 
   async pollPayment({ payment }) {
-    const cfg     = this._cfg()
-    const pollUrl = payment.metadata?.pollUrl
-    if (!pollUrl) return { providerStatus: 'unknown', paid: false }
-
-    const res  = await httpGet(pollUrl)
-    const data = parsePaynowResponse(res.body)
-    const paid = data.status?.toLowerCase() === 'paid'
-
+    this._cfg()
+    if (!payment?.provider_ref) {
+      throw Object.assign(new Error('paynow: missing provider_ref'), { code: 'no_provider_ref' })
+    }
+    const res    = await httpGet(payment.provider_ref)
+    const parsed = parsePaynowResponse(res.body)
+    const status = String(parsed.status || '')
+    const paidish = ['Paid', 'Awaiting Delivery', 'Delivered']
     return {
-      providerStatus: data.status?.toLowerCase() || 'unknown',
-      paid,
-      paidAt: paid ? new Date().toISOString() : null,
+      providerStatus: status,
+      paid:           paidish.includes(status),
+      paidAt:         paidish.includes(status) ? new Date().toISOString() : null,
     }
   },
 
-  async verifyWebhook({ body }) {
-    const cfg    = this._cfg()
-    const params = typeof body === 'string' ? parsePaynowResponse(body) : body
-    let hashOk = false
-    try {
-      hashOk = verifyPaynowHash(params, cfg.key)
-    } catch {
-      hashOk = false
-    }
-    if (!hashOk) return { ok: false }
+  async verifyWebhook({ body, rawBody }) {
+    this._cfg()
+    const incoming = (body && typeof body === 'object' && Object.keys(body).length)
+      ? body
+      : parsePaynowResponse(rawBody || '')
+    const claimed = String(incoming.hash || '').toUpperCase()
+    if (!claimed) return { ok: false }
 
-    const paid = params.status?.toLowerCase() === 'paid'
+    const fields = { ...incoming }
+    delete fields.hash
+    // Paynow hashes the values in the order they appear in the request.
+    // URLSearchParams preserves insertion order; rebuild from raw body so
+    // we honour the caller's order rather than JS object-key order.
+    const ordered = {}
+    for (const pair of String(rawBody || '').split('&')) {
+      const [k] = pair.split('=')
+      if (k && k !== 'hash' && k in fields) ordered[k] = fields[k]
+    }
+    const recomputed = paynowHash(ordered, PAYNOW_KEY())
+
+    const a = Buffer.from(recomputed, 'utf8')
+    const b = Buffer.from(claimed, 'utf8')
+    const ok = a.length === b.length && crypto.timingSafeEqual(a, b)
+    if (!ok) return { ok: false }
+
+    const status = String(incoming.status || '')
+    const paidish = ['Paid', 'Awaiting Delivery', 'Delivered']
     return {
       ok:             true,
-      providerRef:    params.reference || '',
-      providerStatus: params.status?.toLowerCase() || 'unknown',
-      paid,
+      providerRef:    incoming.pollurl || null,
+      providerStatus: status,
+      paid:           paidish.includes(status),
     }
   },
 
