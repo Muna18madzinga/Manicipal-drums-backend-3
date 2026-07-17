@@ -24,27 +24,6 @@ function localProjectPath() {
   return projects.length ? path.join(dir, projects[0]) : candidate
 }
 
-// Generate a simple placeholder image when QGIS Server is not available
-function generatePlaceholderImage(width, height, layerName) {
-  const sharp = require('sharp')
-  
-  // Create a simple colored rectangle with text
-  const svg = `
-    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="100%" height="100%" fill="#f0f0f0"/>
-      <rect width="100%" height="100%" fill="none" stroke="#ccc" stroke-width="2"/>
-      <text x="50%" y="40%" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#666">
-        ${layerName}
-      </text>
-      <text x="50%" y="60%" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#999">
-        QGIS Server Offline
-      </text>
-    </svg>
-  `
-  
-  return Buffer.from(svg)
-}
-
 // Singleton bridge instance
 let ogcBridge = null
 
@@ -60,11 +39,13 @@ function getBridge() {
       maxRetries: parseInt(process.env.OGC_MAX_RETRIES) || 1,
       defaultSRS: process.env.DEFAULT_SRS || 'EPSG:4326',
       maxFeatures: parseInt(process.env.MAX_FEATURES) || 10000,
-      dbHost: process.env.PGHOST || process.env.DB_HOST || 'localhost',
+      // DB access is env-driven only: the bridge prefers DATABASE_URL and
+      // falls back to these discrete values. No credentials live in code.
+      dbHost: process.env.PGHOST || process.env.DB_HOST,
       dbPort: parseInt(process.env.PGPORT) || 5432,
-      dbName: process.env.PGDATABASE || process.env.DB_NAME || 'vungu_master_db_v1',
-      dbUser: process.env.PGUSER || process.env.DB_USER || 'postgres',
-      dbPassword: process.env.PGPASSWORD || process.env.DB_PASSWORD || 'cairo2025'
+      dbName: process.env.PGDATABASE || process.env.DB_NAME,
+      dbUser: process.env.PGUSER || process.env.DB_USER,
+      dbPassword: process.env.PGPASSWORD || process.env.DB_PASSWORD
     })
     
     // Start file watcher for automatic style updates
@@ -235,13 +216,13 @@ async function ogcServicesRoutes(fastify, options) {
       const extractor = new PerfectQGISStyleExtractor()
       
       const projectPath = localProjectPath()
-      
+
       const layers = extractor.listProjectLayers(projectPath)
-      
+
       return {
         success: true,
         data: {
-          project: 'vungu-docker-minimal.qgs',
+          project: path.basename(projectPath),
           layers,
           count: layers.length
         }
@@ -398,26 +379,26 @@ async function ogcServicesRoutes(fastify, options) {
       } catch (qgisError) {
         console.log(`[OGC Routes] ⚠️ QGIS Server WFS failed, trying direct PostgreSQL...`)
         
-        // Fallback to direct PostgreSQL query
+        // Fallback to direct PostgreSQL query. Connection is env-driven only:
+        // DATABASE_URL when set, otherwise the standard PG* env vars that the
+        // pg driver reads by itself. No credentials live in code.
         const { Pool } = require('pg')
-        const pool = new Pool({
-          connectionString: process.env.DATABASE_URL,
-          host: process.env.DATABASE_URL ? undefined : 'localhost',
-          port: process.env.DATABASE_URL ? undefined : 5432,
-          database: process.env.DATABASE_URL ? undefined : 'vungu_master_db_v1',
-          user: process.env.DATABASE_URL ? undefined : 'postgres',
-          password: process.env.DATABASE_URL ? undefined : (process.env.DB_PASSWORD || process.env.PGPASSWORD || 'postgres')
-        })
-        
-        // Map layer name to table name
-        const layerMappings = {
-          'gweru_rural_farms': 'gweru_rural_farms',
-          'proposed_peri_urban_zones': 'proposed_peri_urban_zones',
-          'gweru_rural_planning_boundary': 'gweru_rural_planning_boundary',
-          'zimbabwe': 'zimbabwe'
+        const pool = new Pool(
+          process.env.DATABASE_URL ? { connectionString: process.env.DATABASE_URL } : {}
+        )
+
+        // The layer name doubles as the table name and is interpolated as a
+        // quoted identifier below — reject anything that isn't a plain
+        // PostgreSQL identifier before it can reach the SQL string.
+        const tableName = layerName
+        if (!/^[a-z_][a-z0-9_]*$/i.test(tableName)) {
+          await pool.end()
+          return reply.status(400).send({
+            success: false,
+            error: `Invalid layer name: ${layerName}`
+          })
         }
-        const tableName = layerMappings[layerName] || layerName
-        
+
         // Dynamic column discovery - query information_schema for actual table columns
         const columnsQuery = `
           SELECT column_name 
@@ -439,10 +420,14 @@ async function ogcServicesRoutes(fastify, options) {
         `
         const params = []
 
-        // Add bbox filter
+        // Add bbox filter — all four values must be finite numbers (a NaN
+        // would corrupt the SQL), otherwise the filter is ignored.
         if (bbox) {
-          const [minx, miny, maxx, maxy] = bbox.split(',').map(Number)
-          query += ` AND ST_Intersects(ST_Transform(geom, 4326), ST_MakeEnvelope(${minx}, ${miny}, ${maxx}, ${maxy}, 4326))`
+          const parts = bbox.split(',').map(Number)
+          if (parts.length === 4 && parts.every(Number.isFinite)) {
+            const [minx, miny, maxx, maxy] = parts
+            query += ` AND ST_Intersects(ST_Transform(geom, 4326), ST_MakeEnvelope(${minx}, ${miny}, ${maxx}, ${maxy}, 4326))`
+          }
         }
         
         // Add CQL filter support (parameterized — values are bound, never concatenated)
@@ -626,23 +611,20 @@ async function ogcServicesRoutes(fastify, options) {
       const bridge = getBridge()
       const options = {}
       
-      // Handle bbox - validate and parse
-      if (bbox && !bbox.includes('{')) {
-        // Parse bbox string like "29.5,-19.8,30.2,-19.1"
-        const bboxValues = bbox.split(',').map(Number).filter(n => !isNaN(n))
-        if (bboxValues.length === 4) {
-          options.bbox = bboxValues
-        } else {
-          console.log('[OGC Routes] ⚠️ Invalid bbox, using default')
-          // Default Gweru area in EPSG:3857 (Web Mercator)
-          options.bbox = [3285414, -2278045, 3362604, -2190855]
-        }
-      } else {
-        // Use default bbox if template placeholder or missing
-        console.log('[OGC Routes] ⚠️ Using default bbox (EPSG:3857)')
-        // Default Gweru area in EPSG:3857 (Web Mercator)
-        options.bbox = [3285414, -2278045, 3362604, -2190855]
+      // bbox is required for GetMap ("29.5,-19.8,30.2,-19.1"). MapLibre
+      // substitutes {bbox-epsg-3857} per tile before requesting, so a
+      // template placeholder or missing/garbled bbox is a caller error —
+      // reject it rather than render some hardcoded default extent.
+      const bboxValues = (bbox && !bbox.includes('{'))
+        ? bbox.split(',').map(Number)
+        : []
+      if (bboxValues.length !== 4 || !bboxValues.every(Number.isFinite)) {
+        return reply.status(400).send({
+          success: false,
+          error: 'A bbox query parameter of four numbers (minx,miny,maxx,maxy) is required'
+        })
       }
+      options.bbox = bboxValues
       
       if (width) options.width = parseInt(width)
       if (height) options.height = parseInt(height)
@@ -668,13 +650,14 @@ async function ogcServicesRoutes(fastify, options) {
           data: result
         }
       } catch (qgisError) {
-        console.log('[OGC Routes] ⚠️ QGIS Server WMS failed, using fallback:', qgisError.message)
-        
-        // Generate a simple placeholder image
-        const placeholderImage = generatePlaceholderImage(options.width || 256, options.height || 256, layerName)
-        
-        reply.header('Content-Type', 'image/png')
-        return reply.send(placeholderImage)
+        // No placeholder tiles: a clean 503 lets the client fall back to
+        // WFS/PostGIS vector rendering instead of painting grey squares.
+        console.log('[OGC Routes] ⚠️ QGIS Server WMS unavailable:', qgisError.message)
+        return reply.status(503).send({
+          success: false,
+          error: 'QGIS Server unavailable — WMS rendering is offline',
+          details: qgisError.message
+        })
       }
     } catch (error) {
       console.error(`[OGC Routes] ❌ WMS GetMap failed:`, error.message)
