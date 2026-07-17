@@ -57,6 +57,12 @@ const MIGRATIONS = [
   '105_stand_allocation.sql',
   '106_geometry_validation.sql',
   '107_stands_topology.sql',
+  // 075_fix arrived after 107 shipped; it only CREATE OR REPLACEs a function,
+  // so running it out of numeric order is safe (the allowlist IS the order).
+  '075_fix_check_development_permission.sql',
+  '108_planning_project_case_link.sql',
+  '109_spatial_change_notify.sql',
+  '110_local_authorities.sql',
 ]
 
 function createPool(env = process.env) {

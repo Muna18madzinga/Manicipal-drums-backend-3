@@ -52,6 +52,10 @@ describe('Render migration plan', () => {
       '105_stand_allocation.sql',
       '106_geometry_validation.sql',
       '107_stands_topology.sql',
+      '075_fix_check_development_permission.sql',
+      '108_planning_project_case_link.sql',
+      '109_spatial_change_notify.sql',
+      '110_local_authorities.sql',
     ])
 
     for (const filename of MIGRATIONS) {

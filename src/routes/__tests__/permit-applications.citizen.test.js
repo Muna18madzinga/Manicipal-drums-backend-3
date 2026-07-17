@@ -4,6 +4,7 @@ const axios = require('axios')
 const BASE = 'http://127.0.0.1:3000/api'
 const CITIZEN = { email: 'demo.viewer@vungu.test', password: 'demo1234' }
 const PLANNER = { email: 'demo.planner@vungu.test', password: 'demo1234' }
+const EO      = { email: 'demo.eo@vungu.test', password: 'demo1234' }
 
 async function login(creds) {
   const r = await axios.post(`${BASE}/auth/login`, creds)
@@ -71,8 +72,12 @@ describe('/permit-applications role + own-row gating', () => {
   })
 
   test('eo can transition a permit status (determination right)', async () => {
+    // The status route enforces optimistic locking — read the current
+    // revision first, exactly as the case-file UI does.
+    const cur = await axios.get(`${BASE}/permit-applications/${plannerPermitId}`,
+      { headers: { Authorization: `Bearer ${eoToken}` } })
     const r = await axios.patch(`${BASE}/permit-applications/${plannerPermitId}/status`,
-      { status: 'under_review' },
+      { status: 'under_review', expectedRevision: cur.data.data.revision },
       { headers: { Authorization: `Bearer ${eoToken}` } })
     expect(r.status).toBe(200)
     expect(r.data.data.status).toBe('under_review')
