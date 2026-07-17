@@ -164,9 +164,14 @@ async function surveyorRoutes(fastify) {
     }
     const isSurveyorRole = SURVEYOR.includes(request.user.role)
     const isAssigner = ASSIGNERS.includes(request.user.role)
+    const reassignRequested = Object.prototype.hasOwnProperty.call(b, 'assigned_to')
     if (!isSurveyorRole) {
       const REVIEW_ONLY = ['accepted', 'returned', 'cancelled']
-      if (b.claim === true || (b.status && !REVIEW_ONLY.includes(b.status))) {
+      // Assigners may also reassign/release a task, which legitimately sets
+      // status back to 'assigned' — that is not a review action but it is
+      // theirs to take (releasing to the pool re-opens the instruction).
+      const isReassignStatus = isAssigner && reassignRequested && b.status === 'assigned'
+      if (b.claim === true || (b.status && !REVIEW_ONLY.includes(b.status) && !isReassignStatus)) {
         return reply.code(403).send({ success: false, error: 'review_actions_only' })
       }
     }
@@ -178,7 +183,7 @@ async function surveyorRoutes(fastify) {
     // assigner/supervisor action); `assigned_to: null` releases it back to the
     // unclaimed pool. A surveyor may only release — not push work onto a named
     // colleague — mirroring how the survey section reallocates a memo.
-    const reassign = Object.prototype.hasOwnProperty.call(b, 'assigned_to')
+    const reassign = reassignRequested
     if (reassign) {
       if (b.assigned_to !== null && !isUuid(b.assigned_to)) {
         return reply.code(400).send({ success: false, error: 'bad_assigned_to' })
