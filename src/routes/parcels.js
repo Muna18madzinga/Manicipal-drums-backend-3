@@ -12,17 +12,35 @@ const VUNGU_AUTHORITY = 'Vungu Rural District Council'
 const STAFF_ROLES = ['planner', 'planning_clerk', 'eo', 'gis_officer',
   'env_officer', 'building_inspector', 'surveyor', 'admin']
 
-// SRIDs as they exist in Vungu_spatial333 (verified 2026-07): the OSM/gpkg
-// layers (roads, buildings, pois_points) carry the custom 900914 (≡ CRS84
-// degrees), vungu_parcels is 4326. Constants keep ST_DWithin index-friendly;
-// if a reimport changes an SRID these queries fail loudly rather than lie.
-const OSM_SRID = 900914
+// All spatial layers store EPSG:4326 (the canonical import path in
+// scripts/setup-spatial.mjs + UpdateGeometrySRID normalised the legacy
+// 900914 ≡ CRS84 SRIDs — see src/config/spatialLayers.js). The constant
+// keeps ST_DWithin index-friendly; if a reimport changes an SRID these
+// queries fail loudly (mixed-SRID error) rather than lie.
+const OSM_SRID = 4326
 
 // SRID-safe point-in-polygon: force the point to the geom's own SRID rather
 // than transform (the tables mix 4326 and the custom 900914 ≡ CRS84, both
 // lng/lat degrees, and 900914 is not transform-safe).
 const CONTAINS = (geomExpr) =>
   `ST_Contains(${geomExpr}, ST_SetSRID(ST_MakePoint($1, $2), ST_SRID(${geomExpr})))`
+
+// One-shot schema probe: does development_applications carry a parcel_id
+// linkage column? (Legacy dev databases did; canonical migration 042 does
+// not.) Cached for the process lifetime.
+let _daParcelLink = null
+async function daHasParcelLink(pg) {
+  if (_daParcelLink === null) {
+    const r = await pg.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'development_applications'
+          AND column_name = 'parcel_id'`,
+    )
+    _daParcelLink = r.rowCount > 0
+  }
+  return _daParcelLink
+}
 
 async function jurisdictionResolver(pg, lng, lat) {
   const inj = await pg.query(
@@ -182,19 +200,24 @@ async function nearbyResolver(pg, lng, lat, radiusM) {
   )
 
   // Applications locate through their parcel (boundary_geometry is not yet
-  // populated by any intake path — join again when it is).
-  const appsQ = pg.query(
-    `SELECT da.application_number, da.status, da.application_type,
-            da.date_submitted::date AS date_submitted,
-            COALESCE(NULLIF(p.name,''), p.name_cfu, 'Parcel ' || p.fid) AS stand_number
-     FROM development_applications da
-     JOIN vungu_parcels p ON p.fid = da.parcel_id
-     WHERE p.geom IS NOT NULL
-       AND ST_DWithin(p.geom, ST_SetSRID(ST_MakePoint($1,$2), 4326), $3)
-     ORDER BY da.date_submitted DESC NULLS LAST
-     LIMIT 10`,
-    [lng, lat, deg],
-  )
+  // populated by any intake path — join again when it is). The canonical
+  // migration-042 table has no parcel_id column (only the legacy dev
+  // database did) — probe once and return no applications rather than
+  // failing the whole nearby panel on a fresh install.
+  const appsQ = (await daHasParcelLink(pg))
+    ? pg.query(
+        `SELECT da.application_number, da.status, da.application_type,
+                da.date_submitted::date AS date_submitted,
+                COALESCE(NULLIF(p.name,''), p.name_cfu, 'Parcel ' || p.fid) AS stand_number
+         FROM development_applications da
+         JOIN vungu_parcels p ON p.fid = da.parcel_id
+         WHERE p.geom IS NOT NULL
+           AND ST_DWithin(p.geom, ST_SetSRID(ST_MakePoint($1,$2), 4326), $3)
+         ORDER BY da.date_submitted DESC NULLS LAST
+         LIMIT 10`,
+        [lng, lat, deg],
+      )
+    : Promise.resolve({ rows: [] })
 
   const [roads, pois, buildings, parcels, apps] =
     await Promise.all([roadsQ, poisQ, buildingsQ, parcelsQ, appsQ])
@@ -226,7 +249,7 @@ async function findParcels(pg, q) {
      FROM vungu_parcels
      WHERE geom IS NOT NULL AND (name ILIKE $1 OR name_cfu ILIKE $1)
      ORDER BY (LOWER(name) = LOWER($2) OR LOWER(name_cfu) = LOWER($2)) DESC,
-              area_ha ASC NULLS LAST
+              NULLIF(area_ha::text, '')::numeric ASC NULLS LAST
      LIMIT 5`,
     [`%${q}%`, q],
   )
@@ -248,14 +271,19 @@ async function findParcels(pg, q) {
  */
 async function landuseStats(pg) {
   const r = await pg.query(
-    `SELECT COALESCE(NULLIF(status, ''), 'Unclassified') AS land_use,
+    `WITH t AS (
+       SELECT COALESCE(NULLIF(status, ''), 'Unclassified') AS land_use,
+              NULLIF(area_ha::text, '')::numeric AS ha
+       FROM vungu_parcels
+       WHERE NULLIF(area_ha::text, '') IS NOT NULL
+     )
+     SELECT land_use,
             COUNT(*)::int AS parcels,
-            ROUND(SUM(area_ha)::numeric, 1) AS area_ha,
-            ROUND((100 * SUM(area_ha) / NULLIF(SUM(SUM(area_ha)) OVER (), 0))::numeric, 1) AS pct
-     FROM vungu_parcels
-     WHERE area_ha IS NOT NULL
+            ROUND(SUM(ha), 1) AS area_ha,
+            ROUND(100 * SUM(ha) / NULLIF(SUM(SUM(ha)) OVER (), 0), 1) AS pct
+     FROM t
      GROUP BY 1
-     ORDER BY SUM(area_ha) DESC`)
+     ORDER BY SUM(ha) DESC`)
   return r.rows.map(x => ({
     land_use: x.land_use,
     parcels: x.parcels,
