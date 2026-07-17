@@ -620,6 +620,24 @@ async function start() {
       }
     }
 
+    // Real-time QGIS <-> web sync: LISTEN on the spatial_change channel
+    // (migration 109 triggers) and push SSE map refreshes for any PostGIS
+    // write — including edits saved from QGIS Desktop that never touch this
+    // API. Failure is non-fatal: API-driven SSE events still work.
+    try {
+      const { startSpatialChangeListener } = require('./src/services/spatialChangeListener')
+      await startSpatialChangeListener({
+        connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/vungu_master_db_v1',
+        log: server.log,
+      })
+      server.addHook('onClose', async () => {
+        const { stopSpatialChangeListener } = require('./src/services/spatialChangeListener')
+        await stopSpatialChangeListener()
+      })
+    } catch (err) {
+      server.log.warn({ err }, 'Spatial change listener failed to start — live QGIS sync degraded to API-write events only')
+    }
+
     console.log(`\n🎉 Vungu Unified Backend Server running successfully!`)
     console.log(`📡 Server: http://localhost:${port}`)
     console.log(`🏥 Health Check: http://localhost:${port}/health`)

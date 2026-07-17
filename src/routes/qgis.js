@@ -90,6 +90,18 @@ async function createQGISRoutes(server) {
         `CREATE TABLE "${table}" (id SERIAL PRIMARY KEY${colDefs ? ', ' + colDefs : ''}, geom geometry(Geometry, 4326))`
       )
       await client.query(`CREATE INDEX "idx_${table}_geom" ON "${table}" USING GIST (geom)`)
+      // Re-attach the live-sync trigger (migration 109): the DROP TABLE above
+      // removed it, and without it pushed features would not broadcast to
+      // open browser tabs. Attached BEFORE the inserts so the push itself
+      // rides the same NOTIFY -> SSE path as a direct QGIS Desktop edit.
+      // Guarded so a database that predates migration 109 still accepts pushes.
+      await client.query(
+        `DO $$ BEGIN
+           IF to_regproc('public.ensure_spatial_notify_trigger') IS NOT NULL THEN
+             PERFORM public.ensure_spatial_notify_trigger('public."${table}"'::regclass);
+           END IF;
+         END $$`
+      )
 
       let inserted = 0
       for (const f of features) {
@@ -193,9 +205,16 @@ async function createQGISRoutes(server) {
   // Health + plugin dashboard endpoints (paths the admin UI calls)
   // ------------------------------------------------------------
   server.get('/api/qgis/health', async () => {
+    const { getSpatialListenerStatus } = require('../services/spatialChangeListener')
     return {
       success: true,
-      data: { status: 'healthy', timestamp: new Date().toISOString() }
+      data: {
+        status: 'healthy',
+        // Live QGIS->web sync: true means direct PostGIS edits (QGIS Desktop,
+        // imports) are being broadcast to browsers via LISTEN/NOTIFY + SSE.
+        realtimeSync: getSpatialListenerStatus(),
+        timestamp: new Date().toISOString()
+      }
     }
   })
 
