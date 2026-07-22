@@ -7,6 +7,19 @@ const path = require('path')
 const { topology } = require('topojson-server')
 const { RefinedOGCBridge } = require('../services/admin/refinedOGCBridge')
 const { startProjectWatcher, getWatcherStatus } = require('../services/admin/qgisProjectWatcher')
+const { wmsCache } = require('./tiles')
+
+// In-flight WMS renders, keyed by cache key. QGIS Server runs a small pool of
+// FCGI workers, so one viewport asking for a dozen tiles across N browser tabs
+// can queue dozens of identical renders behind each other. Coalescing
+// identical concurrent requests onto a single render is what keeps p99 flat
+// under real multi-user load.
+const wmsInFlight = new Map()
+
+function wmsEtag(key) {
+  const day = new Date().toISOString().slice(0, 10)
+  return `"${Buffer.from(`${key}:${day}`).toString('base64').slice(0, 16)}"`
+}
 
 // Local path of the QGIS project file used for style extraction and
 // capabilities fallback when QGIS Server is unreachable. Override with
@@ -174,23 +187,64 @@ async function ogcServicesRoutes(fastify, options) {
   
   /**
    * GET /ogc/health
-   * Test connectivity to all OGC services
+   * Report whether QGIS Server is rendering. `?full=1` probes WMS+WFS+WMTS.
+   *
+   * Health probes are the only thing that touches QGIS Server when nobody is
+   * looking at a map, and QGIS Server runs a SINGLE FCGI worker
+   * (spawn-fcgi -n). A full probe costs ~500ms of that one renderer —
+   * comparable to a 512px tile (~780ms) — and a probe landing mid-pan sits in
+   * front of the user's tiles. So the verdict is cached briefly and decided
+   * from WMS alone, the service the map actually renders from.
+   * Failures use a shorter TTL so recovery is picked up quickly.
    */
+  let healthCache = null // { at, ttl, data }
+  const HEALTH_TTL_MS = parseInt(process.env.OGC_HEALTH_TTL_MS) || 15000
+  const HEALTH_TTL_FAIL_MS = 5000
+
   fastify.get('/ogc/health', async (request, reply) => {
+    const full = request.query.full === '1' || request.query.full === 'true'
+
+    if (!full && healthCache && (Date.now() - healthCache.at) < healthCache.ttl) {
+      return { success: true, data: { ...healthCache.data, cached: true } }
+    }
+
     try {
-      console.log('[OGC Routes] 🔍 Health check requested')
       const bridge = getBridge()
-      const connectivity = await bridge.testConnectivity()
-      
-      return {
-        success: true,
-        data: {
+      let data
+
+      if (full) {
+        console.log('[OGC Routes] 🔍 Health check requested (full probe)')
+        const connectivity = await bridge.testConnectivity()
+        data = {
           status: connectivity.success ? 'healthy' : 'degraded',
           services: connectivity.services,
           server: connectivity.server,
           timestamp: new Date().toISOString()
         }
+      } else {
+        console.log('[OGC Routes] 🔍 Health check requested (WMS probe)')
+        let wms = false
+        try {
+          await bridge.wmsGetCapabilities()
+          wms = true
+        } catch (e) {
+          console.log(`[OGC Routes] ⚠️ WMS probe failed: ${e.message}`)
+        }
+        data = {
+          status: wms ? 'healthy' : 'degraded',
+          // null = not probed on the fast path (never reported as "down").
+          services: { wms, wfs: null, wmts: null },
+          server: bridge.serverConfig.baseUrl,
+          timestamp: new Date().toISOString()
+        }
       }
+
+      healthCache = {
+        at: Date.now(),
+        ttl: data.status === 'healthy' ? HEALTH_TTL_MS : HEALTH_TTL_FAIL_MS,
+        data,
+      }
+      return { success: true, data }
     } catch (error) {
       console.error('[OGC Routes] ❌ Health check failed:', error.message)
       return reply.status(500).send({
@@ -606,8 +660,8 @@ async function ogcServicesRoutes(fastify, options) {
         transparent 
       } = request.query
       
-      console.log(`[OGC Routes] 🖼️ WMS GetMap for ${layerName}`, { bbox, width, height })
-      
+      // No per-tile logging: a single pan emits a dozen of these and the
+      // synchronous stdout write shows up in tile latency.
       const bridge = getBridge()
       const options = {}
       
@@ -633,18 +687,56 @@ async function ogcServicesRoutes(fastify, options) {
       options.crs = crs || 'EPSG:3857'
       if (styles) options.styles = styles
       if (transparent !== undefined) options.transparent = transparent === 'true'
-      
+      options.raw = true
+
+      // Cache key must cover every parameter that changes the pixels, and
+      // must start with `${layerName}/` so wmsCache.invalidateLayer(layer) —
+      // already called from stands.js and spatialChangeListener.js on every
+      // spatial mutation — drops this layer's rasters.
+      const key = [
+        layerName, options.crs, options.bbox.join(','),
+        `${options.width || 256}x${options.height || 256}`,
+        options.format || 'image/png', options.styles || '',
+        options.transparent !== false,
+      ].join('/')
+      const etag = wmsEtag(key)
+
+      if (request.headers['if-none-match'] === etag) {
+        return reply.code(304).send()
+      }
+
+      const sendTile = (buf, cacheState) => reply
+        .header('Content-Type', options.format || 'image/png')
+        .header('Cache-Control', 'public, max-age=300, stale-while-revalidate=86400')
+        .header('ETag', etag)
+        .header('X-Tile-Cache', cacheState)
+        .send(buf)
+
+      const cached = await wmsCache.get(key)
+      if (cached) return sendTile(cached, 'hit')
+
       // Try QGIS Server first
       try {
-        const result = await bridge.wmsGetMap(layerName, options)
-        
-        // Return image directly as binary
-        if (result.image && result.image.includes('base64')) {
-          reply.header('Content-Type', result.contentType || 'image/png')
-          const base64Data = result.image.split(',')[1]
-          return reply.send(Buffer.from(base64Data, 'base64'))
+        // Single-flight: concurrent requests for the same tile share one render.
+        let pending = wmsInFlight.get(key)
+        if (!pending) {
+          pending = bridge.wmsGetMap(layerName, options)
+            .finally(() => wmsInFlight.delete(key))
+          wmsInFlight.set(key, pending)
         }
-        
+        const result = await pending
+
+        if (result.buffer) {
+          // QGIS answers a failed render with a 200 + XML ServiceException.
+          // Caching that would pin a broken tile for the whole TTL, so treat
+          // a non-image payload as an outage and fall through to the 503.
+          if (result.buffer[0] === 0x3c /* '<' */ || result.buffer.length === 0) {
+            throw new Error('QGIS Server returned a ServiceException, not an image')
+          }
+          await wmsCache.set(key, result.buffer)
+          return sendTile(result.buffer, 'miss')
+        }
+
         return {
           success: true,
           data: result
