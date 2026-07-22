@@ -1,0 +1,25 @@
+# PostgreSQL service file for the QGIS Server CONTAINER (docker-compose.qgis.yml).
+#
+# Every layer's <datasource> in vungu-project.qgs connects via service='vungu'.
+# QGIS Desktop on a planner's laptop resolves that against their own
+# ~/.pg_service.conf (host=localhost). The container can't reach the host on
+# "localhost" — inside Docker, the host is host.docker.internal — so it gets
+# its OWN service file, mounted read-only and pointed at by PGSERVICEFILE in
+# the compose.
+#
+# SETUP:
+#   1. Copy this file to  qgis-projects/pg_service.docker.conf
+#   2. Fill in the real dbname / user / password for YOUR Postgres.
+#   3. The real file is gitignored (see .gitignore) — never commit credentials.
+#   4. Make sure host Postgres accepts connections from the Docker bridge:
+#        postgresql.conf : listen_addresses = '*'
+#        pg_hba.conf     : host all all 172.16.0.0/12 scram-sha-256
+#      then restart Postgres. (Runbook has the exact steps.)
+
+[vungu]
+host=host.docker.internal
+port=5432
+dbname=Vungu_spatial333
+user=postgres
+password=CHANGE_ME
+sslmode=disable

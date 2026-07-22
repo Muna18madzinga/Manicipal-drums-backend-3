@@ -625,15 +625,18 @@ async function start() {
     // write — including edits saved from QGIS Desktop that never touch this
     // API. Failure is non-fatal: API-driven SSE events still work.
     try {
-      const { startSpatialChangeListener } = require('./src/services/spatialChangeListener')
+      const { startSpatialChangeListener, stopSpatialChangeListener } = require('./src/services/spatialChangeListener')
       await startSpatialChangeListener({
         connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/vungu_master_db_v1',
         log: server.log,
       })
-      server.addHook('onClose', async () => {
-        const { stopSpatialChangeListener } = require('./src/services/spatialChangeListener')
-        await stopSpatialChangeListener()
-      })
+      // Cleanup on shutdown via process signals — server.addHook('onClose')
+      // can't be used here because the server is already listening by this
+      // point (it throws FST_ERR_INSTANCE_ALREADY_LISTENING). Signal handlers
+      // also fire on the hard SIGINT that fastify's onClose misses.
+      for (const sig of ['SIGINT', 'SIGTERM']) {
+        process.once(sig, () => { stopSpatialChangeListener().finally(() => process.exit(0)) })
+      }
     } catch (err) {
       server.log.warn({ err }, 'Spatial change listener failed to start — live QGIS sync degraded to API-write events only')
     }
