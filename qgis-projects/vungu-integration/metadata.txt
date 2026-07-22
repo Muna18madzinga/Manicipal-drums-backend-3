@@ -1,0 +1,10 @@
+[general]
+name=Vungu Integration
+package=vungu-integration
+qgisMinimumVersion=3.10
+qgisMaximumVersion=4.99
+description=Vungu Spatial Data Portal Integration Plugin
+version=1.1.0
+author=Vungu Team
+email=planning@vungurdc.gov.zw
+about=Syncs QGIS layer styles and data with the Vungu Spatial Data Portal (upload styles, pull portal layers). Configure the API URL and API token in the plugin dock.

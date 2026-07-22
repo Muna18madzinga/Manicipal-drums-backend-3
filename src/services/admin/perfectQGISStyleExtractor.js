@@ -199,6 +199,26 @@ class PerfectQGISStyleExtractor {
   }
 
   /**
+   * Resolve the real PostGIS table name backing a layer, read straight from
+   * its <datasource> in the QGIS project. This is the ground truth for the
+   * layer->table relationship — if a table is renamed in QGIS Desktop and
+   * the project re-saved, this picks it up with no code change.
+   * Returns null for non-postgres layers or if the layer can't be found.
+   */
+  getTableName(projectPath, layerName) {
+    try {
+      const projectContent = this.loadProjectFile(projectPath)
+      const block = this.findLayerInProject(projectContent, layerName)
+      const datasourceMatch = block.match(/<datasource>([^<]*)<\/datasource>/i)
+      if (!datasourceMatch) return null
+      const tableMatch = datasourceMatch[1].match(/table="[^"]+"\."([^"]+)"/)
+      return tableMatch ? tableMatch[1] : null
+    } catch (error) {
+      return null
+    }
+  }
+
+  /**
    * Find layer definition in project content
    * Uses a two-step approach: first extract all maplayer blocks, then find the matching one
    */

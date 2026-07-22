@@ -93,6 +93,18 @@ class RefinedOGCBridge {
    * Map layer name to database table name
    */
   mapLayerName(layerName) {
+    // Ground truth first: the table name embedded in the layer's own
+    // <datasource> in the QGIS project file. Keeps this in sync with QGIS
+    // Desktop automatically -- rename a table there, resave, and the web
+    // app picks it up with no code change (see PerfectQGISStyleExtractor).
+    try {
+      const projectPath = this.getLocalProjectPath()
+      const tableFromProject = this.styleExtractor.getTableName(projectPath, layerName)
+      if (tableFromProject) return tableFromProject
+    } catch (_) {
+      // fall through to the legacy static mapping below
+    }
+
     // Try exact match
     if (this.layerMappings.has(layerName)) {
       return this.layerMappings.get(layerName)

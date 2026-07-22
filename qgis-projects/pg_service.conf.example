@@ -1,0 +1,28 @@
+# PostgreSQL service file for the SpartialIQ / Vungu RDC QGIS project.
+#
+# vungu-project.qgs no longer hardcodes a dbname/host/port/user in each
+# layer's <datasource> — every layer connects via `service='vungu'`. That
+# keeps the single project file portable across every planner's machine and
+# every deployment (dev laptop, QGIS Server container, CI) without editing
+# XML: each environment just points its own pg_service.conf at whatever
+# Postgres it actually has.
+#
+# Copy this file to your real pg_service.conf (see locations below), fill in
+# the values for YOUR machine, and never commit the filled-in copy — this
+# .example file is the only version that belongs in git.
+#
+# Install location:
+#   Linux/macOS : ~/.pg_service.conf
+#   Windows     : %APPDATA%\postgresql\.pg_service.conf
+#   Any OS      : set env var PGSERVICEFILE to point at any path you like
+#                 (QGIS Desktop, QGIS Server and psql all honour it)
+
+[vungu]
+host=localhost
+port=5432
+dbname=vungu_master_db_v1
+user=postgres
+sslmode=disable
+# password=            ; local dev Postgres uses trust auth (no password).
+                        ; production: set a real password here, and make
+                        ; sure pg_service.conf is chmod 600 / not committed.

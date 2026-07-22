@@ -63,6 +63,7 @@ const MIGRATIONS = [
   '108_planning_project_case_link.sql',
   '109_spatial_change_notify.sql',
   '110_local_authorities.sql',
+  '111_spatial_layers_catalogue.sql',
 ]
 
 function createPool(env = process.env) {
