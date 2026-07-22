@@ -53,3 +53,8 @@ node_modules
 # DB dumps + uploads archives (npm run backup) — never commit; may contain real records
 backups/
 backup/
+
+# QGIS Server local secrets — real pg_service files hold DB credentials
+# (only the *.example templates are committed).
+qgis-projects/pg_service.conf
+qgis-projects/pg_service.docker.conf

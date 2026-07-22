@@ -1,0 +1,53 @@
+# QGIS Server — pixel-perfect rendering authority for the Vungu portal.
+# ---------------------------------------------------------------------------
+# This is the ONE component that makes "what a planner sees in QGIS Desktop =
+# what a citizen sees on the web map" literally true: QGIS Server renders the
+# real vungu-project.qgs with the real QGIS rendering engine (hatch fills,
+# gradients, rule-based renderers, SVG markers — everything the client-side
+# MapLibre translator can only approximate) and serves it as standard OGC WMS.
+# The backend OGC bridge proxies it at /api/ogc/wms/* and the web app shows
+# those exact pixels. When this container is down, the app falls back to the
+# client-side vector styling automatically (no breakage, just approximate).
+#
+# Run:    docker compose -f docker-compose.qgis.yml up -d
+# Verify: node scripts/verify-qgis-server.js
+# Full runbook: docs/QGIS_SERVER_LOCAL_RUNBOOK.md
+#
+# Canonical setup: official qgis/qgis-server (FCGI) behind nginx, which is the
+# documented production pattern. nginx exposes a single OGC endpoint on :8080
+# that matches what the backend bridge (QGIS_SERVER_URL) calls.
+
+services:
+  qgis-server:
+    image: qgis/qgis-server:3.40
+    restart: unless-stopped
+    environment:
+      # The project QGIS Server renders by default (so WMS requests need no
+      # MAP= param — matches the bridge, which relies on a default project).
+      QGIS_PROJECT_FILE: /io/data/vungu-project.qgs
+      QGIS_SERVER_LOG_LEVEL: "1"
+      QGIS_SERVER_PARALLEL_RENDERING: "true"
+      QGIS_SERVER_MAX_THREADS: "4"
+      # Every layer's <datasource> is service='vungu'; QGIS Server resolves it
+      # through this pg_service.conf (points at host Postgres, see the example).
+      PGSERVICEFILE: /io/data/pg_service.docker.conf
+    volumes:
+      # The container sees the EXACT same project + QML sidecars the backend
+      # reads — no copy step. Save in QGIS Desktop -> instantly live here.
+      - ./qgis-projects:/io/data:ro
+    # Reach the host's PostgreSQL (Docker Desktop maps host.docker.internal).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    expose:
+      - "9993"
+
+  qgis-web:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - qgis-server
+    ports:
+      # Backend's QGIS_SERVER_URL=http://localhost:8080 hits this.
+      - "8080:8080"
+    volumes:
+      - ./qgis-projects/nginx-qgis.conf:/etc/nginx/conf.d/default.conf:ro
