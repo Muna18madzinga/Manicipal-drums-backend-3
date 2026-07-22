@@ -20,6 +20,10 @@
 services:
   qgis-server:
     image: qgis/qgis-server:3.40
+    # Fixed name so qgisProjectWatcher's `docker restart vungu-qgis-server`
+    # resolves — that is what reloads QGIS Server's cached project after a
+    # planner saves new symbology from QGIS Desktop.
+    container_name: vungu-qgis-server
     restart: unless-stopped
     environment:
       # The project QGIS Server renders by default (so WMS requests need no
