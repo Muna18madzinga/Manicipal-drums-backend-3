@@ -50,8 +50,13 @@ async function get(url, { raw = false } = {}) {
 
   // 3. GetMap renders a real PNG (the actual pixel-perfect test)
   try {
+    // WMS 1.3.0 + EPSG:4326 uses lat,lon axis order, so minx,miny,maxx,maxy
+    // becomes miny,minx,maxy,maxx. (A plain reverse() is wrong — it yields
+    // maxy,maxx,miny,minx and QGIS rejects it: "cannot be converted into a
+    // rectangle".)
+    const [minx, miny, maxx, maxy] = BBOX.split(',')
     const url = `${QGIS}/wms?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=${LAYER}` +
-      `&CRS=EPSG:4326&BBOX=${BBOX.split(',').reverse().join(',')}&WIDTH=400&HEIGHT=400&FORMAT=image/png&STYLES=`
+      `&CRS=EPSG:4326&BBOX=${[miny, minx, maxy, maxx].join(',')}&WIDTH=400&HEIGHT=400&FORMAT=image/png&STYLES=`
     const m = await get(url, { raw: true })
     const isPng = m.buf.length > 8 && m.buf[0] === 0x89 && m.buf[1] === 0x50
     if (isPng && m.buf.length > 1000) ok(`GetMap rendered ${LAYER} -> ${m.buf.length}-byte PNG (QGIS symbology, pixel-perfect)`)
