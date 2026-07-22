@@ -904,7 +904,10 @@ async function authRoutes(fastify) {
 
   fastify.post('/auth/validate-api-token', async (request, reply) => {
     const { token } = request.body || {}
-    if (!isString(token)) return reply.code(400).send({ success: false, error: 'token_required', valid: false })
+    // JWTs routinely exceed the 255-char default (extra claims like plugin
+    // name push them past it) -- cap generously instead of on the general
+    // short-string default.
+    if (!isString(token, 4096)) return reply.code(400).send({ success: false, error: 'token_required', valid: false })
     let claims
     try {
       claims = verifyToken(token)

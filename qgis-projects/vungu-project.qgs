@@ -23,7 +23,7 @@
 
     <maplayer type="vector" geometry="Point" refreshOnNotifyEnabled="0" autoRefreshEnabled="0" readOnly="0">
       <id>gweru_health_centres_demo</id>
-      <datasource>dbname='Vungu_spatial333' host=localhost port=5432 user='postgres' sslmode=disable key='id' srid=4326 type=Point checkPrimaryKeyUnicity='1' table="public"."gweru_health_centres" (geom)</datasource>
+      <datasource>service='vungu' sslmode=disable key='id' srid=4326 type=Point checkPrimaryKeyUnicity='1' table="public"."gweru_health_centres" (geom)</datasource>
       <layername>gweru_health_centres</layername>
       <srs><spatialrefsys><authid>EPSG:4326</authid><description>WGS 84</description></spatialrefsys></srs>
       <provider encoding="UTF-8">postgres</provider>
@@ -45,7 +45,7 @@
 
     <maplayer type="vector" geometry="Line" refreshOnNotifyEnabled="0" autoRefreshEnabled="0" readOnly="0">
       <id>gweru_rivers_demo</id>
-      <datasource>dbname='Vungu_spatial333' host=localhost port=5432 user='postgres' sslmode=disable key='id' srid=4326 type=MultiLineString checkPrimaryKeyUnicity='1' table="public"."gweru_rivers" (geom)</datasource>
+      <datasource>service='vungu' sslmode=disable key='id' srid=4326 type=MultiLineString checkPrimaryKeyUnicity='1' table="public"."gweru_rivers" (geom)</datasource>
       <layername>gweru_rivers</layername>
       <srs><spatialrefsys><authid>EPSG:4326</authid><description>WGS 84</description></spatialrefsys></srs>
       <provider encoding="UTF-8">postgres</provider>
@@ -66,7 +66,7 @@
 
     <maplayer type="vector" geometry="Polygon" refreshOnNotifyEnabled="0" autoRefreshEnabled="0" readOnly="0">
       <id>proposed_peri_urban_zones_demo</id>
-      <datasource>dbname='Vungu_spatial333' host=localhost port=5432 user='postgres' sslmode=disable key='id' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."proposed_peri_urban_zones" (geom)</datasource>
+      <datasource>service='vungu' sslmode=disable key='fid' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."vungu_proposed_peri_urban_zones" (geom)</datasource>
       <layername>proposed_peri_urban_zones</layername>
       <srs><spatialrefsys><authid>EPSG:4326</authid><description>WGS 84</description></spatialrefsys></srs>
       <provider encoding="UTF-8">postgres</provider>
@@ -196,7 +196,7 @@
 
     <maplayer type="vector" geometry="Polygon" refreshOnNotifyEnabled="0" autoRefreshEnabled="0" readOnly="0">
       <id>gweru_peri_urban_zone_demo</id>
-      <datasource>dbname='Vungu_spatial333' host=localhost port=5432 user='postgres' sslmode=disable key='id' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."gweru_peri_urban_zone" (geom)</datasource>
+      <datasource>service='vungu' sslmode=disable key='id' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."gweru_peri_urban_zone" (geom)</datasource>
       <layername>gweru_peri_urban_zone</layername>
       <srs><spatialrefsys><authid>EPSG:4326</authid><description>WGS 84</description></spatialrefsys></srs>
       <provider encoding="UTF-8">postgres</provider>
@@ -230,7 +230,7 @@
 
     <maplayer type="vector" geometry="Polygon" refreshOnNotifyEnabled="0" autoRefreshEnabled="0" readOnly="0">
       <id>gweru_rural_farms_demo</id>
-      <datasource>dbname='Vungu_spatial333' host=localhost port=5432 user='postgres' sslmode=disable key='id' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."gweru_rural_farms" (geom)</datasource>
+      <datasource>service='vungu' sslmode=disable key='id' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."gweru_rural_farms" (geom)</datasource>
       <layername>gweru_rural_farms</layername>
       <srs><spatialrefsys><authid>EPSG:4326</authid><description>WGS 84</description></spatialrefsys></srs>
       <provider encoding="UTF-8">postgres</provider>
@@ -290,7 +290,7 @@
 
     <maplayer type="vector" geometry="Polygon" refreshOnNotifyEnabled="0" autoRefreshEnabled="0" readOnly="0">
       <id>gweru_chiefdoms_demo</id>
-      <datasource>dbname='Vungu_spatial333' host=localhost port=5432 user='postgres' sslmode=disable key='id' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."gweru_chiefdoms" (geom)</datasource>
+      <datasource>service='vungu' sslmode=disable key='id' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."gweru_chiefdoms" (geom)</datasource>
       <layername>gweru_chiefdoms</layername>
       <srs><spatialrefsys><authid>EPSG:4326</authid><description>WGS 84</description></spatialrefsys></srs>
       <provider encoding="UTF-8">postgres</provider>
@@ -316,7 +316,7 @@
 
     <maplayer type="vector" geometry="Polygon" refreshOnNotifyEnabled="0" autoRefreshEnabled="0" readOnly="0">
       <id>gweru_beyond_periurban_zones_demo</id>
-      <datasource>dbname='Vungu_spatial333' host=localhost port=5432 user='postgres' sslmode=disable key='id' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."gweru_beyond_periurban_zones" (geom)</datasource>
+      <datasource>service='vungu' sslmode=disable key='id' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."gweru_beyond_periurban_zones" (geom)</datasource>
       <layername>gweru_beyond_periurban_zones</layername>
       <srs><spatialrefsys><authid>EPSG:4326</authid><description>WGS 84</description></spatialrefsys></srs>
       <provider encoding="UTF-8">postgres</provider>
@@ -344,7 +344,7 @@
 
     <maplayer type="vector" geometry="Polygon" refreshOnNotifyEnabled="0" autoRefreshEnabled="0" readOnly="0">
       <id>gweru_rural_planning_boundary_demo</id>
-      <datasource>dbname='Vungu_spatial333' host=localhost port=5432 user='postgres' sslmode=disable key='id' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."gweru_rural_planning_boundary" (geom)</datasource>
+      <datasource>service='vungu' sslmode=disable key='id' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."gweru_rural_planning_boundary" (geom)</datasource>
       <layername>gweru_rural_planning_boundary</layername>
       <srs><spatialrefsys><authid>EPSG:4326</authid><description>WGS 84</description></spatialrefsys></srs>
       <provider encoding="UTF-8">postgres</provider>
@@ -365,7 +365,7 @@
 
     <maplayer type="vector" geometry="Polygon" refreshOnNotifyEnabled="0" autoRefreshEnabled="0" readOnly="0">
       <id>zimbabwe_demo</id>
-      <datasource>dbname='Vungu_spatial333' host=localhost port=5432 user='postgres' sslmode=disable key='id' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."zimbabwe" (geom)</datasource>
+      <datasource>service='vungu' sslmode=disable key='fid' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."country" (geom)</datasource>
       <layername>zimbabwe</layername>
       <srs><spatialrefsys><authid>EPSG:4326</authid><description>WGS 84</description></spatialrefsys></srs>
       <provider encoding="UTF-8">postgres</provider>

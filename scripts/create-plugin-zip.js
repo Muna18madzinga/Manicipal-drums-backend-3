@@ -3,7 +3,7 @@ const path = require('path');
 const archiver = require('archiver');
 
 async function createPluginZip() {
-  const pluginPath = path.join(__dirname, '../../vungu-integration');
+  const pluginPath = path.join(__dirname, '../qgis-projects/vungu-integration');
   const zipPath = path.join(__dirname, '../vungu-qgis-plugin.zip');
   
   console.log('Plugin path:', pluginPath);
