@@ -4,7 +4,7 @@
  * Handles:
  *   - NL count queries:  "how many schools"  → COUNT from pois_points / pois_areas
  *   - Feature search:    "show hospitals"     → features + bbox
- *   - Zone filter:       "residential zones"  → vungu_proposed_peri_urban_zones
+ *   - Zone filter:       "residential zones"  → proposed_peri_urban_zones
  *   - Stand lookup:      "HDR-001", "stand 5" → stands table exact / ILIKE
  *   - Ward lookup:       "ward 3"             → wards table + fly-to
  *
@@ -118,7 +118,7 @@ async function mapSearchRoutes(fastify) {
           ST_Difference(
             (SELECT geom FROM country LIMIT 1),
             ST_Buffer(
-              (SELECT ST_Union(geom) FROM vungu_proposed_peri_urban_zones WHERE is_active = true),
+              (SELECT ST_Union(geom) FROM proposed_peri_urban_zones WHERE is_active = true),
               0.15
             )
           )
@@ -216,7 +216,7 @@ async function handleCountQuery(fastify, q, minLng, minLat, maxLng, maxLat, repl
   if (q.includes('zone') || q.includes('zoning')) {
     const { rows } = await fastify.pg.query(
       `SELECT COUNT(*)::int as total, json_agg(DISTINCT zone) as zones
-       FROM vungu_proposed_peri_urban_zones WHERE is_active = true`
+       FROM proposed_peri_urban_zones WHERE is_active = true`
     )
     return reply.send({
       type: 'count',
@@ -279,7 +279,7 @@ async function handleZoneSearch(fastify, fragments, minLng, minLat, maxLng, maxL
             ST_AsGeoJSON(geom) as geom,
             ST_X(ST_Centroid(geom))::numeric(9,6) as clng,
             ST_Y(ST_Centroid(geom))::numeric(9,6) as clat
-     FROM vungu_proposed_peri_urban_zones
+     FROM proposed_peri_urban_zones
      WHERE is_active = true AND ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,4326))
        AND (${conditions})
      ORDER BY area_ha::numeric DESC NULLS LAST

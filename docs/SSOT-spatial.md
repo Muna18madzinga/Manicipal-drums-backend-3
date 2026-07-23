@@ -15,7 +15,7 @@ name → one colour → one geometry.
 
 | Concept | Canonical | Consumers | Notes |
 |---|---|---|---|
-| **Peri-urban zoning** | `zones_master` (view over `proposed_peri_urban_zones`) | tiles (`spatialLayers.js`), QGIS (`vungu-project.qgs`), permits (`development-control-refactored.js`, fn `075`) | `proposed_peri_urban_zones.id` is the FK target for `development_matrix`, `gweru_rural_farms.zone_id`, `zone_land_use_controls`. **`vungu_proposed_peri_urban_zones` is legacy** — kept only as rollback until Phase 3/4. |
+| **Peri-urban zoning** | `proposed_peri_urban_zones` (aliased `zones_master` view for the map) | tiles (`spatialLayers.js`), QGIS (`vungu-project.qgs`), permits (`development-control-refactored.js`, fn `075`), zone-editing CRUD (`zones.js`), search (`map-search.js`, `tiles.js`) | Single master. `id` is the FK target for `development_matrix`, `gweru_rural_farms.zone_id`, `zone_land_use_controls`. **`vungu_proposed_peri_urban_zones` was dropped 2026-07-23** after all consumers were repointed. |
 | Beyond peri-urban zones | `vungu_beyond_peri_urban_zones` | tiles + QGIS | consolidated 2026-07-23; `gweru_beyond_periurban_zones` dropped |
 | Country boundary | `country` | tiles + QGIS (`zimbabwe` layer) | orphans `Countries`, `zimbabwe` table dropped |
 | Basemap (buildings, roads, landuse, water, admin, POIs) | the 900914→4326 OSM tables | tiles only | country-wide reference; SRID historically 900914 (CRS84 alias), now 4326 |
@@ -33,9 +33,10 @@ must `ST_Transform` explicitly — do not assume a shared SRID across concepts.
 rows, of which 6 had NULL geometry) is display-only. Making the permit table
 canonical means **the ids never move → zero FK migration**; only the map moves.
 
-The two tables are *not* clean supersets (18 shared `fid`, 11 vs 12 zone names),
-so their geometries need council reconciliation before the copy is dropped —
-that is Phase 3, deferred.
+Reconciliation turned out to be a **no-op**: the copy's polygons covered
+**0.00%** of ground outside the master, and its only extra "zone" class
+(`Densification Zone [MDR]`) was a null-geometry junk row. So the copy held
+nothing authoritative — it was dropped rather than merged.
 
 ---
 
@@ -46,14 +47,12 @@ that is Phase 3, deferred.
 | 0 | `pg_dump` backup of zone + FK tables → `qgis-projects/_db-backups/`; add `ZONES_CANONICAL_SOURCE` flag | **done** |
 | 1 | `migrations/112_zones_master_view.sql`: `ST_MakeValid` the master, `CREATE VIEW zones_master` | **done** |
 | 2 | Repoint map: `spatialLayers.js` (flag) + `vungu-project.qgs` datasource → `zones_master` | **done** |
-| 3 | **Council review (staging):** reconcile geometry — where `vungu_*` polygons are authoritative, `UPDATE proposed_peri_urban_zones … FROM vungu_* … ON z.zone_code = v.zone_code` (business key, never `fid`) | **deferred — needs council sign-off** |
-| 4 | `DROP TABLE vungu_proposed_peri_urban_zones CASCADE`; remove its `spatialLayers.js` entry + frontend tile-id refs | **deferred — after Phase 3** |
+| 3 | Geometry reconciliation — **investigated: no-op** (copy 0.00% outside master; only extra class was null-geom) | **done (nothing to reconcile)** |
+| 3b | Repair the zone-editing consumers that pointed at the copy: `migrations/113` added `ward`/`created_at`/`updated_at` to the master; repointed `zones.js`, `map-search.js`, `tiles.js` zone-search → `proposed_peri_urban_zones`; fixed a pre-existing `zlc.notes`→`conditions` bug in `zones.js` | **done** |
+| 4 | `DROP TABLE vungu_proposed_peri_urban_zones CASCADE`; `spatialLayers.js` entry now backs onto `zones_master`; `ZONES_CANONICAL_SOURCE` flag retired | **done** |
 
-### Toggle / rollback
-`ZONES_CANONICAL_SOURCE=master` (default) → tiles read `zones_master`.
-Set `=vungu` and revert the one `vungu-project.qgs` datasource line to fall back
-to the legacy copy. The legacy table is intact until Phase 4, so rollback is
-lossless.
+### Rollback
+The copy is dropped. To restore it: `psql -f qgis-projects/_db-backups/zones_ssot_20260723.sql`, then `git revert` the repoint commit. All zone consumers now read the single master, so there is nothing to toggle.
 
 ---
 
@@ -79,6 +78,7 @@ Edge cases:
 
 ## Known remaining smells (call-outs)
 
-- Zone **geometry** still diverges between master (37) and legacy copy (36 valid) — resolved only in Phase 3.
-- `stands` dual geometry-type registration.
+- ~~Zone geometry divergence~~ — **resolved**: single master, copy dropped.
+- `stands` dual geometry-type registration (POINT + POLYGON) — resolve before loading data into it.
 - Mixed SRIDs across concepts (4326 master-plan vs historically-900914 basemap).
+- Migrations `079`/`081` (a never-applied UUID zone design) are dead relative to the current schema — `zones.js` was repaired against the applied integer-`id` master instead. Consider removing 079/081 to avoid confusing the next engineer.

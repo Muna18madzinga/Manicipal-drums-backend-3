@@ -77,23 +77,12 @@ const LAYERS = [
   { id: 'vungu_waste_management',          table: 'vungu_waste_management',          geomType: 'polygon', group: 'master_plan', title: 'Waste Management (Vungu)',    attributes: ['fid', 'use'],                                                                                                                                                           minzoom: 12, maxzoom: 22, lowZoomFilter: null, srid: 4326 },
   { id: 'vungu_farm_cadastre',             table: 'vungu_farm_cadastre',             geomType: 'polygon', group: 'master_plan', title: 'Farm Cadastre (Vungu)',       attributes: ['fid', 'name', 'name_cfu', 'province', 'district', 'status', 'area_ha'],                                                                                                  minzoom: 9,  maxzoom: 22, lowZoomFilter: null, srid: 4326 },
   { id: 'vungu_parcels',                   table: 'vungu_parcels',                   geomType: 'polygon', group: 'master_plan', title: 'Parcels (Vungu)',             attributes: ['fid', 'name', 'name_cfu', 'province', 'district', 'status', 'area_ha'],                                                                                                  minzoom: 10, maxzoom: 22, lowZoomFilter: null, srid: 4326 },
-  { id: 'vungu_proposed_peri_urban_zones', table: 'vungu_proposed_peri_urban_zones', geomType: 'polygon', group: 'master_plan', title: 'Proposed Peri-Urban Zones',   attributes: ['fid', 'zone', 'area_ha', 'lb'],                                                                                                                                          minzoom: 9,  maxzoom: 22, lowZoomFilter: null, srid: 4326 },
+  // Canonical zones (SSOT): the MVT id stays 'vungu_proposed_peri_urban_zones'
+  // so frontend styling keys don't churn, but the backing table is the
+  // zones_master view over proposed_peri_urban_zones. See docs/SSOT-spatial.md.
+  { id: 'vungu_proposed_peri_urban_zones', table: 'zones_master', geomType: 'polygon', group: 'master_plan', title: 'Proposed Peri-Urban Zones',   attributes: ['id', 'zone', 'zone_code'],                                                                                                                                          minzoom: 9,  maxzoom: 22, lowZoomFilter: null, srid: 4326 },
   { id: 'vungu_beyond_peri_urban_zones',   table: 'vungu_beyond_peri_urban_zones',   geomType: 'polygon', group: 'master_plan', title: 'Beyond Peri-Urban Zones',     attributes: ['fid', 'zone_code', 'settlement', 'adm3_en', 'adm2_en'],                                                                                                                  minzoom: 8,  maxzoom: 22, lowZoomFilter: null, srid: 4326 },
 ]
-
-// SSOT toggle: when ZONES_CANONICAL_SOURCE=master (default), the proposed-zones
-// tile layer reads the canonical zones_master view (permit-authoritative) rather
-// than the legacy vungu_proposed_peri_urban_zones display copy. The MVT source
-// id is kept stable so frontend styling keys don't churn; only the backing
-// table + exposed attributes change. Rollback: set ZONES_CANONICAL_SOURCE=vungu.
-// See docs/SSOT-spatial.md.
-if ((process.env.ZONES_CANONICAL_SOURCE || 'master') === 'master') {
-  const zoneLayer = LAYERS.find((l) => l.id === 'vungu_proposed_peri_urban_zones')
-  if (zoneLayer) {
-    zoneLayer.table = 'zones_master'
-    zoneLayer.attributes = ['id', 'zone', 'zone_code']
-  }
-}
 
 const BY_ID = new Map(LAYERS.map((l) => [l.id, l]))
 
