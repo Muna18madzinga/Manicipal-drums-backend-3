@@ -230,7 +230,7 @@
         <ymax>-19.0909647659999564</ymax>
       </wgs84extent>
       <id>gweru_beyond_periurban_zones_demo</id>
-      <datasource>service='vungu' sslmode=disable key='id' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."gweru_beyond_periurban_zones" (geom)</datasource>
+      <datasource>service='vungu' sslmode=disable key='fid' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."vungu_beyond_peri_urban_zones" (geom)</datasource>
       <layername>gweru_beyond_periurban_zones</layername>
       <srs>
         <spatialrefsys nativeFormat="Wkt">
