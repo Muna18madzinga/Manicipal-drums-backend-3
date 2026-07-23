@@ -4445,7 +4445,7 @@ def my_form_open(dialog, layer, feature):
         <ymax>-19.28785200028311664</ymax>
       </wgs84extent>
       <id>proposed_peri_urban_zones_demo</id>
-      <datasource>service='vungu' sslmode=disable key='fid' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."vungu_proposed_peri_urban_zones" (geom)</datasource>
+      <datasource>service='vungu' sslmode=disable key='id' srid=4326 type=MultiPolygon checkPrimaryKeyUnicity='1' table="public"."zones_master" (geom)</datasource>
       <layername>proposed_peri_urban_zones</layername>
       <srs>
         <spatialrefsys nativeFormat="Wkt">
