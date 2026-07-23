@@ -3,7 +3,7 @@
  *
  * Works with the application-level zone tables (proposed_peri_urban_zones /
  * zone_land_use_controls) that sit alongside the read-only gpkg-imported
- * vungu_proposed_peri_urban_zones spatial table.
+ * proposed_peri_urban_zones spatial table.
  *
  *   GET    /api/zones                      → all zones as GeoJSON FeatureCollection
  *   GET    /api/zones/:id                  → single zone + land-use controls
@@ -52,7 +52,7 @@ async function zonesRoutes(fastify) {
           ST_AsGeoJSON(z.geom)::JSON AS geometry,
           ST_X(ST_Centroid(z.geom)) AS centroid_lng,
           ST_Y(ST_Centroid(z.geom)) AS centroid_lat
-        FROM vungu_proposed_peri_urban_zones z
+        FROM proposed_peri_urban_zones z
         ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
         ORDER BY z.zone, z.id
         LIMIT 2000`
@@ -89,7 +89,7 @@ async function zonesRoutes(fastify) {
                 z.authority, z.zone_description, z.ward, z.area_ha, z.is_active,
                 z.created_at, z.updated_at,
                 ST_AsGeoJSON(z.geom)::JSON AS geometry
-         FROM vungu_proposed_peri_urban_zones z WHERE z.id = $1`,
+         FROM proposed_peri_urban_zones z WHERE z.id = $1`,
         [id],
       )
       const r = rows[0]
@@ -97,7 +97,7 @@ async function zonesRoutes(fastify) {
 
       // Fetch land-use controls
       const { rows: controls } = await fastify.pg.query(
-        `SELECT zlc.id, zlc.control_type, zlc.authority, zlc.notes,
+        `SELECT zlc.id, zlc.control_type, zlc.authority, zlc.conditions AS notes,
                 lug.group_code, lug.description AS use_description,
                 lug.development_category, lug.use_scale
          FROM zone_land_use_controls zlc
@@ -136,7 +136,7 @@ async function zonesRoutes(fastify) {
 
       const geomJson = JSON.stringify(geometry)
       const { rows } = await fastify.pg.query(
-        `INSERT INTO vungu_proposed_peri_urban_zones
+        `INSERT INTO proposed_peri_urban_zones
            (zone, zone_code, zone_type, scale_category, authority,
             zone_description, ward, geom, area_ha, is_active, created_at, updated_at)
          VALUES (
@@ -190,7 +190,7 @@ async function zonesRoutes(fastify) {
       if (sets.length === 1) return reply.code(400).send({ success: false, error: 'no fields to update' })
 
       const { rows } = await fastify.pg.query(
-        `UPDATE vungu_proposed_peri_urban_zones SET ${sets.join(', ')} WHERE id = $1
+        `UPDATE proposed_peri_urban_zones SET ${sets.join(', ')} WHERE id = $1
          RETURNING id, zone, zone_type, scale_category, ward, is_active`,
         params,
       )
@@ -210,7 +210,7 @@ async function zonesRoutes(fastify) {
     try {
       const { id } = request.params
       const { rows } = await fastify.pg.query(
-        `UPDATE vungu_proposed_peri_urban_zones
+        `UPDATE proposed_peri_urban_zones
           SET is_active = false, updated_at = NOW()
           WHERE id = $1
           RETURNING id, zone, is_active`,
@@ -229,7 +229,7 @@ async function zonesRoutes(fastify) {
     try {
       const { id } = request.params
       const { rows } = await fastify.pg.query(
-        `SELECT zlc.id, zlc.control_type, zlc.authority, zlc.notes,
+        `SELECT zlc.id, zlc.control_type, zlc.authority, zlc.conditions AS notes,
                 lug.group_id, lug.group_code, lug.description,
                 lug.development_category, lug.use_scale
          FROM zone_land_use_controls zlc
@@ -266,12 +266,12 @@ async function zonesRoutes(fastify) {
 
       const { rows } = await fastify.pg.query(
         `INSERT INTO zone_land_use_controls
-           (zone_id, land_use_group_id, control_type, authority, notes, created_at, updated_at)
+           (zone_id, land_use_group_id, control_type, authority, conditions, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
          ON CONFLICT (zone_id, land_use_group_id)
            DO UPDATE SET control_type = EXCLUDED.control_type,
                          authority    = COALESCE(EXCLUDED.authority, zone_land_use_controls.authority),
-                         notes        = EXCLUDED.notes,
+                         conditions   = EXCLUDED.conditions,
                          deleted_at   = NULL,
                          deleted_by   = NULL,
                          updated_at   = NOW()

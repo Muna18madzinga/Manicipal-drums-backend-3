@@ -25,6 +25,17 @@ const { requireAuth, requireRole } = require('../middleware/jwtAuth')
 // below can reach the same instance.
 const cache = new TileCache({ capacity: 4000, maxBytes: 128 * 1024 * 1024 })
 
+// WMS raster tile cache — same two-tier design, separate budget because a
+// rendered PNG is ~10x the bytes of an MVT. It lives here rather than in
+// ogcServices.js so every existing invalidateTileLayer() call site
+// (stands.js, spatialChangeListener.js) busts the raster tiles too: a planner
+// edit must never leave a stale rendered image behind.
+const wmsCache = new TileCache({
+  capacity: 3000,
+  maxBytes: 384 * 1024 * 1024,
+  keyPrefix: 'wms:',
+})
+
 function etagFor(key) {
   const day = new Date().toISOString().slice(0, 10)
   const hash = Buffer.from(`${key}:${day}`).toString('base64').slice(0, 16)
@@ -53,7 +64,10 @@ async function tilesRoutes(fastify) {
   // Attach the Redis L2 to the module-level cache when @fastify/redis is
   // registered (REDIS_URL set). Without it the cache stays L1-only and the
   // route code is unaffected.
-  if (fastify.redis) cache.redis = fastify.redis
+  if (fastify.redis) {
+    cache.redis = fastify.redis
+    wmsCache.redis = fastify.redis
+  }
 
   // ── Server-Sent Events: map tile invalidation ──────────────────────────
   // Clients connect to /api/map/events; the server pushes an event whenever
@@ -99,7 +113,7 @@ async function tilesRoutes(fastify) {
 
   fastify.get('/tiles/cache/stats',
     { preHandler: [requireAuth, requireRole(['admin'])] },
-    async () => ({ success: true, data: cache.stats() })
+    async () => ({ success: true, data: { mvt: cache.stats(), wms: wmsCache.stats() } })
   )
 
   fastify.delete('/tiles/cache/:layer',
@@ -280,7 +294,7 @@ async function tilesRoutes(fastify) {
       const zones = await fastify.pg.query(
         `SELECT zone AS label,
                 ST_X(ST_Centroid(geom)) AS lon, ST_Y(ST_Centroid(geom)) AS lat
-         FROM vungu_proposed_peri_urban_zones
+         FROM proposed_peri_urban_zones
          WHERE geom IS NOT NULL AND zone ILIKE $1
          LIMIT 8`,
         [like]
@@ -718,7 +732,7 @@ async function tilesRoutes(fastify) {
           `SELECT zone, zone_type, area_ha,
                   ST_X(ST_Centroid(geom))::numeric(9,6) as lng,
                   ST_Y(ST_Centroid(geom))::numeric(9,6) as lat
-           FROM vungu_proposed_peri_urban_zones
+           FROM proposed_peri_urban_zones
            WHERE is_active = true AND (zone ILIKE $1 OR zone_type ILIKE $1)
            ORDER BY area_ha::numeric DESC NULLS LAST LIMIT 30`,
           [`%${zoneTerm}%`])
@@ -1088,7 +1102,12 @@ async function tilesRoutes(fastify) {
 
 /** Invalidate all cached tiles for a layer — call after data mutations. */
 function invalidateTileLayer(layerId) {
+  wmsCache.invalidateLayer(layerId)
+  // QGIS publishes some master-plan tables under the de-prefixed name
+  // (vungu_proposed_peri_urban_zones -> proposed_peri_urban_zones), so the
+  // raster keys use the short form. Bust both spellings.
+  if (layerId.startsWith('vungu_')) wmsCache.invalidateLayer(layerId.slice(6))
   return cache.invalidateLayer(layerId)
 }
 
-module.exports = { tilesRoutes, invalidateTileLayer, emitMapEvent }
+module.exports = { tilesRoutes, invalidateTileLayer, emitMapEvent, wmsCache }
