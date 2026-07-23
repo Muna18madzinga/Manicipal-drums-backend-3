@@ -58,3 +58,4 @@ backup/
 # (only the *.example templates are committed).
 qgis-projects/pg_service.conf
 qgis-projects/pg_service.docker.conf
+qgis-projects/vungu-project.qgs.bak-*
