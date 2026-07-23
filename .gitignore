@@ -61,3 +61,4 @@ qgis-projects/pg_service.docker.conf
 qgis-projects/vungu-project.qgs.bak-*
 qgis-projects/*~
 qgis-projects/*_attachments.zip
+qgis-projects/_db-backups/
