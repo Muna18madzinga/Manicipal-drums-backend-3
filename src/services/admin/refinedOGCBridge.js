@@ -25,6 +25,22 @@ const fs = require('fs')
 const path = require('path')
 const { PerfectQGISStyleExtractor } = require('./perfectQGISStyleExtractor')
 
+/**
+ * QGIS Server answers a bad or unsupported request with HTTP 200 and a
+ * ServiceExceptionReport body. Without this, every caller treats the error XML
+ * as a valid answer -- the health probe reports "healthy", GetMap returns XML
+ * where a PNG is expected. Returns the exception message, or null if the
+ * response is a real one. (tiles.js already does the same for cached tiles.)
+ */
+function ogcServiceException(response) {
+  if (!String(response.headers?.['content-type'] || '').includes('xml')) return null
+  const head = Buffer.from(response.data).toString('utf8', 0, 2000)
+  // (?:\s[^>]*)? so the outer <ServiceExceptionReport> wrapper, whose body is
+  // just whitespace, does not win over the <ServiceException> that has the text.
+  const m = head.match(/<ServiceException(?:\s[^>]*)?>([^<]*)/)
+  return m ? (m[1].trim() || 'OGC ServiceException') : null
+}
+
 class RefinedOGCBridge {
   constructor(config = {}) {
     // Server configuration
@@ -727,11 +743,14 @@ class RefinedOGCBridge {
     for (let attempt = 1; attempt <= this.serverConfig.maxRetries; attempt++) {
       try {
         const response = await axios(config)
+        const fault = ogcServiceException(response)
+        if (fault) throw Object.assign(new Error(fault), { noRetry: true })
         return { data: response.data, headers: response.headers }
       } catch (error) {
         lastError = error
         console.log(`[Refined OGC] ⚠️ Request attempt ${attempt} failed: ${error.message}`)
 
+        if (error.noRetry) break
         if (attempt < this.serverConfig.maxRetries) {
           const delay = Math.pow(2, attempt - 1) * 1000
           await new Promise(resolve => setTimeout(resolve, delay))
@@ -832,8 +851,7 @@ class RefinedOGCBridge {
       services: {
         wms: false,
         wfs: false,
-        wmts: false,
-        ogcApi: false
+        wmts: false
       }
     }
 
@@ -861,13 +879,10 @@ class RefinedOGCBridge {
       console.log(`[Refined OGC] ⚠️ WMTS: ${e.message}`)
     }
 
-    // Test OGC API
-    try {
-      await this.makeRequest(`${this.endpoints.ogcApi}/collections`)
-      results.services.ogcApi = true
-    } catch (e) {
-      console.log(`[Refined OGC] ⚠️ OGC API: ${e.message}`)
-    }
+    // ponytail: no OGC API (WFS3) probe. nginx-qgis.conf forwards only
+    // QUERY_STRING to the FCGI socket, so a path-routed API can never reach
+    // QGIS Server here -- /ogc/collections just made it log CRITICAL once a
+    // minute. Add a probe when nginx passes PATH_INFO and /wfs3 is wired up.
 
     results.success = Object.values(results.services).some(v => v)
     return results
@@ -1021,6 +1036,12 @@ class RefinedOGCBridge {
     const response = await this.makeRequest(this.endpoints.wms, params)
 
     let imageData = response.data
+    // Tile serving passes raw:true to get the bytes straight through. The
+    // base64 data-URI below only exists for callers that embed the image in
+    // a JSON body; encoding then re-decoding it per tile is pure overhead.
+    if (options.raw) {
+      return { success: true, buffer: Buffer.from(imageData), contentType: params.FORMAT }
+    }
     if (Buffer.isBuffer(imageData)) {
       const base64 = imageData.toString('base64')
       imageData = `data:${params.FORMAT};base64,${base64}`
@@ -1162,4 +1183,4 @@ class RefinedOGCBridge {
   }
 }
 
-module.exports = { RefinedOGCBridge }
+module.exports = { RefinedOGCBridge, ogcServiceException }

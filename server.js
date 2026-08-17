@@ -70,6 +70,10 @@ const { statutoryPlansRoutes } = require('./src/routes/statutory-plans')
 // endpoints 404'd on the running server.js. Register it here so the plugin works.
 const { createQGISRoutes } = require('./src/routes/qgis')
 const { gisRoutes } = require('./src/routes/gis')
+// Enterprise GIS symbology registry (migration 114). Serves the ONE published
+// style per layer that QGIS Server, the web map and any future client all
+// render from, plus the versioning/approval/rollback lifecycle.
+const { gisStyleRoutes } = require('./src/routes/gisStyles')
 const { planningRoutes } = require('./src/routes/planning')
 const { planningSuggestRoutes } = require('./src/routes/planning-suggest')
 const { citizenPortalRoutes } = require('./src/routes/citizen-portal')
@@ -469,8 +473,9 @@ async function build() {
     await server.register(controlPointRoutes, { prefix: '/api' })
     await server.register(propertyRoutes, { prefix: '/api' })
     await server.register(gisRoutes, { prefix: '/api' })
+    await server.register(gisStyleRoutes, { prefix: '/api' })
     await server.register(planningRoutes, { prefix: '/api' })
-    console.log('✅ Vector tile + property register + GIS editing + planning routes registered')
+    console.log('✅ Vector tile + property register + GIS editing + symbology registry + planning routes registered')
   } catch (error) {
     server.log.error({ err: error }, 'Failed to register tile routes')
   }
