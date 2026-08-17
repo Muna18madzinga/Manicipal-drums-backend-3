@@ -4,10 +4,21 @@
 table (or a view over it). All consumers — vector tiles, QGIS Server WMS, and the
 permit-system APIs — read that canonical source. No divergent copies.
 
-Symbology is a separate SSOT: geometry + classification live in the canonical
-table; **colour** comes from `frontend/src/map/masterplanSymbology.ts` and is
-generated into QGIS by `frontend/scripts/generate-qgis-symbology.mjs`. One zone
-name → one colour → one geometry.
+Symbology is a separate SSOT with its own document: see
+**[SSOT-symbology.md](./SSOT-symbology.md)**. Geometry + classification live in the
+canonical table; **colour** comes from the versioned style registry (`gis_style`,
+migration 114), which QGIS Server, the web map and QGIS Desktop all compile from.
+One zone name → one published style version → one colour → one geometry.
+
+> Superseded (Aug 2026): colour previously came from
+> `frontend/src/map/masterplanSymbology.ts`, generated into QGIS by
+> `frontend/scripts/generate-qgis-symbology.mjs`. That arrow governed only 3 of 31
+> layers and left the other 28 with hard-coded frontend colours. Both are now
+> *inputs* to the registry rather than authorities.
+
+**Data and style are independent.** `gis_layer.data_synced_at` and
+`gis_style.published_at` are separate clocks: publishing a style never touches
+geometry, and a data sync never changes symbology.
 
 ---
 
