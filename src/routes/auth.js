@@ -90,6 +90,7 @@ function userToDTO(row) {
     phone:          row.phone ?? null,
     nationalId:     row.national_id ?? null,
     address:        row.physical_address ?? null,
+    residencyStatus: row.residency_status ?? null,
   }
 }
 
@@ -136,7 +137,7 @@ async function authRoutes(fastify) {
          VALUES ($1, $2, $2, $3, $4, $5, $6, $7, $8, $9, 'active', true, NOW())
          RETURNING id, email, full_name AS name, role, organization,
                    job_title, department, applicant_type,
-                   phone, national_id, physical_address`,
+                   phone, national_id, physical_address, residency_status`,
         [
           email, name, role,
           organization || null, phone || null, applicantType,
@@ -174,7 +175,7 @@ async function authRoutes(fastify) {
         `SELECT id, email, COALESCE(full_name, name) AS name, role, organization,
                 job_title, department, applicant_type, phone,
                 national_id, physical_address, password_hash, active, status,
-                mfa_enabled
+                mfa_enabled, residency_status
          FROM users WHERE email = $1`,
         [email],
       )
@@ -336,7 +337,7 @@ async function authRoutes(fastify) {
         `SELECT id, email, COALESCE(full_name, name) AS name, role, organization,
                 job_title, department, applicant_type, phone,
                 national_id, physical_address, active, status,
-                mfa_secret, mfa_backup_codes
+                mfa_secret, mfa_backup_codes, residency_status
          FROM users WHERE id = $1`,
         [claims.sub],
       )
@@ -448,7 +449,7 @@ async function authRoutes(fastify) {
          WHERE id = $8
          RETURNING id, email, COALESCE(full_name, name) AS name, role, organization,
                    job_title, department, applicant_type,
-                   phone, national_id, physical_address`,
+                   phone, national_id, physical_address, residency_status`,
         [
           isString(name, 120) ? name : null,
           isString(organization, 255) ? organization : null,
