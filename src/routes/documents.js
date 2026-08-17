@@ -38,7 +38,16 @@ const ALLOWED_DOC_MIME = new Set([
 
 const VALID_KINDS = new Set([
   'national_id', 'passport', 'drivers_licence', 'proof_of_residence',
-  'title_deed', 'company_registration', 'tax_clearance', 'other',
+  'title_deed', 'settlement_letter', 'lodgers_permit',
+  'occupation_certificate', 'chiefs_letter',
+  'company_registration', 'tax_clearance', 'other',
+])
+
+// Kinds that count as residency evidence (migration 115). A verified doc of
+// one of these kinds flips users.residency_status to 'verified'.
+const RESIDENCY_KINDS = new Set([
+  'title_deed', 'settlement_letter', 'lodgers_permit',
+  'occupation_certificate', 'chiefs_letter', 'proof_of_residence',
 ])
 
 const STAFF_ROLES = ['admin', 'planning_clerk', 'planner', 'eo']
@@ -225,6 +234,28 @@ async function documentRoutes(fastify) {
       const final = await fastify.pg.query(
         `SELECT * FROM citizen_documents WHERE id = $1`, [inserted.id],
       )
+
+      // Residency evidence submitted: an unverified citizen moves to
+      // 'pending' so both the citizen banner and the staff queue agree.
+      if (RESIDENCY_KINDS.has(docKind)) {
+        const st = final.rows[0].verification_status
+        if (st === 'verified') {
+          await fastify.pg.query(
+            `UPDATE users SET residency_status = 'verified',
+                              residency_method = 'document_review',
+                              residency_verified_at = NOW()
+             WHERE id = $1`,
+            [userId],
+          )
+        } else if (['pending', 'under_review'].includes(st)) {
+          await fastify.pg.query(
+            `UPDATE users SET residency_status = 'pending'
+             WHERE id = $1 AND residency_status IN ('unverified', 'rejected')`,
+            [userId],
+          )
+        }
+      }
+
       return reply.send({ success: true, data: docDTO(final.rows[0]) })
     } catch (err) {
       if (err && err.code === 'FST_REQ_FILE_TOO_LARGE') {
@@ -327,6 +358,35 @@ async function documentRoutes(fastify) {
       )
       const row = rows[0]
       if (!row) return reply.code(404).send({ success: false, error: 'not_found' })
+
+      // Residency verdict follows the document verdict (migration 115).
+      if (RESIDENCY_KINDS.has(row.doc_kind)) {
+        if (decision === 'verified') {
+          await fastify.pg.query(
+            `UPDATE users SET residency_status = 'verified',
+                              residency_method = 'document_review',
+                              residency_verified_at = NOW()
+             WHERE id = $1`,
+            [row.user_id],
+          )
+        } else {
+          // Reject only demotes a citizen who has no other verified evidence
+          // and was not verified through the deeds registry.
+          await fastify.pg.query(
+            `UPDATE users u SET residency_status = 'rejected'
+             WHERE u.id = $1
+               AND u.residency_status = 'pending'
+               AND NOT EXISTS (
+                 SELECT 1 FROM citizen_documents d
+                 WHERE d.user_id = u.id AND d.deleted_at IS NULL
+                   AND d.doc_kind = ANY($2)
+                   AND d.verification_status = 'verified'
+               )`,
+            [row.user_id, [...RESIDENCY_KINDS]],
+          )
+        }
+      }
+
       return reply.send({ success: true, data: docDTO(row) })
     } catch (err) {
       request.log.error({ err }, 'doc verify failed')

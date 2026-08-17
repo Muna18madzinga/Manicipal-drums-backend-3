@@ -48,6 +48,10 @@ const { siteContentRoutes } = require('./src/routes/site-content')
 const { notificationsRoutes } = require('./src/routes/notifications')
 const { kycRoutes } = require('./src/routes/kyc')
 
+// Citizen residency verification + mock Ministry of Lands deeds registry
+// (migration 115).
+const { residencyRoutes } = require('./src/routes/residency')
+
 // Turn D: plan auto-review (PDF + CAD upload + deterministic checks).
 const { planReviewRoutes } = require('./src/routes/plan-review')
 
@@ -431,7 +435,8 @@ async function build() {
   try {
     await server.register(notificationsRoutes, { prefix: '/api' })
     await server.register(kycRoutes,           { prefix: '/api' })
-    console.log('✅ Notifications + KYC routes registered')
+    await server.register(residencyRoutes,     { prefix: '/api' })
+    console.log('✅ Notifications + KYC + residency routes registered')
   } catch (error) {
     server.log.error({ err: error }, 'Failed to register notifications/kyc routes')
   }
