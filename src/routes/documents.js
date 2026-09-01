@@ -25,6 +25,7 @@ const crypto = require('node:crypto')
 const { requireAuth, requireRole } = require('../middleware/jwtAuth')
 const idVerifier = require('../services/idVerifier')
 const { scanBuffer } = require('../services/malwareScan')
+const { validateFileSignature } = require('../utils/fileSignature')
 
 const DOC_ROOT = process.env.CITIZEN_DOC_ROOT
   ? path.resolve(process.env.CITIZEN_DOC_ROOT)
@@ -116,7 +117,15 @@ async function documentRoutes(fastify) {
           if (!buf || buf.length === 0) {
             return reply.code(400).send({ success: false, error: 'empty_file' })
           }
-          file = { mimetype: part.mimetype, filename: part.filename, buffer: buf }
+          const sig = validateFileSignature(buf, part.mimetype, ALLOWED_DOC_MIME)
+          if (!sig.ok) {
+            return reply.code(415).send({
+              success: false,
+              error: 'bad_file_signature',
+              message: 'File content does not match an allowed document type.',
+            })
+          }
+          file = { mimetype: sig.mime, filename: part.filename, buffer: buf }
         } else if (part.type === 'field') {
           if (part.fieldname === 'docKind' && isString(part.value, 32)) {
             docKind = part.value

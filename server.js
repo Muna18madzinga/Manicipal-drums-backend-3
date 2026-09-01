@@ -158,6 +158,23 @@ async function build() {
     trustProxy: true
   })
 
+  // Payment provider webhooks (Paynow, EcoCash, Stripe) verify HMAC/hash
+  // signatures against the raw request body. Fastify's JSON/urlencoded parsers
+  // consume the stream, so capture the bytes before parsing on webhook routes.
+  const { Readable } = require('node:stream')
+  server.addHook('preParsing', async (request, _reply, payload) => {
+    const url = request.raw?.url || request.url || ''
+    if (!url.includes('/payments/webhook/')) return payload
+
+    const chunks = []
+    for await (const chunk of payload) {
+      chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk)
+    }
+    const raw = Buffer.concat(chunks)
+    request.rawBody = raw.toString('utf8')
+    return Readable.from([raw])
+  })
+
   const localOrigins = [
     'http://localhost:5173',
     'http://localhost:5174',
