@@ -17,7 +17,11 @@
     "setup:spatial": "node scripts/setup-spatial.mjs",
     "download:spatial": "node scripts/download-spatial-source.mjs",
     "seed": "tsx src/scripts/seed.ts",
-    "seed:demo": "node scripts/seed-demo-users.js"
+    "seed:demo": "node scripts/seed-demo-users.js",
+    "qgis:up": "docker compose -f docker-compose.qgis.yml up -d",
+    "qgis:down": "docker compose -f docker-compose.qgis.yml down",
+    "qgis:verify": "node scripts/verify-qgis-server.js",
+    "qgis:push": "node scripts/push-symbology-to-qgis.js"
   },
   "dependencies": {
     "@fastify/auth": "^5.0.0",
