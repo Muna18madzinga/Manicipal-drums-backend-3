@@ -462,245 +462,110 @@
           </symbol>
         </profileMarkerSymbol>
       </elevation>
-      <renderer-v2 attr="settlement" enableorderby="0" forceraster="0" referencescale="-1" symbollevels="0" type="categorizedSymbol">
-        <categories>
-          <category label="Communal" render="true" symbol="0" type="string" uuid="0" value="Communal"/>
-          <category label="FLSCF" render="true" symbol="1" type="string" uuid="1" value="FLSCF"/>
-          <category label="FLSCF_A2" render="true" symbol="2" type="string" uuid="2" value="FLSCF_A2"/>
-          <category label="FLSCF_SSCF_A1" render="true" symbol="3" type="string" uuid="3" value="FLSCF_SSCF_A1"/>
-          <category label="Resettlement Area" render="true" symbol="4" type="string" uuid="4" value="Resettlement Area"/>
-          <category label="SSCF" render="true" symbol="5" type="string" uuid="5" value="SSCF"/>
-          <category label="Other" render="true" symbol="6" type="string" uuid="6" value=""/>
-        </categories>
-        <symbols>
-          <symbol alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0" name="0" type="fill">
-            <data_defined_properties>
-              <Option type="Map">
-                <Option name="name" type="QString" value=""/>
-                <Option name="properties"/>
-                <Option name="type" type="QString" value="collection"/>
-              </Option>
-            </data_defined_properties>
-            <layer class="SimpleFill" enabled="1" id="{e19be3e9-481e-4df1-b7de-e499dd7403d3}" locked="0" pass="0">
-              <Option type="Map">
-                <Option name="border_width_map_unit_scale" type="QString" value="3x:0,0,0,0,0,0"/>
-                <Option name="color" type="QString" value="174,177,120,255,rgb:0.682353,0.6941177,0.4705882,1"/>
-                <Option name="joinstyle" type="QString" value="bevel"/>
-                <Option name="offset" type="QString" value="0,0"/>
-                <Option name="offset_map_unit_scale" type="QString" value="3x:0,0,0,0,0,0"/>
-                <Option name="offset_unit" type="QString" value="MM"/>
-                <Option name="outline_color" type="QString" value="35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1"/>
-                <Option name="outline_style" type="QString" value="solid"/>
-                <Option name="outline_width" type="QString" value="0.26"/>
-                <Option name="outline_width_unit" type="QString" value="MM"/>
-                <Option name="style" type="QString" value="solid"/>
-              </Option>
-              <data_defined_properties>
-                <Option type="Map">
-                  <Option name="name" type="QString" value=""/>
-                  <Option name="properties"/>
-                  <Option name="type" type="QString" value="collection"/>
-                </Option>
-              </data_defined_properties>
-            </layer>
-          </symbol>
-          <symbol alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0" name="1" type="fill">
-            <data_defined_properties>
-              <Option type="Map">
-                <Option name="name" type="QString" value=""/>
-                <Option name="properties"/>
-                <Option name="type" type="QString" value="collection"/>
-              </Option>
-            </data_defined_properties>
-            <layer class="SimpleFill" enabled="1" id="{563211ae-b35f-4aef-8207-eb28bed18025}" locked="0" pass="0">
-              <Option type="Map">
-                <Option name="border_width_map_unit_scale" type="QString" value="3x:0,0,0,0,0,0"/>
-                <Option name="color" type="QString" value="217,185,107,255,rgb:0.8509804,0.7254902,0.4196078,1"/>
-                <Option name="joinstyle" type="QString" value="bevel"/>
-                <Option name="offset" type="QString" value="0,0"/>
-                <Option name="offset_map_unit_scale" type="QString" value="3x:0,0,0,0,0,0"/>
-                <Option name="offset_unit" type="QString" value="MM"/>
-                <Option name="outline_color" type="QString" value="35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1"/>
-                <Option name="outline_style" type="QString" value="solid"/>
-                <Option name="outline_width" type="QString" value="0.26"/>
-                <Option name="outline_width_unit" type="QString" value="MM"/>
-                <Option name="style" type="QString" value="solid"/>
-              </Option>
-              <data_defined_properties>
-                <Option type="Map">
-                  <Option name="name" type="QString" value=""/>
-                  <Option name="properties"/>
-                  <Option name="type" type="QString" value="collection"/>
-                </Option>
-              </data_defined_properties>
-            </layer>
-          </symbol>
-          <symbol alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0" name="2" type="fill">
-            <data_defined_properties>
-              <Option type="Map">
-                <Option name="name" type="QString" value=""/>
-                <Option name="properties"/>
-                <Option name="type" type="QString" value="collection"/>
-              </Option>
-            </data_defined_properties>
-            <layer class="SimpleFill" enabled="1" id="{c004939a-100d-49d2-880b-420ec067ff77}" locked="0" pass="0">
-              <Option type="Map">
-                <Option name="border_width_map_unit_scale" type="QString" value="3x:0,0,0,0,0,0"/>
-                <Option name="color" type="QString" value="193,154,107,255,rgb:0.7568628,0.6039216,0.4196078,1"/>
-                <Option name="joinstyle" type="QString" value="bevel"/>
-                <Option name="offset" type="QString" value="0,0"/>
-                <Option name="offset_map_unit_scale" type="QString" value="3x:0,0,0,0,0,0"/>
-                <Option name="offset_unit" type="QString" value="MM"/>
-                <Option name="outline_color" type="QString" value="35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1"/>
-                <Option name="outline_style" type="QString" value="solid"/>
-                <Option name="outline_width" type="QString" value="0.26"/>
-                <Option name="outline_width_unit" type="QString" value="MM"/>
-                <Option name="style" type="QString" value="solid"/>
-              </Option>
-              <data_defined_properties>
-                <Option type="Map">
-                  <Option name="name" type="QString" value=""/>
-                  <Option name="properties"/>
-                  <Option name="type" type="QString" value="collection"/>
-                </Option>
-              </data_defined_properties>
-            </layer>
-          </symbol>
-          <symbol alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0" name="3" type="fill">
-            <data_defined_properties>
-              <Option type="Map">
-                <Option name="name" type="QString" value=""/>
-                <Option name="properties"/>
-                <Option name="type" type="QString" value="collection"/>
-              </Option>
-            </data_defined_properties>
-            <layer class="SimpleFill" enabled="1" id="{a754845d-b62a-487a-bb46-e0c6881d0a52}" locked="0" pass="0">
-              <Option type="Map">
-                <Option name="border_width_map_unit_scale" type="QString" value="3x:0,0,0,0,0,0"/>
-                <Option name="color" type="QString" value="151,154,95,255,rgb:0.5921569,0.6039216,0.372549,1"/>
-                <Option name="joinstyle" type="QString" value="bevel"/>
-                <Option name="offset" type="QString" value="0,0"/>
-                <Option name="offset_map_unit_scale" type="QString" value="3x:0,0,0,0,0,0"/>
-                <Option name="offset_unit" type="QString" value="MM"/>
-                <Option name="outline_color" type="QString" value="35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1"/>
-                <Option name="outline_style" type="QString" value="solid"/>
-                <Option name="outline_width" type="QString" value="0.26"/>
-                <Option name="outline_width_unit" type="QString" value="MM"/>
-                <Option name="style" type="QString" value="solid"/>
-              </Option>
-              <data_defined_properties>
-                <Option type="Map">
-                  <Option name="name" type="QString" value=""/>
-                  <Option name="properties"/>
-                  <Option name="type" type="QString" value="collection"/>
-                </Option>
-              </data_defined_properties>
-            </layer>
-          </symbol>
-          <symbol alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0" name="4" type="fill">
-            <data_defined_properties>
-              <Option type="Map">
-                <Option name="name" type="QString" value=""/>
-                <Option name="properties"/>
-                <Option name="type" type="QString" value="collection"/>
-              </Option>
-            </data_defined_properties>
-            <layer class="SimpleFill" enabled="1" id="{1c983c01-f896-408b-afd6-0447abe3ceb1}" locked="0" pass="0">
-              <Option type="Map">
-                <Option name="border_width_map_unit_scale" type="QString" value="3x:0,0,0,0,0,0"/>
-                <Option name="color" type="QString" value="221,230,173,255,rgb:0.8666667,0.9019608,0.6784314,1"/>
-                <Option name="joinstyle" type="QString" value="bevel"/>
-                <Option name="offset" type="QString" value="0,0"/>
-                <Option name="offset_map_unit_scale" type="QString" value="3x:0,0,0,0,0,0"/>
-                <Option name="offset_unit" type="QString" value="MM"/>
-                <Option name="outline_color" type="QString" value="35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1"/>
-                <Option name="outline_style" type="QString" value="solid"/>
-                <Option name="outline_width" type="QString" value="0.26"/>
-                <Option name="outline_width_unit" type="QString" value="MM"/>
-                <Option name="style" type="QString" value="solid"/>
-              </Option>
-              <data_defined_properties>
-                <Option type="Map">
-                  <Option name="name" type="QString" value=""/>
-                  <Option name="properties"/>
-                  <Option name="type" type="QString" value="collection"/>
-                </Option>
-              </data_defined_properties>
-            </layer>
-          </symbol>
-          <symbol alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0" name="5" type="fill">
-            <data_defined_properties>
-              <Option type="Map">
-                <Option name="name" type="QString" value=""/>
-                <Option name="properties"/>
-                <Option name="type" type="QString" value="collection"/>
-              </Option>
-            </data_defined_properties>
-            <layer class="SimpleFill" enabled="1" id="{a15a51ff-25bf-4908-a4d4-28d4b5b603b1}" locked="0" pass="0">
-              <Option type="Map">
-                <Option name="border_width_map_unit_scale" type="QString" value="3x:0,0,0,0,0,0"/>
-                <Option name="color" type="QString" value="165,117,74,255,rgb:0.6470588,0.4588235,0.2901961,1"/>
-                <Option name="joinstyle" type="QString" value="bevel"/>
-                <Option name="offset" type="QString" value="0,0"/>
-                <Option name="offset_map_unit_scale" type="QString" value="3x:0,0,0,0,0,0"/>
-                <Option name="offset_unit" type="QString" value="MM"/>
-                <Option name="outline_color" type="QString" value="35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1"/>
-                <Option name="outline_style" type="QString" value="solid"/>
-                <Option name="outline_width" type="QString" value="0.26"/>
-                <Option name="outline_width_unit" type="QString" value="MM"/>
-                <Option name="style" type="QString" value="solid"/>
-              </Option>
-              <data_defined_properties>
-                <Option type="Map">
-                  <Option name="name" type="QString" value=""/>
-                  <Option name="properties"/>
-                  <Option name="type" type="QString" value="collection"/>
-                </Option>
-              </data_defined_properties>
-            </layer>
-          </symbol>
-          <symbol alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0" name="6" type="fill">
-            <data_defined_properties>
-              <Option type="Map">
-                <Option name="name" type="QString" value=""/>
-                <Option name="properties"/>
-                <Option name="type" type="QString" value="collection"/>
-              </Option>
-            </data_defined_properties>
-            <layer class="SimpleFill" enabled="1" id="{8d178720-c4c6-47a3-a6b2-93e41cad4507}" locked="0" pass="0">
-              <Option type="Map">
-                <Option name="border_width_map_unit_scale" type="QString" value="3x:0,0,0,0,0,0"/>
-                <Option name="color" type="QString" value="239,234,223,255,rgb:0.9372549,0.9176471,0.8745098,1"/>
-                <Option name="joinstyle" type="QString" value="bevel"/>
-                <Option name="offset" type="QString" value="0,0"/>
-                <Option name="offset_map_unit_scale" type="QString" value="3x:0,0,0,0,0,0"/>
-                <Option name="offset_unit" type="QString" value="MM"/>
-                <Option name="outline_color" type="QString" value="35,35,35,255,rgb:0.1372549,0.1372549,0.1372549,1"/>
-                <Option name="outline_style" type="QString" value="solid"/>
-                <Option name="outline_width" type="QString" value="0.26"/>
-                <Option name="outline_width_unit" type="QString" value="MM"/>
-                <Option name="style" type="QString" value="solid"/>
-              </Option>
-              <data_defined_properties>
-                <Option type="Map">
-                  <Option name="name" type="QString" value=""/>
-                  <Option name="properties"/>
-                  <Option name="type" type="QString" value="collection"/>
-                </Option>
-              </data_defined_properties>
-            </layer>
-          </symbol>
-        </symbols>
-        <rotation/>
-        <sizescale/>
-        <data-defined-properties>
-          <Option type="Map">
-            <Option name="name" type="QString" value=""/>
-            <Option name="properties"/>
-            <Option name="type" type="QString" value="collection"/>
-          </Option>
-        </data-defined-properties>
-      </renderer-v2>
+      <renderer-v2 type="categorizedSymbol" attr="settlement" symbollevels="0" forceraster="0" enableorderby="0" referencescale="-1">
+ <categories>
+  <category value="Communal" symbol="0" label="Communal" render="true"/>
+  <category value="FLSCF" symbol="1" label="FLSCF" render="true"/>
+  <category value="FLSCF_A2" symbol="2" label="FLSCF_A2" render="true"/>
+  <category value="FLSCF_SSCF_A1" symbol="3" label="FLSCF_SSCF_A1" render="true"/>
+  <category value="Resettlement Area" symbol="4" label="Resettlement Area" render="true"/>
+  <category value="SSCF" symbol="5" label="SSCF" render="true"/>
+  <category value="" symbol="6" label="Other" render="true"/>
+ </categories>
+ <symbols>
+  <symbol type="fill" name="0" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleFill" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="color" value="174,177,120,255"/>
+        <Option type="QString" name="style" value="solid"/>
+        <Option type="QString" name="outline_color" value="35,35,35,255"/>
+        <Option type="QString" name="outline_width" value="0.26"/>
+        <Option type="QString" name="outline_width_unit" value="MM"/>
+        <Option type="QString" name="outline_style" value="solid"/>
+        <Option type="QString" name="joinstyle" value="bevel"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="fill" name="1" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleFill" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="color" value="217,185,107,255"/>
+        <Option type="QString" name="style" value="solid"/>
+        <Option type="QString" name="outline_color" value="35,35,35,255"/>
+        <Option type="QString" name="outline_width" value="0.26"/>
+        <Option type="QString" name="outline_width_unit" value="MM"/>
+        <Option type="QString" name="outline_style" value="solid"/>
+        <Option type="QString" name="joinstyle" value="bevel"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="fill" name="2" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleFill" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="color" value="193,154,107,255"/>
+        <Option type="QString" name="style" value="solid"/>
+        <Option type="QString" name="outline_color" value="35,35,35,255"/>
+        <Option type="QString" name="outline_width" value="0.26"/>
+        <Option type="QString" name="outline_width_unit" value="MM"/>
+        <Option type="QString" name="outline_style" value="solid"/>
+        <Option type="QString" name="joinstyle" value="bevel"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="fill" name="3" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleFill" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="color" value="151,154,95,255"/>
+        <Option type="QString" name="style" value="solid"/>
+        <Option type="QString" name="outline_color" value="35,35,35,255"/>
+        <Option type="QString" name="outline_width" value="0.26"/>
+        <Option type="QString" name="outline_width_unit" value="MM"/>
+        <Option type="QString" name="outline_style" value="solid"/>
+        <Option type="QString" name="joinstyle" value="bevel"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="fill" name="4" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleFill" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="color" value="221,230,173,255"/>
+        <Option type="QString" name="style" value="solid"/>
+        <Option type="QString" name="outline_color" value="35,35,35,255"/>
+        <Option type="QString" name="outline_width" value="0.26"/>
+        <Option type="QString" name="outline_width_unit" value="MM"/>
+        <Option type="QString" name="outline_style" value="solid"/>
+        <Option type="QString" name="joinstyle" value="bevel"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="fill" name="5" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleFill" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="color" value="165,117,74,255"/>
+        <Option type="QString" name="style" value="solid"/>
+        <Option type="QString" name="outline_color" value="35,35,35,255"/>
+        <Option type="QString" name="outline_width" value="0.26"/>
+        <Option type="QString" name="outline_width_unit" value="MM"/>
+        <Option type="QString" name="outline_style" value="solid"/>
+        <Option type="QString" name="joinstyle" value="bevel"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="fill" name="6" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleFill" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="color" value="239,234,223,255"/>
+        <Option type="QString" name="style" value="solid"/>
+        <Option type="QString" name="outline_color" value="35,35,35,255"/>
+        <Option type="QString" name="outline_width" value="0.26"/>
+        <Option type="QString" name="outline_width_unit" value="MM"/>
+        <Option type="QString" name="outline_style" value="solid"/>
+        <Option type="QString" name="joinstyle" value="bevel"/>
+      </Option>
+    </layer>
+  </symbol>
+ </symbols>
+</renderer-v2>
       <selection mode="Default">
         <selectionColor invalid="1"/>
       </selection>
@@ -5687,66 +5552,633 @@ def my_form_open(dialog, layer, feature):
           </symbol>
         </profileMarkerSymbol>
       </elevation>
-      <renderer-v2 enableorderby="0" forceraster="0" referencescale="-1" symbollevels="0" type="singleSymbol">
-        <symbols>
-          <symbol alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0" name="0" type="line">
-            <data_defined_properties>
-              <Option type="Map">
-                <Option name="name" type="QString" value=""/>
-                <Option name="properties"/>
-                <Option name="type" type="QString" value="collection"/>
-              </Option>
-            </data_defined_properties>
-            <layer class="SimpleLine" enabled="1" id="{e31b132b-4715-4b15-a898-fbc30c943b4f}" locked="0" pass="0">
-              <Option type="Map">
-                <Option name="align_dash_pattern" type="QString" value="0"/>
-                <Option name="capstyle" type="QString" value="square"/>
-                <Option name="customdash" type="QString" value="5;2"/>
-                <Option name="customdash_map_unit_scale" type="QString" value="3x:0,0,0,0,0,0"/>
-                <Option name="customdash_unit" type="QString" value="MM"/>
-                <Option name="dash_pattern_offset" type="QString" value="0"/>
-                <Option name="dash_pattern_offset_map_unit_scale" type="QString" value="3x:0,0,0,0,0,0"/>
-                <Option name="dash_pattern_offset_unit" type="QString" value="MM"/>
-                <Option name="draw_inside_polygon" type="QString" value="0"/>
-                <Option name="joinstyle" type="QString" value="bevel"/>
-                <Option name="line_color" type="QString" value="183,72,75,255,rgb:0.7176471,0.282353,0.2941177,1"/>
-                <Option name="line_style" type="QString" value="solid"/>
-                <Option name="line_width" type="QString" value="0.26"/>
-                <Option name="line_width_unit" type="QString" value="MM"/>
-                <Option name="offset" type="QString" value="0"/>
-                <Option name="offset_map_unit_scale" type="QString" value="3x:0,0,0,0,0,0"/>
-                <Option name="offset_unit" type="QString" value="MM"/>
-                <Option name="ring_filter" type="QString" value="0"/>
-                <Option name="trim_distance_end" type="QString" value="0"/>
-                <Option name="trim_distance_end_map_unit_scale" type="QString" value="3x:0,0,0,0,0,0"/>
-                <Option name="trim_distance_end_unit" type="QString" value="MM"/>
-                <Option name="trim_distance_start" type="QString" value="0"/>
-                <Option name="trim_distance_start_map_unit_scale" type="QString" value="3x:0,0,0,0,0,0"/>
-                <Option name="trim_distance_start_unit" type="QString" value="MM"/>
-                <Option name="tweak_dash_pattern_on_corners" type="QString" value="0"/>
-                <Option name="use_custom_dash" type="QString" value="0"/>
-                <Option name="width_map_unit_scale" type="QString" value="3x:0,0,0,0,0,0"/>
-              </Option>
-              <data_defined_properties>
-                <Option type="Map">
-                  <Option name="name" type="QString" value=""/>
-                  <Option name="properties"/>
-                  <Option name="type" type="QString" value="collection"/>
-                </Option>
-              </data_defined_properties>
-            </layer>
-          </symbol>
-        </symbols>
-        <rotation/>
-        <sizescale/>
-        <data-defined-properties>
-          <Option type="Map">
-            <Option name="name" type="QString" value=""/>
-            <Option name="properties"/>
-            <Option name="type" type="QString" value="collection"/>
-          </Option>
-        </data-defined-properties>
-      </renderer-v2>
+      <renderer-v2 type="categorizedSymbol" attr="fclass" symbollevels="0" forceraster="0" enableorderby="0" referencescale="-1">
+ <categories>
+  <category value="motorway" symbol="0" label="motorway" render="true"/>
+  <category value="motorway_link" symbol="1" label="motorway_link" render="true"/>
+  <category value="trunk" symbol="2" label="trunk" render="true"/>
+  <category value="trunk_link" symbol="3" label="trunk_link" render="true"/>
+  <category value="primary" symbol="4" label="primary" render="true"/>
+  <category value="primary_link" symbol="5" label="primary_link" render="true"/>
+  <category value="secondary" symbol="6" label="secondary" render="true"/>
+  <category value="secondary_link" symbol="7" label="secondary_link" render="true"/>
+  <category value="tertiary" symbol="8" label="tertiary" render="true"/>
+  <category value="tertiary_link" symbol="9" label="tertiary_link" render="true"/>
+  <category value="residential" symbol="10" label="residential" render="true"/>
+  <category value="living_street" symbol="11" label="living_street" render="true"/>
+  <category value="unclassified" symbol="12" label="unclassified" render="true"/>
+  <category value="service" symbol="13" label="service" render="true"/>
+  <category value="pedestrian" symbol="14" label="pedestrian" render="true"/>
+  <category value="footway" symbol="15" label="footway" render="true"/>
+  <category value="path" symbol="16" label="path" render="true"/>
+  <category value="steps" symbol="17" label="steps" render="true"/>
+  <category value="bridleway" symbol="18" label="bridleway" render="true"/>
+  <category value="cycleway" symbol="19" label="cycleway" render="true"/>
+  <category value="track" symbol="20" label="track" render="true"/>
+  <category value="track_grade1" symbol="21" label="track_grade1" render="true"/>
+  <category value="track_grade2" symbol="22" label="track_grade2" render="true"/>
+  <category value="track_grade3" symbol="23" label="track_grade3" render="true"/>
+  <category value="track_grade4" symbol="24" label="track_grade4" render="true"/>
+  <category value="track_grade5" symbol="25" label="track_grade5" render="true"/>
+  <category value="" symbol="26" label="Access road" render="true"/>
+ </categories>
+ <symbols>
+  <symbol type="line" name="0" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="6"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="32,32,32,255"/>
+        <Option type="QString" name="line_width" value="4"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="1" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="4.5"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="32,32,32,255"/>
+        <Option type="QString" name="line_width" value="3"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="2" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="5"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="32,32,32,255"/>
+        <Option type="QString" name="line_width" value="3"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="3" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="4"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="32,32,32,255"/>
+        <Option type="QString" name="line_width" value="2.4"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="4" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="4.5"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="89,56,29,255"/>
+        <Option type="QString" name="line_width" value="3"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="5" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="3.6"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="89,56,29,255"/>
+        <Option type="QString" name="line_width" value="2.4"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="6" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="4"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="158,74,42,255"/>
+        <Option type="QString" name="line_width" value="2.5"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="7" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="3.2"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="158,74,42,255"/>
+        <Option type="QString" name="line_width" value="2"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="8" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="3"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="193,154,107,255"/>
+        <Option type="QString" name="line_width" value="2"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="9" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="2.4"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="193,154,107,255"/>
+        <Option type="QString" name="line_width" value="1.6"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="10" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="2.5"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="207,144,119,255"/>
+        <Option type="QString" name="line_width" value="1.5"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="11" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="2.5"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="207,144,119,255"/>
+        <Option type="QString" name="line_width" value="1.5"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="12" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="2.5"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="207,144,119,255"/>
+        <Option type="QString" name="line_width" value="1.5"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="13" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="1.5"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="207,144,119,255"/>
+        <Option type="QString" name="line_width" value="1"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="14" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="1.5"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="207,144,119,255"/>
+        <Option type="QString" name="line_width" value="1"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="15" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="1.5"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="207,144,119,255"/>
+        <Option type="QString" name="line_width" value="0.9"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="16" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="1.5"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="207,144,119,255"/>
+        <Option type="QString" name="line_width" value="0.9"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="17" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="1.5"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="207,144,119,255"/>
+        <Option type="QString" name="line_width" value="0.9"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="18" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="1.5"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="207,144,119,255"/>
+        <Option type="QString" name="line_width" value="0.9"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="19" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="1.5"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="207,144,119,255"/>
+        <Option type="QString" name="line_width" value="0.9"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="20" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="1.6"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="207,144,119,255"/>
+        <Option type="QString" name="line_width" value="1"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="21" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="1.6"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="207,144,119,255"/>
+        <Option type="QString" name="line_width" value="1"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="22" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="1.6"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="207,144,119,255"/>
+        <Option type="QString" name="line_width" value="1"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="23" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="1.4"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="207,144,119,255"/>
+        <Option type="QString" name="line_width" value="0.9"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="24" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="1.2"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="207,144,119,255"/>
+        <Option type="QString" name="line_width" value="0.8"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="25" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="1.1"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="207,144,119,255"/>
+        <Option type="QString" name="line_width" value="0.7"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="line" name="26" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="255,255,255,255"/>
+        <Option type="QString" name="line_width" value="1.5"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+    <layer class="SimpleLine" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="line_color" value="207,144,119,255"/>
+        <Option type="QString" name="line_width" value="1"/>
+        <Option type="QString" name="line_width_unit" value="Pixel"/>
+        <Option type="QString" name="line_style" value="solid"/>
+        <Option type="QString" name="capstyle" value="round"/>
+        <Option type="QString" name="joinstyle" value="round"/>
+      </Option>
+    </layer>
+  </symbol>
+ </symbols>
+</renderer-v2>
       <selection mode="Default">
         <selectionColor invalid="1"/>
       </selection>
