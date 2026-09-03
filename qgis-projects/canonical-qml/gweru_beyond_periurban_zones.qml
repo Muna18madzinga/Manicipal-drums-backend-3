@@ -1,109 +1,117 @@
 <!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>
-<!-- GENERATED from src/map/masterplanSymbology.ts — do not edit by hand.
-     Regenerate with: node scripts/generate-qgis-symbology.mjs -->
-<qgis version="3.40" styleCategories="Symbology">
+<!-- GENERATED from the Vungu enterprise GIS symbology registry.
+     DO NOT EDIT BY HAND -- published styles are immutable.
+     layer         : vungu_beyond_peri_urban_zones
+     style version : v1
+     style id      : aa938619-5b53-456c-b3da-329fa70d481a
+     checksum      : sha256:8f14f9469bea10d06523a72b4a0bd16ba09a0ae4b35d5cabbc6aa6b3dd32bb24
+     published     : Tue Sep 01 2026 16:05:26 GMT+0200 (Central Africa Time)
+     To change it: create a new version in the GIS admin area, have it
+     approved, publish it, then reload this style in QGIS. -->
+<qgis version="3.40" styleCategories="Symbology|Labeling">
 <renderer-v2 type="categorizedSymbol" attr="settlement" symbollevels="0" forceraster="0" enableorderby="0" referencescale="-1">
-<categories>
-<category value="Communal" symbol="0" label="Communal" render="true"/>
-<category value="FLSCF" symbol="1" label="FLSCF" render="true"/>
-<category value="FLSCF_A2" symbol="2" label="FLSCF_A2" render="true"/>
-<category value="FLSCF_SSCF_A1" symbol="3" label="FLSCF_SSCF_A1" render="true"/>
-<category value="Resettlement Area" symbol="4" label="Resettlement Area" render="true"/>
-<category value="SSCF" symbol="5" label="SSCF" render="true"/>
-<category value="" symbol="6" label="Other" render="true"/>
-</categories>
-<symbols>
-<symbol type="fill" name="0" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
-  <layer class="SimpleFill" enabled="1" locked="0" pass="0">
-    <Option type="Map">
-      <Option type="QString" name="color" value="174,177,120,255"/>
-      <Option type="QString" name="style" value="solid"/>
-      <Option type="QString" name="outline_color" value="35,35,35,255"/>
-      <Option type="QString" name="outline_width" value="0.26"/>
-      <Option type="QString" name="outline_width_unit" value="MM"/>
-      <Option type="QString" name="outline_style" value="solid"/>
-      <Option type="QString" name="joinstyle" value="bevel"/>
-    </Option>
-  </layer>
-</symbol>
-<symbol type="fill" name="1" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
-  <layer class="SimpleFill" enabled="1" locked="0" pass="0">
-    <Option type="Map">
-      <Option type="QString" name="color" value="217,185,107,255"/>
-      <Option type="QString" name="style" value="solid"/>
-      <Option type="QString" name="outline_color" value="35,35,35,255"/>
-      <Option type="QString" name="outline_width" value="0.26"/>
-      <Option type="QString" name="outline_width_unit" value="MM"/>
-      <Option type="QString" name="outline_style" value="solid"/>
-      <Option type="QString" name="joinstyle" value="bevel"/>
-    </Option>
-  </layer>
-</symbol>
-<symbol type="fill" name="2" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
-  <layer class="SimpleFill" enabled="1" locked="0" pass="0">
-    <Option type="Map">
-      <Option type="QString" name="color" value="193,154,107,255"/>
-      <Option type="QString" name="style" value="solid"/>
-      <Option type="QString" name="outline_color" value="35,35,35,255"/>
-      <Option type="QString" name="outline_width" value="0.26"/>
-      <Option type="QString" name="outline_width_unit" value="MM"/>
-      <Option type="QString" name="outline_style" value="solid"/>
-      <Option type="QString" name="joinstyle" value="bevel"/>
-    </Option>
-  </layer>
-</symbol>
-<symbol type="fill" name="3" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
-  <layer class="SimpleFill" enabled="1" locked="0" pass="0">
-    <Option type="Map">
-      <Option type="QString" name="color" value="151,154,95,255"/>
-      <Option type="QString" name="style" value="solid"/>
-      <Option type="QString" name="outline_color" value="35,35,35,255"/>
-      <Option type="QString" name="outline_width" value="0.26"/>
-      <Option type="QString" name="outline_width_unit" value="MM"/>
-      <Option type="QString" name="outline_style" value="solid"/>
-      <Option type="QString" name="joinstyle" value="bevel"/>
-    </Option>
-  </layer>
-</symbol>
-<symbol type="fill" name="4" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
-  <layer class="SimpleFill" enabled="1" locked="0" pass="0">
-    <Option type="Map">
-      <Option type="QString" name="color" value="221,230,173,255"/>
-      <Option type="QString" name="style" value="solid"/>
-      <Option type="QString" name="outline_color" value="35,35,35,255"/>
-      <Option type="QString" name="outline_width" value="0.26"/>
-      <Option type="QString" name="outline_width_unit" value="MM"/>
-      <Option type="QString" name="outline_style" value="solid"/>
-      <Option type="QString" name="joinstyle" value="bevel"/>
-    </Option>
-  </layer>
-</symbol>
-<symbol type="fill" name="5" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
-  <layer class="SimpleFill" enabled="1" locked="0" pass="0">
-    <Option type="Map">
-      <Option type="QString" name="color" value="165,117,74,255"/>
-      <Option type="QString" name="style" value="solid"/>
-      <Option type="QString" name="outline_color" value="35,35,35,255"/>
-      <Option type="QString" name="outline_width" value="0.26"/>
-      <Option type="QString" name="outline_width_unit" value="MM"/>
-      <Option type="QString" name="outline_style" value="solid"/>
-      <Option type="QString" name="joinstyle" value="bevel"/>
-    </Option>
-  </layer>
-</symbol>
-<symbol type="fill" name="6" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
-  <layer class="SimpleFill" enabled="1" locked="0" pass="0">
-    <Option type="Map">
-      <Option type="QString" name="color" value="239,234,223,255"/>
-      <Option type="QString" name="style" value="solid"/>
-      <Option type="QString" name="outline_color" value="35,35,35,255"/>
-      <Option type="QString" name="outline_width" value="0.26"/>
-      <Option type="QString" name="outline_width_unit" value="MM"/>
-      <Option type="QString" name="outline_style" value="solid"/>
-      <Option type="QString" name="joinstyle" value="bevel"/>
-    </Option>
-  </layer>
-</symbol>
-</symbols>
+ <categories>
+  <category value="Communal" symbol="0" label="Communal" render="true"/>
+  <category value="FLSCF" symbol="1" label="FLSCF" render="true"/>
+  <category value="FLSCF_A2" symbol="2" label="FLSCF_A2" render="true"/>
+  <category value="FLSCF_SSCF_A1" symbol="3" label="FLSCF_SSCF_A1" render="true"/>
+  <category value="Resettlement Area" symbol="4" label="Resettlement Area" render="true"/>
+  <category value="SSCF" symbol="5" label="SSCF" render="true"/>
+  <category value="" symbol="6" label="Other" render="true"/>
+ </categories>
+ <symbols>
+  <symbol type="fill" name="0" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleFill" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="color" value="174,177,120,255"/>
+        <Option type="QString" name="style" value="solid"/>
+        <Option type="QString" name="outline_color" value="35,35,35,255"/>
+        <Option type="QString" name="outline_width" value="0.26"/>
+        <Option type="QString" name="outline_width_unit" value="MM"/>
+        <Option type="QString" name="outline_style" value="solid"/>
+        <Option type="QString" name="joinstyle" value="bevel"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="fill" name="1" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleFill" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="color" value="217,185,107,255"/>
+        <Option type="QString" name="style" value="solid"/>
+        <Option type="QString" name="outline_color" value="35,35,35,255"/>
+        <Option type="QString" name="outline_width" value="0.26"/>
+        <Option type="QString" name="outline_width_unit" value="MM"/>
+        <Option type="QString" name="outline_style" value="solid"/>
+        <Option type="QString" name="joinstyle" value="bevel"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="fill" name="2" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleFill" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="color" value="193,154,107,255"/>
+        <Option type="QString" name="style" value="solid"/>
+        <Option type="QString" name="outline_color" value="35,35,35,255"/>
+        <Option type="QString" name="outline_width" value="0.26"/>
+        <Option type="QString" name="outline_width_unit" value="MM"/>
+        <Option type="QString" name="outline_style" value="solid"/>
+        <Option type="QString" name="joinstyle" value="bevel"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="fill" name="3" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleFill" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="color" value="151,154,95,255"/>
+        <Option type="QString" name="style" value="solid"/>
+        <Option type="QString" name="outline_color" value="35,35,35,255"/>
+        <Option type="QString" name="outline_width" value="0.26"/>
+        <Option type="QString" name="outline_width_unit" value="MM"/>
+        <Option type="QString" name="outline_style" value="solid"/>
+        <Option type="QString" name="joinstyle" value="bevel"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="fill" name="4" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleFill" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="color" value="221,230,173,255"/>
+        <Option type="QString" name="style" value="solid"/>
+        <Option type="QString" name="outline_color" value="35,35,35,255"/>
+        <Option type="QString" name="outline_width" value="0.26"/>
+        <Option type="QString" name="outline_width_unit" value="MM"/>
+        <Option type="QString" name="outline_style" value="solid"/>
+        <Option type="QString" name="joinstyle" value="bevel"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="fill" name="5" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleFill" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="color" value="165,117,74,255"/>
+        <Option type="QString" name="style" value="solid"/>
+        <Option type="QString" name="outline_color" value="35,35,35,255"/>
+        <Option type="QString" name="outline_width" value="0.26"/>
+        <Option type="QString" name="outline_width_unit" value="MM"/>
+        <Option type="QString" name="outline_style" value="solid"/>
+        <Option type="QString" name="joinstyle" value="bevel"/>
+      </Option>
+    </layer>
+  </symbol>
+  <symbol type="fill" name="6" alpha="1" clip_to_extent="1" force_rhr="0" frame_rate="10" is_animated="0">
+    <layer class="SimpleFill" enabled="1" locked="0" pass="0">
+      <Option type="Map">
+        <Option type="QString" name="color" value="239,234,223,255"/>
+        <Option type="QString" name="style" value="solid"/>
+        <Option type="QString" name="outline_color" value="35,35,35,255"/>
+        <Option type="QString" name="outline_width" value="0.26"/>
+        <Option type="QString" name="outline_width_unit" value="MM"/>
+        <Option type="QString" name="outline_style" value="solid"/>
+        <Option type="QString" name="joinstyle" value="bevel"/>
+      </Option>
+    </layer>
+  </symbol>
+ </symbols>
 </renderer-v2>
+
 </qgis>
