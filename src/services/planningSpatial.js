@@ -359,6 +359,9 @@ module.exports = {
   buildSiteContext,
   getParcelGrounding,
   postProcessDraft,
+  // Shared statutory figures — inspectorSpatial.js checks sites against the same values.
+  STREAM_BUFFER_M,
+  ROUGH_TERRAIN_FCLASS,
   // exported for tests / introspection
   _internals: { parcelTable, pointsFromGeo, sqlTextArray, PARCEL_LAYERS, ROUGH_TERRAIN_FCLASS },
 }

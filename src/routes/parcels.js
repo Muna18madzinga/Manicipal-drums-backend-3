@@ -12,11 +12,12 @@ const VUNGU_AUTHORITY = 'Vungu Rural District Council'
 const STAFF_ROLES = ['planner', 'planning_clerk', 'eo', 'gis_officer',
   'env_officer', 'building_inspector', 'surveyor', 'admin']
 
-// All spatial layers store EPSG:4326 (the canonical import path in
-// scripts/setup-spatial.mjs + UpdateGeometrySRID normalised the legacy
-// 900914 ≡ CRS84 SRIDs — see src/config/spatialLayers.js). The constant
-// keeps ST_DWithin index-friendly; if a reimport changes an SRID these
-// queries fail loudly (mixed-SRID error) rather than lie.
+// The canonical import (scripts/setup-spatial.mjs + UpdateGeometrySRID) stores
+// EPSG:4326, but databases imported earlier still carry the legacy 900914 ≡
+// CRS84 SRID on the OSM layers (Vungu_spatial333 does). Queries against those
+// layers therefore bbox-filter with `&&` (no SRID check, GiST-indexed) and
+// relabel with ST_SetSRID(geom, 4326) for exact tests — never a bare
+// ST_DWithin(geom, <4326 point>).
 const OSM_SRID = 4326
 
 // SRID-safe point-in-polygon: force the point to the geom's own SRID rather
@@ -150,6 +151,11 @@ async function nearbyResolver(pg, lng, lat, radiusM) {
   // latitude (~-19.5°, cos ≈ 0.94). Exact metre filter applied after.
   const deg = (radiusM / 111000) * 1.1
 
+  // The OSM layers may be stored as SRID 900914 (a CRS84 alias, identical
+  // coordinates) or 4326, depending on how the database was imported. A bare
+  // ST_DWithin(geom, <4326 point>) raises "mixed SRID" on the former. `&&`
+  // compares bboxes without an SRID check and still uses the GiST index, so it
+  // pre-filters; the exact test relabels the column to 4326 (lossless).
   const roadsQ = pg.query(
     `WITH pt AS (SELECT ST_SetSRID(ST_MakePoint($1,$2), ${OSM_SRID}) AS g,
                         ST_SetSRID(ST_MakePoint($1,$2), 4326)::geography AS gg)
@@ -157,7 +163,7 @@ async function nearbyResolver(pg, lng, lat, radiusM) {
      FROM (SELECT COALESCE(NULLIF(r.name,''), r.fclass) AS name, r.fclass,
                   ST_Distance(ST_SetSRID(r.geom,4326)::geography, pt.gg) AS d
            FROM roads r, pt
-           WHERE ST_DWithin(r.geom, pt.g, $3)) s
+           WHERE r.geom && ST_Expand(pt.g, $3)) s
      WHERE d <= $4
      GROUP BY name, fclass
      ORDER BY dist_m
@@ -171,19 +177,19 @@ async function nearbyResolver(pg, lng, lat, radiusM) {
      SELECT COALESCE(NULLIF(p.name,''), p.fclass) AS name, p.fclass,
             ST_Distance(ST_SetSRID(p.geom,4326)::geography, pt.gg)::int AS dist_m
      FROM pois_points p, pt
-     WHERE ST_DWithin(p.geom, pt.g, $3)
+     WHERE p.geom && ST_Expand(pt.g, $3)
        AND ST_Distance(ST_SetSRID(p.geom,4326)::geography, pt.gg) <= $4
      ORDER BY dist_m
      LIMIT 10`,
     [lng, lat, deg, radiusM],
   )
 
-  // ponytail: count uses the degree prefilter only (±6% at radius edge over
-  // 711k rows) — switch to exact geography if the count ever drives decisions.
   const buildingsQ = pg.query(
-    `SELECT count(*)::int AS n FROM buildings
-     WHERE ST_DWithin(geom, ST_SetSRID(ST_MakePoint($1,$2), ${OSM_SRID}), $3)`,
-    [lng, lat, radiusM / 111000],
+    `WITH pt AS (SELECT ST_SetSRID(ST_MakePoint($1,$2), ${OSM_SRID}) AS g)
+     SELECT count(*)::int AS n FROM buildings b, pt
+     WHERE b.geom && ST_Expand(pt.g, $3)
+       AND ST_DWithin(ST_SetSRID(b.geom,4326)::geography, pt.g::geography, $4)`,
+    [lng, lat, deg, radiusM],
   )
 
   const parcelsQ = pg.query(

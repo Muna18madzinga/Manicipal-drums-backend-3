@@ -58,6 +58,14 @@ const { planReviewRoutes } = require('./src/routes/plan-review')
 // Turn E: DM Handbook 2021 v1.2 — permit applications, enforcement, building plans,
 // stage inspections, and certificates of occupation (spatial_planning schema).
 const { developmentManagementRoutes } = require('./src/routes/development-management')
+const { inspectorGisRoutes } = require('./src/routes/inspector-gis')
+const { inspectorRoutingRoutes } = require('./src/routes/inspector-routing')
+// Statutory appeals against a determination (RTCP Act s.38, migration 070).
+const { appealRoutes } = require('./src/routes/appeals')
+// Public reports of unauthorised or dangerous building work (migration 120).
+const { buildingComplaintRoutes } = require('./src/routes/building-complaints')
+const { environmentalHealthRoutes } = require('./src/routes/environmental-health')
+const { environmentalHealthOpsRoutes } = require('./src/routes/environmental-health-ops')
 
 // Import Public Routes
 const { publicRoutes } = require('./src/routes/public')
@@ -472,7 +480,25 @@ async function build() {
   // stage inspections (Annexures 12/14), and certificates of occupation.
   try {
     await server.register(developmentManagementRoutes, { prefix: '/api' })
-    console.log('✅ Development Management (DM Handbook v1.2) routes registered')
+    // Building Inspector GIS: site resolution, site checks, identify, field
+    // events with server-side geofence, evidence geo-verification.
+    await server.register(inspectorGisRoutes, { prefix: '/api' })
+    // Road corridor for in-app turn-by-turn navigation (routing runs client-side).
+    await server.register(inspectorRoutingRoutes, { prefix: '/api' })
+    // Appeals to the Administrative Court against a determination. The table
+    // shipped in migration 070; until now nothing served it, so both the
+    // citizen's "Lodge appeal" and the staff register called a 404.
+    await server.register(appealRoutes, { prefix: '/api' })
+    // The half of the inspector's inbox that does not start with an
+    // application: reports of unauthorised or dangerous building work.
+    await server.register(buildingComplaintRoutes, { prefix: '/api' })
+    // The EHO's four registers — premises, outbreaks, water quality, nuisance
+    // complaints — and the spatial questions asked of them (migration 121).
+    await server.register(environmentalHealthRoutes, { prefix: '/api' })
+    // The EHO's operational record — inspections carried out, certificates
+    // and permits issued, licence clearances and field programmes (122).
+    await server.register(environmentalHealthOpsRoutes, { prefix: '/api' })
+    console.log('✅ Development Management (DM Handbook v1.2) + Inspector GIS + Environmental Health routes registered')
   } catch (error) {
     server.log.error({ err: error }, 'Failed to register development management routes')
   }
