@@ -50,6 +50,7 @@ const { requireAuth, requireRole } = require('../middleware/jwtAuth')
 const notifier = require('../services/notifier')
 const { canTransition, allowedTransitions } = require('../config/permitWorkflow')
 const { scanBuffer } = require('../services/malwareScan')
+const { validateFileSignature } = require('../utils/fileSignature')
 
 /**
  * Statutory transition gate, shared by every status write. Returns null when
@@ -100,11 +101,89 @@ const STAFF_ROLES = [
 const PERMIT_READERS = [...STAFF_ROLES, 'public', 'viewer', 'registered']
 
 // ════════════════════════════════════════════════════════════════════
+// Inspector work queue — served from spatial_planning.v_inspector_queue.
+// Every bucket/filter/count is a Postgres predicate defined once in
+// QUEUE_BUCKETS, so a KPI tile and the list it opens can never disagree.
+// ════════════════════════════════════════════════════════════════════
+const QUEUE_EFFECTIVE = 'COALESCE(q.scheduled_at, q.booking_scheduled_for)'
+const QUEUE_OPEN = 'q.inspected_at IS NULL'
+
+const QUEUE_BUCKETS = {
+  today:       `${QUEUE_OPEN} AND ${QUEUE_EFFECTIVE}::date = CURRENT_DATE`,
+  overdue:     `${QUEUE_OPEN} AND ${QUEUE_EFFECTIVE}::date < CURRENT_DATE`,
+  upcoming:    `${QUEUE_OPEN} AND ${QUEUE_EFFECTIVE}::date > CURRENT_DATE`,
+  unscheduled: `${QUEUE_OPEN} AND ${QUEUE_EFFECTIVE} IS NULL`,
+  followup:    `q.result = 'reinspection_required'`,
+  failed:      `q.result = 'fail'`,
+  completed:   `q.inspected_at IS NOT NULL`,
+}
+
+const QUEUE_COLS = `
+  q.permit_app_id, q.dev_app_id, q.tpd_reference, q.dev_register_no,
+  q.stand_number, q.suburb_ward, q.street_address, q.applicant_name,
+  q.development_type, q.description, q.permit_status, q.permit_assigned_to,
+  q.statutory_due_date, q.received_at, q.permit_updated_at, q.lng, q.lat,
+  q.stage_inspection_id, q.stage_number, q.attempt, q.inspector_id,
+  q.scheduled_at, q.inspected_at, q.assigned_at, q.assigned_by, q.result,
+  q.booking_id, q.booking_application_id, q.booking_status,
+  q.booking_scheduled_for, q.fee_paid_at, q.has_occupation_certificate,
+  ${QUEUE_EFFECTIVE} AS effective_scheduled_at,
+  (${QUEUE_OPEN} AND ${QUEUE_EFFECTIVE}::date < CURRENT_DATE) AS is_overdue
+`
+
+/** Build a bound WHERE clause from the queue query string. */
+function buildQueueFilters(query, user) {
+  const where = []
+  const params = []
+  const add = (sql, value) => { params.push(value); where.push(sql.replace('$$', `$${params.length}`)) }
+
+  if (query.bucket && QUEUE_BUCKETS[query.bucket]) where.push(QUEUE_BUCKETS[query.bucket])
+  if (query.scope === 'unassigned') where.push('q.inspector_id IS NULL')
+  if (query.inspector) add('q.inspector_id = $$', query.inspector === 'me' ? user?.id : query.inspector)
+  if (query.status) add('q.permit_status = $$', query.status)
+  if (query.result) add('q.result = $$', query.result)
+  if (query.stage) add('q.stage_number = $$::int', Number(query.stage))
+  if (query.ward) add('q.suburb_ward = $$', query.ward)
+  if (query.booking_status) add('q.booking_status = $$', query.booking_status)
+  if (query.from) add(`${QUEUE_EFFECTIVE}::date >= $$::date`, query.from)
+  if (query.to) add(`${QUEUE_EFFECTIVE}::date <= $$::date`, query.to)
+  if (query.search) {
+    params.push(`%${String(query.search).trim()}%`)
+    const p = `$${params.length}`
+    where.push(`(q.dev_register_no ILIKE ${p} OR q.tpd_reference ILIKE ${p}
+                 OR q.stand_number ILIKE ${p} OR q.applicant_name ILIKE ${p}
+                 OR q.suburb_ward ILIKE ${p} OR q.description ILIKE ${p})`)
+  }
+  return { clause: where.length ? `WHERE ${where.join(' AND ')}` : '', params }
+}
+
+function clampInt(value, fallback, min, max) {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return fallback
+  return Math.min(Math.max(Math.trunc(n), min), max)
+}
+
+// ════════════════════════════════════════════════════════════════════
 // Photo storage (DM Handbook Phase 4 — Stage Inspection Photos)
 // ════════════════════════════════════════════════════════════════════
 const STAGE_PHOTO_ROOT = process.env.STAGE_PHOTO_ROOT
   ? path.resolve(process.env.STAGE_PHOTO_ROOT)
   : path.resolve(process.cwd(), 'uploads', 'stage-photos')
+
+// Permit case-file documents (migration 085 + 119). Plans and title deeds are
+// routinely large scans, so the cap is above the photo cap.
+const PERMIT_DOC_ROOT = process.env.PERMIT_DOC_ROOT
+  ? path.resolve(process.env.PERMIT_DOC_ROOT)
+  : path.resolve(process.cwd(), 'uploads', 'permit-documents')
+
+const MAX_PERMIT_DOC_BYTES = 20 * 1024 * 1024  // 20 MB
+const ALLOWED_PERMIT_DOC_MIME = new Set([
+  'application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/heic',
+])
+const PERMIT_DOC_EXT = {
+  'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '.png',
+  'image/webp': '.webp', 'image/heic': '.heic',
+}
 
 const MAX_STAGE_PHOTO_BYTES = 10 * 1024 * 1024  // 10 MB
 const ALLOWED_STAGE_PHOTO_MIME = new Set([
@@ -209,6 +288,47 @@ async function developmentManagementRoutes(fastify) {
     }
   }
 
+  // ── Inspector work queue ──────────────────────────────────────────
+  fastify.get('/inspector/work-queue', {
+    preHandler: requireRole(fastify, STAFF_ROLES),
+  }, async (request, reply) => {
+    const limit = clampInt(request.query.limit, 50, 1, 500)
+    const offset = clampInt(request.query.offset, 0, 0, 1e6)
+    const { clause, params } = buildQueueFilters(request.query, request.user)
+    try {
+      const [rows, count] = await Promise.all([
+        pg.query(
+          `SELECT ${QUEUE_COLS}
+           FROM spatial_planning.v_inspector_queue q
+           ${clause}
+           ORDER BY ${QUEUE_EFFECTIVE} NULLS LAST, q.permit_updated_at DESC
+           LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+          [...params, limit, offset],
+        ),
+        pg.query(`SELECT COUNT(*)::int AS total FROM spatial_planning.v_inspector_queue q ${clause}`, params),
+      ])
+      return { success: true, data: rows.rows, total: count.rows[0].total, limit, offset }
+    } catch (err) {
+      request.log.error({ err }, '[dm] work-queue failed')
+      return reply.code(500).send({ success: false, error: 'queue_failed', message: 'The inspection queue could not be loaded.' })
+    }
+  })
+
+  fastify.get('/inspector/work-queue/summary', {
+    preHandler: requireRole(fastify, STAFF_ROLES),
+  }, async (request, reply) => {
+    const parts = Object.entries(QUEUE_BUCKETS)
+      .map(([name, pred]) => `COUNT(*) FILTER (WHERE ${pred})::int AS ${name}`)
+      .join(', ')
+    try {
+      const r = await pg.query(`SELECT ${parts}, COUNT(*)::int AS total FROM spatial_planning.v_inspector_queue q`)
+      return { success: true, data: r.rows[0] }
+    } catch (err) {
+      request.log.error({ err }, '[dm] queue summary failed')
+      return reply.code(500).send({ success: false, error: 'summary_failed', message: 'Queue counts could not be loaded.' })
+    }
+  })
+
   // ══════════════════════════════════════════════════════════════════
   // PHASE 1 — PERMIT APPLICATIONS
   // ══════════════════════════════════════════════════════════════════
@@ -304,27 +424,57 @@ async function developmentManagementRoutes(fastify) {
     const isStaff = STAFF_ROLES.includes(request.user.role)
     const ownerFilter = isStaff ? null : request.user.id
     const includePending = isStaff && request.query.includePendingPayment === 'true'
+    const pageLimit = Math.min(Number(limit) || 50, 200)
+    const pageOffset = Math.max(Number(offset) || 0, 0)
     try {
+      // COUNT(*) OVER() carries the size of the filtered set on every row, so a
+      // register can say "51–100 of 412" from one query. Without it a paged
+      // register can only offer Next and discover the end by hitting it, and
+      // the response shape has promised a total since it was first typed.
       const { rows } = await pg.query(
-        `SELECT * FROM spatial_planning.v_application_summary
-         WHERE ($1::text IS NULL OR status = $1)
-           AND ($2::text IS NULL OR development_type = $2)
+        // The summary view carries the register columns but not the case
+        // columns, so a list row arrived without created_at (the quarterly
+        // return filtered on it and produced an empty return every time),
+        // without fee_paid (intake completeness read false for every paid
+        // application) and without the clock. They are joined back here rather
+        // than added to the view: the view is read by several consoles and
+        // changing its shape is a migration, while a list row missing the
+        // fields its own type promises is a bug in every one of them.
+        `SELECT v.*, COUNT(*) OVER() AS total_count,
+                p.created_at, p.updated_at, p.description,
+                p.applicant_phone, p.applicant_email,
+                p.acknowledged_at, p.statutory_due_date, p.assigned_to,
+                p.recommendation, p.classification,
+                (p.fee_paid_at IS NOT NULL) AS fee_paid
+           FROM spatial_planning.v_application_summary v
+           JOIN spatial_planning.permit_application p ON p.id = v.id
+         WHERE ($1::text IS NULL OR v.status = $1)
+           AND ($2::text IS NULL OR v.development_type = $2)
            AND ($3::text IS NULL OR (
-                 applicant_name ILIKE '%' || $3 || '%'
-                 OR tpd_reference ILIKE '%' || $3 || '%'
-                 OR stand_number  ILIKE '%' || $3 || '%'
+                 v.applicant_name ILIKE '%' || $3 || '%'
+                 OR v.tpd_reference ILIKE '%' || $3 || '%'
+                 OR v.stand_number  ILIKE '%' || $3 || '%'
+                 OR v.dev_register_no ILIKE '%' || $3 || '%'
+                 OR v.suburb_ward ILIKE '%' || $3 || '%'
                ))
-           AND ($6::uuid IS NULL OR created_by = $6)
+           AND ($6::uuid IS NULL OR v.created_by = $6)
            AND ($7::boolean = true
-                OR created_by = COALESCE($6, '00000000-0000-0000-0000-000000000000'::uuid)
-                OR status <> 'pending_payment')
-         ORDER BY received_at DESC
+                OR v.created_by = COALESCE($6, '00000000-0000-0000-0000-000000000000'::uuid)
+                OR v.status <> 'pending_payment')
+         ORDER BY v.received_at DESC NULLS LAST
          LIMIT $4 OFFSET $5`,
         [status || null, development_type || null, search || null,
-         Math.min(Number(limit) || 50, 200), Number(offset) || 0,
+         pageLimit, pageOffset,
          ownerFilter, includePending],
       )
-      return reply.send({ success: true, data: rows })
+      const total = rows.length ? Number(rows[0].total_count) : 0
+      return reply.send({
+        success: true,
+        data: rows.map(({ total_count, ...row }) => row),
+        total,
+        limit: pageLimit,
+        offset: pageOffset,
+      })
     } catch (err) {
       request.log.error({ err }, 'list permit-applications failed')
       return reply.code(500).send({ success: false, error: 'internal' })
@@ -723,7 +873,10 @@ async function developmentManagementRoutes(fastify) {
   // ── Objections ───────────────────────────────────────────────────
 
   fastify.post('/permit-applications/:id/objections', {
-    preHandler: requireRole(fastify, ['planning_clerk', 'planner', 'admin']),
+    // 'eo' joins the list it was missing from: the two neighbouring routes let
+    // the EO verify the notice and determine an objection, so an EO who could
+    // decide an objection could not record the one handed in at the counter.
+    preHandler: requireRole(fastify, ['eo', 'planning_clerk', 'planner', 'admin']),
   }, async (request, reply) => {
     if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
     const b = request.body || {}
@@ -1438,13 +1591,28 @@ async function developmentManagementRoutes(fastify) {
   fastify.get('/enforcement-orders', {
     preHandler: requireRole(fastify, ['eo', 'planner', 'admin', 'building_inspector', 'gis_officer', 'env_officer']),
   }, async (request, reply) => {
-    const { status, limit = 50, offset = 0 } = request.query
+    const { status, stand_number, permit_app_id, limit = 50, offset = 0 } = request.query
     try {
+      // Two ways to name the same property, so they OR rather than AND:
+      //   stand_number   trimmed, case-insensitive — the Stands Register and the
+      //                  order are captured at different desks, so 'Somabula '
+      //                  and 'somabula' are the same stand
+      //   permit_app_id  catches an order raised against the permit but captured
+      //                  with a different stand string, which a stand-only query
+      //                  would miss
+      // status still narrows whatever that identity match returns.
       const { rows } = await pg.query(
         `SELECT * FROM spatial_planning.enforcement_order
          WHERE ($1::text IS NULL OR status = $1)
+           AND (
+             ($4::text IS NULL AND $5::uuid IS NULL)
+             OR ($4::text IS NOT NULL AND upper(btrim(stand_number)) = upper(btrim($4)))
+             OR ($5::uuid IS NOT NULL AND permit_app_id = $5)
+           )
          ORDER BY issued_at DESC LIMIT $2 OFFSET $3`,
-        [status || null, Math.min(Number(limit) || 50, 200), Number(offset) || 0],
+        [status || null, Math.min(Number(limit) || 50, 200), Number(offset) || 0,
+          isStr(stand_number, 40) ? stand_number : null,
+          isUuid(permit_app_id) ? permit_app_id : null],
       )
       return reply.send({ success: true, data: rows })
     } catch (err) {
@@ -1964,12 +2132,223 @@ async function developmentManagementRoutes(fastify) {
     preHandler: requireAuth(fastify),
   }, async (request, reply) => {
     if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
+    try {
+      // "Not issued yet" is the normal state of an unfinished building, not an
+      // error: it answers 200 with data: null. A 404 here means the PERMIT does
+      // not exist (or is not yours), so a missing route and a building still
+      // under construction no longer look identical to the caller.
+      const permit = await pg.query(
+        'SELECT id, created_by FROM spatial_planning.permit_application WHERE id = $1',
+        [request.params.id],
+      )
+      if (!permit.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
+      // The certificate carries the occupant's name and floor area. Same gate as
+      // GET /permit-applications/:id — 404 rather than 403 so the existence of
+      // someone else's case is not disclosed.
+      const isStaff = STAFF_ROLES.includes(request.user.role)
+      if (!isStaff && permit.rows[0].created_by !== request.user.id) {
+        return reply.code(404).send({ success: false, error: 'not_found' })
+      }
+      const { rows } = await pg.query(
+        `SELECT * FROM spatial_planning.occupation_certificate WHERE permit_app_id = $1`,
+        [request.params.id],
+      )
+      return reply.send({ success: true, data: rows[0] || null })
+    } catch (err) {
+      request.log.error({ err }, 'get occupation certificate failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    }
+  })
+
+  // ══════════════════════════════════════════════════════════════════
+  // PERMIT DOCUMENTS (migration 085 permit_document + 119 file metadata)
+  // ══════════════════════════════════════════════════════════════════
+  // The case file: supporting documents uploaded by the applicant, and by the
+  // planning desks. Serves the citizen portal, planner intake, planning-clerk
+  // receipt and the inspector case file, which all read the same list.
+
+  try { await ensureDir(PERMIT_DOC_ROOT) } catch { /* surfaced at upload time */ }
+
+  /**
+   * Staff, or the citizen whose case it is. Returns the permit row, or null
+   * after sending 404 — the same "don't disclose someone else's case" rule as
+   * GET /permit-applications/:id.
+   */
+  async function permitForDocumentActor(request, reply) {
+    if (!isUuid(request.params.id)) {
+      reply.code(400).send({ success: false, error: 'bad_id' })
+      return null
+    }
     const { rows } = await pg.query(
-      `SELECT * FROM spatial_planning.occupation_certificate WHERE permit_app_id = $1`,
+      'SELECT id, created_by, status FROM spatial_planning.permit_application WHERE id = $1',
       [request.params.id],
     )
-    if (!rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
-    return reply.send({ success: true, data: rows[0] })
+    const permit = rows[0]
+    if (!permit) {
+      reply.code(404).send({ success: false, error: 'not_found' })
+      return null
+    }
+    const isStaff = STAFF_ROLES.includes(request.user.role)
+    if (!isStaff && permit.created_by !== request.user.id) {
+      reply.code(404).send({ success: false, error: 'not_found' })
+      return null
+    }
+    return permit
+  }
+
+  fastify.get('/permit-applications/:id/documents', {
+    preHandler: requireAuth(fastify),
+  }, async (request, reply) => {
+    try {
+      const permit = await permitForDocumentActor(request, reply)
+      if (!permit) return reply
+      // Directly uploaded rows carry their own metadata (migration 119); rows
+      // that link a citizen document resolve theirs from citizen_documents.
+      // file_name falls back to the stored file's basename so the list never
+      // shows a blank name.
+      const { rows } = await pg.query(
+        `SELECT pd.id,
+                pd.permit_app_id AS permit_application_id,
+                COALESCE(pd.doc_role, cd.doc_kind, 'other') AS doc_type,
+                COALESCE(
+                  pd.file_name,
+                  NULLIF(regexp_replace(COALESCE(pd.storage_url, cd.storage_url, ''), '^.*/', ''), '')
+                ) AS file_name,
+                COALESCE(pd.storage_url, cd.storage_url) AS storage_url,
+                COALESCE(pd.mime_type, cd.mime_type) AS mime_type,
+                COALESCE(pd.bytes, cd.bytes)::int AS bytes,
+                pd.added_by AS uploaded_by,
+                COALESCE(u.full_name, u.name) AS uploaded_by_name,
+                pd.created_at AS uploaded_at,
+                pd.source
+           FROM spatial_planning.permit_document pd
+           LEFT JOIN public.citizen_documents cd
+             ON pd.source = 'citizen' AND cd.id = pd.document_id AND cd.deleted_at IS NULL
+           LEFT JOIN public.users u ON u.id = pd.added_by
+          WHERE pd.permit_app_id = $1
+          ORDER BY pd.created_at DESC`,
+        [request.params.id],
+      )
+      return reply.send({ success: true, data: rows })
+    } catch (err) {
+      request.log.error({ err }, 'list permit documents failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    }
+  })
+
+  // Multipart upload. Field name: 'file'. Required field: doc_type.
+  fastify.post('/permit-applications/:id/documents', {
+    preHandler: requireAuth(fastify),
+  }, async (request, reply) => {
+    if (!request.isMultipart || !request.isMultipart()) {
+      return reply.code(415).send({ success: false, error: 'expected_multipart' })
+    }
+    let permit
+    try {
+      permit = await permitForDocumentActor(request, reply)
+      if (!permit) return reply
+    } catch (err) {
+      request.log.error({ err }, 'permit document authorisation failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    }
+
+    let file = null
+    let docType = null
+    try {
+      const parts = request.parts({ limits: { fileSize: MAX_PERMIT_DOC_BYTES, files: 1 } })
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          if (file) { await part.toBuffer().catch(() => null); continue }
+          if (!ALLOWED_PERMIT_DOC_MIME.has(part.mimetype)) {
+            return reply.code(415).send({
+              success: false, error: 'bad_mime',
+              message: `Allowed: ${[...ALLOWED_PERMIT_DOC_MIME].join(', ')}`,
+            })
+          }
+          const buf = await part.toBuffer()
+          if (!buf || buf.length === 0) {
+            return reply.code(400).send({ success: false, error: 'empty_file' })
+          }
+          // Magic bytes, not the declared Content-Type: a .pdf header on an
+          // executable is the whole point of the check.
+          const sig = validateFileSignature(buf, part.mimetype, ALLOWED_PERMIT_DOC_MIME)
+          if (!sig.ok) {
+            return reply.code(415).send({
+              success: false, error: 'bad_file_signature',
+              message: 'File content does not match an allowed document type.',
+            })
+          }
+          file = { mimetype: sig.mime, filename: part.filename, buffer: buf }
+        } else if (part.type === 'field') {
+          if (part.fieldname === 'doc_type' && isStr(part.value, 40)) docType = part.value.trim()
+          if (part.fieldname === 'docType' && isStr(part.value, 40)) docType = part.value.trim()
+        }
+      }
+    } catch (err) {
+      if (err && err.code === 'FST_REQ_FILE_TOO_LARGE') {
+        return reply.code(413).send({
+          success: false, error: 'too_large',
+          message: `Document exceeds ${Math.round(MAX_PERMIT_DOC_BYTES / (1024 * 1024))} MB.`,
+        })
+      }
+      request.log.error({ err }, 'permit document parse failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    }
+
+    if (!file) return reply.code(400).send({ success: false, error: 'no_file' })
+    // An open vocabulary (migration 085 calls doc_role an open set) with a shape
+    // rule, so the register cannot fill with free text or markup.
+    if (!docType || !/^[a-z][a-z0-9_]{1,39}$/.test(docType)) {
+      return reply.code(400).send({
+        success: false, error: 'bad_doc_type',
+        message: 'doc_type is required: lower-case letters, digits and underscores.',
+      })
+    }
+
+    const scan = await scanBuffer(file.buffer, { mime: file.mimetype, log: request.log })
+    if (!scan.clean) {
+      request.log.warn({ signature: scan.signature, engine: scan.engine, userId: request.user.id },
+        'rejected infected permit document')
+      return reply.code(422).send({
+        success: false, error: 'malware_detected',
+        message: 'This file failed a security scan and was not accepted.',
+      })
+    }
+
+    const sha256 = crypto.createHash('sha256').update(file.buffer).digest('hex')
+    const id = crypto.randomUUID()
+    const ext = PERMIT_DOC_EXT[file.mimetype] || ''
+    const dir = path.join(PERMIT_DOC_ROOT, request.params.id)
+    const storageUrl = `/uploads/permit-documents/${request.params.id}/${id}${ext}`
+
+    try {
+      await ensureDir(dir)
+      await fs.writeFile(path.join(dir, `${id}${ext}`), file.buffer)
+      // The uploaded file is its own source row: document_id is this record's
+      // id, source 'external'. ON CONFLICT makes a re-upload of the same file
+      // idempotent rather than a second entry in the register.
+      const { rows } = await pg.query(
+        `INSERT INTO spatial_planning.permit_document
+           (id, permit_app_id, document_id, source, doc_role, storage_url,
+            file_name, mime_type, bytes, sha256_hex, added_by)
+         VALUES ($1,$2,$1,'external',$3,$4,$5,$6,$7,$8,$9)
+         ON CONFLICT (permit_app_id, sha256_hex) WHERE sha256_hex IS NOT NULL
+           DO UPDATE SET doc_role = EXCLUDED.doc_role
+         RETURNING id, permit_app_id AS permit_application_id, doc_role AS doc_type,
+                   file_name, storage_url, mime_type, bytes::int AS bytes, added_by AS uploaded_by,
+                   created_at AS uploaded_at, source`,
+        [id, request.params.id, docType, storageUrl,
+          isStr(file.filename, 255) ? path.basename(file.filename) : `${docType}${ext}`,
+          file.mimetype, file.buffer.length, sha256, request.user.id],
+      )
+      await logEvent(request.params.id, 'document_uploaded', request, {
+        document_id: rows[0].id, doc_type: docType, bytes: file.buffer.length,
+      })
+      return reply.code(201).send({ success: true, data: rows[0] })
+    } catch (err) {
+      request.log.error({ err }, 'permit document upload failed')
+      return reply.code(500).send({ success: false, error: 'internal', message: 'The document was not saved.' })
+    }
   })
 
   // ══════════════════════════════════════════════════════════════════
