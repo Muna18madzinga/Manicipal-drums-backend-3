@@ -20,6 +20,7 @@
  */
 
 const aiClient = require('./aiClient')
+const { emailLetterhead } = require('../config/council')
 
 const APP_NAME    = 'Vungu Spatial Data Portal'
 const COUNCIL     = 'Vungu Rural District Council'
@@ -252,8 +253,9 @@ async function enqueue(pg, {
 
 /**
  * Wrap a plain-text email body in minimal, email-safe HTML. One <p> per
- * blank-line-separated block; single newlines become <br>. Keeps the council
- * letterhead simple and inline-styled (email clients ignore <style>).
+ * blank-line-separated block; single newlines become <br>. The council
+ * letterhead is prepended and inline-styled, because mail clients ignore
+ * <style>.
  */
 function textToHtml(text) {
   const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
@@ -262,6 +264,7 @@ function textToHtml(text) {
     .map(b => `<p style="margin:0 0 1em;">${esc(b).replace(/\n/g, '<br>')}</p>`)
     .join('\n')
   return `<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;line-height:1.6;max-width:560px;">
+${emailLetterhead()}
 ${paras}
 </div>`
 }
@@ -390,4 +393,5 @@ module.exports = {
   enqueueApplicationReceived,
   enqueueStaffInvite,
   recordApplicationStatusChange,
+  textToHtml,
 }
