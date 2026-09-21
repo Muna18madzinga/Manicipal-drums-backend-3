@@ -1,3 +1,7 @@
+// The sibling seed scripts all load .env; this one did not, so running it
+// directly failed on an undefined password while the others worked.
+try { require('dotenv').config({ quiet: true }) } catch (_) { /* optional */ }
+
 const { Pool } = require('pg')
 const bcrypt = require('bcryptjs')
 
@@ -25,6 +29,9 @@ const DEFAULT_DEMO_USERS = [
   { email: 'demo.surveyor@vungu.test', name: 'Demo Surveyor', role: 'surveyor' },
   { email: 'demo.gis@vungu.test', name: 'Demo GIS Officer', role: 'gis_officer' },
   { email: 'demo.viewer@vungu.test', name: 'Demo Viewer', role: 'viewer' },
+  // The applicant. Every staff role had an account and the citizen did not,
+  // so the one journey that begins outside the council could not be walked.
+  { email: 'demo.citizen@vungu.test', name: 'Demo Citizen', role: 'registered' },
 ]
 
 function normalizeEnabled(value) {
