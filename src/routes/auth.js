@@ -39,6 +39,8 @@ const {
 } = require('../middleware/jwtAuth')
 
 const notifier = require('../services/notifier')
+const loginSecurity = require('../services/loginSecurity')
+const { getSetting } = require('../services/adminSettings')
 
 // Customer-facing registration is pinned to one of these two roles only.
 // Anything else (including 'admin', 'planner', etc.) coming from the body
@@ -107,8 +109,9 @@ async function authRoutes(fastify) {
       if (!EMAIL_RX.test(email)) {
         return reply.code(400).send({ success: false, message: 'Invalid email address' })
       }
-      if (password.length < 8) {
-        return reply.code(400).send({ success: false, message: 'Password must be at least 8 characters' })
+      const minLength = await getSetting(fastify, 'security.password_min_length')
+      if (password.length < minLength) {
+        return reply.code(400).send({ success: false, message: `Password must be at least ${minLength} characters` })
       }
 
       // Map client `applicant_type` → safe role. Body `role` is ignored.
@@ -161,6 +164,10 @@ async function authRoutes(fastify) {
   })
 
   // ── Login ─────────────────────────────────────────────────────────────
+  // Every exit below records the attempt through loginSecurity, because the
+  // lockout counts consecutive failures and a lockout that missed an exit
+  // would be a lockout with a hole in it. The console's Sign-in security
+  // section reads the same rows to show WHY each attempt failed.
   fastify.post('/auth/login', async (request, reply) => {
     try {
       const { email, password } = request.body || {}
@@ -168,6 +175,34 @@ async function authRoutes(fastify) {
       if (!isString(email) || !isString(password)) {
         return reply.code(400).send({
           success: false, error: 'missing_credentials', message: 'Email and password are required',
+        })
+      }
+
+      // A blocked address is turned away before the password is even read, so
+      // a blocklisted host cannot use the sign-in form as an oracle.
+      const block = await loginSecurity.ipBlock(fastify, request)
+      if (block) {
+        await loginSecurity.record(fastify, request, {
+          email, succeeded: false, reason: loginSecurity.REASONS.IP_BLOCKED,
+        })
+        return reply.code(403).send({
+          success: false, error: 'ip_blocked',
+          message: 'Sign-in from this network has been blocked. Contact council IT.',
+        })
+      }
+
+      // Checked before the password so a locked address gets the same answer
+      // whether or not the guess was right — otherwise the lockout leaks the
+      // very thing it protects.
+      const lockout = await loginSecurity.lockoutState(fastify, email)
+      if (lockout.locked) {
+        await loginSecurity.record(fastify, request, {
+          email, succeeded: false, reason: loginSecurity.REASONS.LOCKED_OUT,
+        })
+        return reply.code(429).send({
+          success: false, error: 'locked_out',
+          message: 'Too many failed sign-in attempts. Try again later or contact council IT.',
+          data: { retryAt: lockout.until },
         })
       }
 
@@ -186,12 +221,19 @@ async function authRoutes(fastify) {
       const dummyHash = '$2b$10$abcdefghijklmnopqrstuv0000000000000000000000000000000'
       if (!user) {
         await bcrypt.compare(password, dummyHash)
+        await loginSecurity.record(fastify, request, {
+          email, succeeded: false, reason: loginSecurity.REASONS.NO_SUCH_USER,
+        })
         return reply.code(401).send({
           success: false, error: 'invalid_credentials', message: 'Invalid email or password',
         })
       }
 
       if (!user.active || user.status === 'suspended') {
+        await loginSecurity.record(fastify, request, {
+          email, userId: user.id, succeeded: false,
+          reason: user.status === 'deleted' ? loginSecurity.REASONS.DELETED : loginSecurity.REASONS.SUSPENDED,
+        })
         return reply.code(403).send({
           success: false, error: 'account_suspended', message: 'Your account has been suspended.',
         })
@@ -209,8 +251,19 @@ async function authRoutes(fastify) {
 
       const ok = await bcrypt.compare(password, user.password_hash)
       if (!ok) {
+        await loginSecurity.record(fastify, request, {
+          email, userId: user.id, succeeded: false, reason: loginSecurity.REASONS.BAD_PASSWORD,
+        })
+        // Tell the officer how many tries remain rather than locking them out
+        // without warning — the count is already knowable by trying, and a
+        // silent lockout generates a support call the council has to answer.
+        const remaining = lockout.max > 0 ? Math.max(0, lockout.max - lockout.failures - 1) : null
         return reply.code(401).send({
-          success: false, error: 'invalid_credentials', message: 'Invalid email or password',
+          success: false, error: 'invalid_credentials',
+          message: remaining !== null && remaining <= 2
+            ? `Invalid email or password. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining before lockout.`
+            : 'Invalid email or password',
+          data: remaining !== null ? { attemptsRemaining: remaining } : undefined,
         })
       }
 
@@ -226,6 +279,9 @@ async function authRoutes(fastify) {
         'UPDATE users SET last_login_at = NOW(), last_login = NOW() WHERE id = $1',
         [user.id],
       )
+      // The success row is what clears the failure count: lockoutState only
+      // counts failures since the last success, so there is no counter to reset.
+      await loginSecurity.record(fastify, request, { email, userId: user.id, succeeded: true })
 
       const { accessToken, refreshToken } = await createSession(fastify, user, request)
       setAuthCookies(reply, { accessToken, refreshToken })
@@ -360,10 +416,20 @@ async function authRoutes(fastify) {
           }
         }
       }
-      if (!ok) return reply.code(401).send({ success: false, error: 'invalid_mfa_code' })
+      if (!ok) {
+        // Same counter as the password step. A second factor that did not feed
+        // the lockout would leave the code guessable without limit once the
+        // password was known.
+        await loginSecurity.record(fastify, request, {
+          email: user.email, userId: user.id, succeeded: false,
+          reason: loginSecurity.REASONS.MFA_FAILED,
+        })
+        return reply.code(401).send({ success: false, error: 'invalid_mfa_code' })
+      }
 
       await fastify.pg.query(
         'UPDATE users SET last_login_at = NOW(), last_login = NOW() WHERE id = $1', [user.id])
+      await loginSecurity.record(fastify, request, { email: user.email, userId: user.id, succeeded: true })
 
       const { accessToken, refreshToken } = await createSession(fastify, user, request)
       setAuthCookies(reply, { accessToken, refreshToken })
@@ -479,8 +545,9 @@ async function authRoutes(fastify) {
       if (!isString(currentPassword) || !isString(newPassword)) {
         return reply.code(400).send({ success: false, message: 'Both passwords required' })
       }
-      if (newPassword.length < 8) {
-        return reply.code(400).send({ success: false, message: 'Password must be at least 8 characters' })
+      const minLength = await getSetting(fastify, 'security.password_min_length')
+      if (newPassword.length < minLength) {
+        return reply.code(400).send({ success: false, message: `Password must be at least ${minLength} characters` })
       }
 
       const { rows } = await fastify.pg.query(
@@ -628,8 +695,9 @@ async function authRoutes(fastify) {
       if (!isString(token) || !isString(name) || !isString(password)) {
         return reply.code(400).send({ success: false, message: 'token, name and password are required' })
       }
-      if (password.length < 8) {
-        return reply.code(400).send({ success: false, message: 'Password must be at least 8 characters' })
+      const minLength = await getSetting(fastify, 'security.password_min_length')
+      if (password.length < minLength) {
+        return reply.code(400).send({ success: false, message: `Password must be at least ${minLength} characters` })
       }
 
       const { rows: inviteRows } = await fastify.pg.query(
@@ -823,8 +891,11 @@ async function authRoutes(fastify) {
     try {
       const { id } = request.params
       const { newPassword } = request.body || {}
-      if (!isString(newPassword) || newPassword.length < 8) {
-        return reply.code(400).send({ success: false, message: 'New password must be at least 8 characters' })
+      // The council's own minimum (admin_setting security.password_min_length),
+      // not a literal — the console offers the control, so it has to bite here.
+      const minLength = await getSetting(fastify, 'security.password_min_length')
+      if (!isString(newPassword) || newPassword.length < minLength) {
+        return reply.code(400).send({ success: false, message: `New password must be at least ${minLength} characters` })
       }
       const passwordHash = await bcrypt.hash(newPassword, 10)
       const { rows } = await fastify.pg.query(

@@ -57,11 +57,33 @@ describe('Render migration plan', () => {
       '109_spatial_change_notify.sql',
       '110_local_authorities.sql',
       '111_spatial_layers_catalogue.sql',
+      '114_gis_style_registry.sql',
+      '115_residency_verification.sql',
+      '124_admin_console.sql',
     ])
 
     for (const filename of MIGRATIONS) {
       const migrationPath = path.join(__dirname, '..', 'migrations', filename)
       expect(fs.existsSync(migrationPath)).toBe(true)
     }
+  })
+
+  // The list above is a pin: changing the deploy plan should be a deliberate,
+  // reviewed edit rather than a side effect. The cost is that it goes stale
+  // silently — 114 and 115 were added to migrate-render.js without it, and the
+  // suite sat red until somebody looked. These two invariants fail with a
+  // message that says what is wrong, so the next drift is diagnosable in one
+  // line rather than in a 60-entry array diff.
+  test('every allowlisted migration exists and appears once', () => {
+    const missing = MIGRATIONS.filter(
+      (f) => !fs.existsSync(path.join(__dirname, '..', 'migrations', f)),
+    )
+    expect(missing).toEqual([])
+
+    const seen = new Set()
+    const duplicates = MIGRATIONS.filter((f) => (seen.has(f) ? true : (seen.add(f), false)))
+    // A migration run twice is a migration whose second run has to be
+    // idempotent for reasons nobody wrote down.
+    expect(duplicates).toEqual([])
   })
 })

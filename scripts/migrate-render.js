@@ -66,6 +66,9 @@ const MIGRATIONS = [
   '111_spatial_layers_catalogue.sql',
   '114_gis_style_registry.sql',
   '115_residency_verification.sql',
+  // Depends on public.users only, so it is safe here even though 116-123 are
+  // still outside this allowlist (see CLAUDE.md on the local-DB divergence).
+  '124_admin_console.sql',
 ]
 
 function createPool(env = process.env) {
