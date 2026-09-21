@@ -18,3 +18,15 @@ describe('council config', () => {
     expect(emailLetterhead()).not.toContain('<img')
   })
 })
+
+describe('council name casing', () => {
+  it('offers a title-case name for prose, distinct from the letterhead name', () => {
+    expect(COUNCIL.displayName).toBe('Vungu Rural District Council')
+    expect(COUNCIL.name).toBe(COUNCIL.name.toUpperCase())
+    expect(COUNCIL.displayName).not.toBe(COUNCIL.name)
+  })
+
+  it('agrees on the council between the two casings', () => {
+    expect(COUNCIL.displayName.toUpperCase()).toBe(COUNCIL.name)
+  })
+})

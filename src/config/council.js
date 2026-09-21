@@ -8,7 +8,10 @@
  */
 
 const COUNCIL = {
+  /** Upper case, for a letterhead. */
   name: 'VUNGU RURAL DISTRICT COUNCIL',
+  /** Title case, for running prose — email subjects and sign-offs. */
+  displayName: 'Vungu Rural District Council',
   address: 'Stand 1, Gweru Road, Gweru, Zimbabwe',
   telephone: '+263 54 123 456',
   email: 'admin@vungu.gov.zw',
