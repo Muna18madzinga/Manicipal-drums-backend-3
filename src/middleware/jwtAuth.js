@@ -76,15 +76,33 @@ function signRefreshToken(payload) {
  * of tokens is issued.
  */
 async function createSession(fastify, user, request) {
+  // How long a sign-in lasts is the council's to set (admin_setting
+  // security.session_max_hours, marked "enforced" in the IT console). Read
+  // here, at the one place a session's lifetime is decided — a setting the
+  // console calls enforced and nothing reads is worse than no setting.
+  //
+  // The 14-day literal this replaces was the refresh window; the setting is
+  // expressed in hours and defaults to 12, which is a council working day plus
+  // margin. A failure to read it falls back to the seeded default rather than
+  // refusing the sign-in.
+  let maxHours = 12
+  try {
+    const value = await getSetting(fastify, 'security.session_max_hours')
+    if (Number.isFinite(Number(value)) && Number(value) > 0) maxHours = Number(value)
+  } catch (err) {
+    fastify.log?.warn({ err }, 'session lifetime setting unreadable; using 12h')
+  }
+
   // Placeholder hash reserves the row so we have a sid to embed in the real
   // tokens; overwritten below with the actual refresh token's hash.
   const placeholder = crypto.randomBytes(32).toString('hex')
   const { rows } = await fastify.pg.query(
     `INSERT INTO public.user_session (user_id, refresh_token_hash, user_agent, ip, expires_at)
-     VALUES ($1, $2, $3, $4, NOW() + INTERVAL '14 days')
+     VALUES ($1, $2, $3, $4, NOW() + ($5 || ' hours')::interval)
      RETURNING id`,
     [user.id, placeholder, request?.headers?.['user-agent'] || null,
-     request?.headers?.['x-forwarded-for']?.split(',')[0] || request?.ip || null],
+     request?.headers?.['x-forwarded-for']?.split(',')[0] || request?.ip || null,
+     String(maxHours)],
   )
   const sid = rows[0].id
   const refreshToken = signRefreshToken({ id: user.id, sid })
@@ -254,6 +272,11 @@ function requireRole(fastify, allowed) {
 }
 
 const requireAdmin = (fastify) => requireRole(fastify, 'admin')
+
+// Required lazily inside createSession's own module scope rather than at the
+// top: adminSettings.js is a leaf that needs nothing from here, but jwtAuth is
+// loaded by almost every route file and a top-level cycle is easy to introduce.
+const { getSetting } = require('../services/adminSettings')
 
 // ── Cookie helpers ──────────────────────────────────────────────────────
 // httpOnly + Secure (outside dev) + SameSite=Lax. Lax (not Strict) so a

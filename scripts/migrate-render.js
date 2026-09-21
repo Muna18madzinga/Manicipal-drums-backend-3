@@ -92,6 +92,8 @@ const MIGRATIONS = [
   '124_planning_clerk_registers.sql',
   '125_service_desk_tickets.sql',
   '126_stands_zone_id_integer.sql',
+  // The IT admin console. Depends on public.users only.
+  '127_admin_console.sql',
 ]
 
 function createPool(env = process.env) {

@@ -27,9 +27,13 @@
  *   - The worker NEVER blocks request paths.
  */
 
+const { getSettings } = require('../services/adminSettings')
+
 const POLL_INTERVAL_MS = Number(process.env.MAIL_POLL_MS || 30_000)
 const BATCH_SIZE       = Number(process.env.MAIL_BATCH || 25)
-const MAX_ATTEMPTS     = Number(process.env.MAIL_MAX_ATTEMPTS || 5)
+// The council's own limit (admin_setting notifications.outbox_max_attempts)
+// wins; the env var is the fallback when the settings table cannot be read.
+const MAX_ATTEMPTS_FALLBACK = Number(process.env.MAIL_MAX_ATTEMPTS || 5)
 
 // Transient errors retry; permanent ones give up immediately.
 const PERMANENT_CODES = new Set(['EENVELOPE', 'EAUTH', 'EADDRESS'])
@@ -120,7 +124,38 @@ function backoffMs(attempts) {
   return [30_000, 120_000, 300_000, 900_000, 3_600_000][Math.min(attempts, 4)]
 }
 
-async function processBatch(pg, transport, log) {
+/**
+ * What the council has asked for, read fresh each tick.
+ *
+ * `notifications.email_enabled` is the switch the IT console offers and
+ * labels "enforced": when it is off the worker holds every message in
+ * 'pending' rather than dispatching it, so turning it back on resumes the
+ * queue with nothing lost. A setting the console calls enforced and no code
+ * reads would be worse than no setting at all.
+ *
+ * Fails OPEN — an unreadable settings table must not silently stop the
+ * council's correspondence.
+ */
+async function policy(pg, log) {
+  try {
+    const shim = { pg, log: log?.warn ? log : console }
+    const s = await getSettings(shim, [
+      'notifications.email_enabled',
+      'notifications.outbox_max_attempts',
+    ])
+    return {
+      enabled: s['notifications.email_enabled'] !== false,
+      maxAttempts: Number.isFinite(Number(s['notifications.outbox_max_attempts']))
+        ? Number(s['notifications.outbox_max_attempts'])
+        : MAX_ATTEMPTS_FALLBACK,
+    }
+  } catch {
+    return { enabled: true, maxAttempts: MAX_ATTEMPTS_FALLBACK }
+  }
+}
+
+async function processBatch(pg, transport, log, opts = {}) {
+  const MAX_ATTEMPTS = Number.isFinite(opts.maxAttempts) ? opts.maxAttempts : MAX_ATTEMPTS_FALLBACK
   // Use a transaction so the rows are FOR UPDATE-locked while we send.
   // SKIP LOCKED lets parallel workers each take a different slice.
   const client = await pg.connect()
@@ -221,13 +256,26 @@ function startEmailWorker(pg, options = {}) {
   const transport = selectTransport(log)
   let stopped = false
   let timer = null
+  // So a held queue logs once rather than every 30 seconds for a fortnight.
+  let announcedHold = false
 
   log.info?.(`[email] worker started, transport=${transport.name}, poll=${POLL_INTERVAL_MS}ms`)
 
   async function tick() {
     if (stopped) return
     try {
-      const r = await processBatch(pg, transport, log)
+      const { enabled, maxAttempts } = await policy(pg, log)
+      if (!enabled) {
+        // Held, not dropped: the rows stay 'pending' and go out when the
+        // council switches sending back on.
+        if (!announcedHold) {
+          log.info?.('[email] holding: notifications.email_enabled is off')
+          announcedHold = true
+        }
+        return
+      }
+      announcedHold = false
+      const r = await processBatch(pg, transport, log, { maxAttempts })
       if (r.processed > 0) {
         log.info?.(`[email] processed=${r.processed} sent=${r.sent} failed=${r.failed}`)
       }
@@ -246,7 +294,23 @@ function startEmailWorker(pg, options = {}) {
   }
 }
 
-module.exports = { startEmailWorker, processBatch, selectTransport }
+/**
+ * Which transport this process would use, without starting a worker.
+ *
+ * The IT console asks, because "sent" means something different under each:
+ * on `console` the row is advanced to sent after the message is printed to
+ * the server log and nothing leaves the building. An administrator told that
+ * 86 notifications were "sent" needs to know which of those two happened.
+ */
+function activeTransportName() {
+  const desired = String(process.env.MAIL_TRANSPORT || 'console').toLowerCase()
+  if (desired !== 'smtp') return 'console'
+  if (!process.env.SMTP_HOST) return 'console'
+  try { require.resolve('nodemailer') } catch { return 'console' }
+  return 'smtp'
+}
+
+module.exports = { startEmailWorker, processBatch, selectTransport, activeTransportName }
 
 // ════════════════════════════════════════════════════════════════════
 // Standalone runner.

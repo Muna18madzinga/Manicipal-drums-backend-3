@@ -66,6 +66,9 @@ const { appealRoutes } = require('./src/routes/appeals')
 const { buildingComplaintRoutes } = require('./src/routes/building-complaints')
 const { environmentalHealthRoutes } = require('./src/routes/environmental-health')
 const { environmentalHealthOpsRoutes } = require('./src/routes/environmental-health-ops')
+// The IT Administrator's console: audit trail, sessions, sign-in security,
+// settings, system health, outbox, announcements and the org structure (124).
+const { adminConsoleRoutes } = require('./src/routes/admin-console')
 
 // Import Public Routes
 const { publicRoutes } = require('./src/routes/public')
@@ -343,10 +346,18 @@ async function build() {
   await server.register(httpCachePlugin)
 
   // ── Audit logging (onResponse hook — never delays requests) ─────────
-  // Writes every authenticated mutating request to security_audit_log.
-  // Required for Zimbabwe municipal compliance (RTCP Act traceability).
+  // Writes every authenticated mutating request to public.admin_audit_event
+  // (migration 124). Required for Zimbabwe municipal compliance (RTCP Act
+  // traceability). It previously targeted security_audit_log, a table that
+  // migration 041 never managed to create — see the header of auditLog.js.
   const { auditLogPlugin } = require('./src/middleware/auditLog')
   await server.register(auditLogPlugin)
+
+  // ── Maintenance mode (preHandler — returns early on every GET) ──────
+  // Holds writes to the council record while system.maintenance_mode is on,
+  // exempting the IT Admin so the window can be ended from inside it.
+  const { maintenanceModePlugin } = require('./src/middleware/maintenanceMode')
+  await server.register(maintenanceModePlugin)
 
   // ── OpenAPI / Swagger (H4) ──────────────────────────────────────────
   // @fastify/swagger was installed but never registered, so no API docs
@@ -574,7 +585,11 @@ async function build() {
     // The EHO's operational record — inspections carried out, certificates
     // and permits issued, licence clearances and field programmes (122).
     await server.register(environmentalHealthOpsRoutes, { prefix: '/api' })
-    console.log('✅ Development Management (DM Handbook v1.2) + Inspector GIS + Environmental Health routes registered')
+    // The IT Admin console. Registered last in this block and guarded by the
+    // same try: the council's planning work must not be unavailable because
+    // an administration endpoint failed to mount.
+    await server.register(adminConsoleRoutes, { prefix: '/api' })
+    console.log('✅ Development Management (DM Handbook v1.2) + Inspector GIS + Environmental Health + Admin console routes registered')
   } catch (error) {
     server.log.error({ err: error }, 'Failed to register development management routes')
   }
