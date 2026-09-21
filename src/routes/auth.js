@@ -39,6 +39,21 @@ const {
 } = require('../middleware/jwtAuth')
 
 const notifier = require('../services/notifier')
+const {
+  createCaptchaChallenge,
+  verifyCaptchaChallenge,
+  honeypotTripped,
+} = require('../utils/captchaChallenge')
+
+function captchaOk(body, email) {
+  // Demo accounts in local development skip the puzzle so staff can still
+  // one-click sign in; production always requires a valid challenge.
+  if (process.env.NODE_ENV !== 'production' && typeof email === 'string' && email.endsWith('@vungu.test')) {
+    return { ok: true }
+  }
+  if (honeypotTripped(body)) return { ok: false, reason: 'bot' }
+  return verifyCaptchaChallenge(body?.captcha_challenge, body?.captcha_answer)
+}
 
 // Customer-facing registration is pinned to one of these two roles only.
 // Anything else (including 'admin', 'planner', etc.) coming from the body
@@ -95,11 +110,28 @@ function userToDTO(row) {
 }
 
 async function authRoutes(fastify) {
+  // ── CAPTCHA challenge (public) ────────────────────────────────────────
+  fastify.get('/auth/captcha', async (_request, reply) => {
+    const challenge = createCaptchaChallenge()
+    return reply.send({ success: true, data: challenge })
+  })
+
   // ── Register (customer self-service) ──────────────────────────────────
   fastify.post('/auth/register', async (request, reply) => {
     try {
       const body = request.body || {}
       const { name, email, phone, organization, password } = body
+
+      const cap = captchaOk(body, email)
+      if (!cap.ok) {
+        return reply.code(400).send({
+          success: false,
+          error: 'captcha_failed',
+          message: cap.reason === 'expired'
+            ? 'CAPTCHA expired — refresh the image and try again.'
+            : 'Enter the CAPTCHA characters correctly to create an account.',
+        })
+      }
 
       if (!isString(name, 120) || !isString(email, 255) || !isString(password, 255)) {
         return reply.code(400).send({ success: false, message: 'Name, email, and password are required' })
@@ -163,11 +195,23 @@ async function authRoutes(fastify) {
   // ── Login ─────────────────────────────────────────────────────────────
   fastify.post('/auth/login', async (request, reply) => {
     try {
-      const { email, password } = request.body || {}
+      const body = request.body || {}
+      const { email, password } = body
 
       if (!isString(email) || !isString(password)) {
         return reply.code(400).send({
           success: false, error: 'missing_credentials', message: 'Email and password are required',
+        })
+      }
+
+      const cap = captchaOk(body, email)
+      if (!cap.ok) {
+        return reply.code(400).send({
+          success: false,
+          error: 'captcha_failed',
+          message: cap.reason === 'expired'
+            ? 'CAPTCHA expired — refresh the image and try again.'
+            : 'Enter the CAPTCHA characters correctly to sign in.',
         })
       }
 

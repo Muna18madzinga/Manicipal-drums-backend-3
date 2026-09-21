@@ -675,6 +675,22 @@ async function developmentManagementRoutes(fastify) {
       )
       if (!cur.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
       const fromStatus = cur.rows[0].status
+
+      // Determinations must use POST /eo-decision (committee / delegated gate).
+      // Checked before transition so planners always see eo_decision_required.
+      const DECIDED = ['approved', 'approved_with_conditions', 'refused']
+      if (DECIDED.includes(status)) {
+        const role = request.user?.role
+        const adminOverride = role === 'admin' && request.body?.override === true
+        if (!adminOverride) {
+          return reply.code(403).send({
+            success: false,
+            error: 'eo_decision_required',
+            message: 'Approvals and refusals must be recorded via POST /permit-applications/:id/eo-decision (admin may pass override:true).',
+          })
+        }
+      }
+
       if (rejectUnlawfulTransition(reply, request, fromStatus, status)) return
 
       const { rows } = await pg.query(
