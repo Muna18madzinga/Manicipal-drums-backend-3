@@ -27,7 +27,7 @@
 try { require('dotenv').config({ quiet: true }) } catch (_) { /* optional */ }
 const crypto = require('crypto')
 const { Pool } = require('pg')
-const { ensure, remember } = require('./lib/seedkit')
+const { ensure, remember, forget } = require('./lib/seedkit')
 
 const DATABASE_URL = process.env.DATABASE_URL ||
   'postgresql://postgres:postgres@localhost:5432/Vungu_spatial334'
@@ -35,26 +35,6 @@ const DATABASE_URL = process.env.DATABASE_URL ||
 const TAG = 'VUNGU-ADMIN-DEMO'
 
 const daysAgo = n => new Date(Date.now() - n * 86400000).toISOString()
-
-/**
- * seedkit's `forget` assumes every seeded table has an `id` column
- * (`DELETE ... WHERE id::text = $1`) — true everywhere else, but
- * public.site_content is keyed on `slug`. Rather than touch the shared
- * helper, this is the same ledger-driven delete with the one correction.
- */
-async function forgetAdmin (db, tag) {
-  const { rows } = await db.query(
-    `SELECT table_name, row_id FROM public.seed_demo_ledger
-      WHERE tag = $1 ORDER BY id DESC`, [tag])
-  let n = 0
-  for (const r of rows) {
-    const keyCol = r.table_name === 'public.site_content' ? 'slug' : 'id'
-    const res = await db.query(`DELETE FROM ${r.table_name} WHERE ${keyCol}::text = $1`, [r.row_id])
-    n += res.rowCount
-  }
-  await db.query('DELETE FROM public.seed_demo_ledger WHERE tag = $1', [tag])
-  return n
-}
 
 async function userId (db, email) {
   const { rows } = await db.query('SELECT id FROM public.users WHERE email = $1', [email])
@@ -270,7 +250,7 @@ async function seed (db) {
   try {
     await db.query('BEGIN')
     if (undoing) {
-      const n = await forgetAdmin(db, TAG)
+      const n = await forget(db, TAG)
       await db.query('COMMIT')
       console.log(`Removed ${n} row(s) created by ${TAG}.`)
     } else {
