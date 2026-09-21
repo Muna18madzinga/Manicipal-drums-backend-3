@@ -245,6 +245,13 @@ async function enqueue(pg, {
     throw new Error('notifier.enqueue: userId or email is required')
   }
 
+  // Give every email the council letterhead, not just the two kinds whose
+  // callers happened to pass `html`. enqueue renders subject and text from
+  // TEMPLATES but never rendered html, so inspection notices, fee receipts
+  // and status changes were all going out as bare text from nobody.
+  // in_app rows stay plain — HTML would be rendered as-is in the UI feed.
+  if (channel === 'email') html = html || textToHtml(text)
+
   const { rows } = await pg.query(
     `INSERT INTO notifications_outbox (user_id, email, channel, kind, subject, body_text, body_html, payload)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8::JSONB)
