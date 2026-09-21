@@ -20,10 +20,13 @@
  */
 
 const aiClient = require('./aiClient')
-const { emailLetterhead } = require('../config/council')
+const { COUNCIL: IDENTITY, emailLetterhead } = require('../config/council')
 
 const APP_NAME    = 'Vungu Spatial Data Portal'
-const COUNCIL     = 'Vungu Rural District Council'
+// Subjects and sign-offs read as prose, so they take the title-case name.
+// Sourced from the shared identity rather than restated, so the council
+// cannot be renamed on the letterhead and not in the email beneath it.
+const COUNCIL     = IDENTITY.displayName
 const APP_BASE    = process.env.FRONTEND_URL || 'http://localhost:5174'
 
 // ════════════════════════════════════════════════════════════════════
