@@ -157,17 +157,32 @@ async function seed(db) {
  * so the register reads like a real council register.
  */
 async function fillRefs(db) {
+  // Continue from the highest number already issued that year, rather than
+  // restarting at 0001. The original numbered from 1 regardless of existing
+  // references, which worked on the first run — when nothing had one — and
+  // collided on the unique index on every run after.
   const { rows } = await db.query(`
-    WITH numbered AS (
-      SELECT id,
-             'TPD/VUN/' ||
-             to_char(COALESCE(received_at, created_at::date), 'YYYY') || '/' ||
-             lpad((row_number() OVER (
-               PARTITION BY to_char(COALESCE(received_at, created_at::date), 'YYYY')
-               ORDER BY COALESCE(received_at, created_at::date), id
+    WITH issued AS (
+      SELECT to_char(COALESCE(received_at, created_at::date), 'YYYY') AS yr,
+             COALESCE(MAX((regexp_replace(tpd_reference, '^.*/', ''))::int), 0) AS max_n
+        FROM spatial_planning.permit_application
+       WHERE tpd_reference IS NOT NULL
+         AND tpd_reference ~ '/[0-9]+$'
+       GROUP BY 1
+    ),
+    numbered AS (
+      SELECT p.id,
+             'TPD/VUN/' || y.yr || '/' ||
+             lpad((COALESCE(i.max_n, 0) + row_number() OVER (
+               PARTITION BY y.yr ORDER BY y.d, p.id
              ))::text, 4, '0') AS ref
-      FROM spatial_planning.permit_application
-      WHERE tpd_reference IS NULL
+        FROM spatial_planning.permit_application p
+        CROSS JOIN LATERAL (
+          SELECT to_char(COALESCE(p.received_at, p.created_at::date), 'YYYY') AS yr,
+                 COALESCE(p.received_at, p.created_at::date) AS d
+        ) y
+        LEFT JOIN issued i ON i.yr = y.yr
+       WHERE p.tpd_reference IS NULL
     )
     UPDATE spatial_planning.permit_application p
        SET tpd_reference = n.ref, updated_at = now()
