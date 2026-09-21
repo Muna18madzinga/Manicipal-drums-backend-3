@@ -22,6 +22,8 @@ const { requireRole } = require('../middleware/jwtAuth')
 // inspector before writing down that a wall is falling into the road.
 const INTAKE_ROLES = [
   'admin', 'planner', 'planning_clerk', 'building_inspector', 'eo', 'env_officer',
+  // Citizens may lodge a report themselves — same table, same triage queue.
+  'registered', 'public', 'viewer',
 ]
 const READ_ROLES = [
   'admin', 'planner', 'planning_clerk', 'building_inspector', 'eo', 'env_officer',

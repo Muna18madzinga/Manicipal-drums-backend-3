@@ -93,9 +93,11 @@ const { surveyorRoutes } = require('./src/routes/surveyor')
 const { surveyorComputeRoutes } = require('./src/routes/surveyorCompute')
 const { controlPointRoutes } = require('./src/routes/controlPoints')
 const { propertyRoutes } = require('./src/routes/properties')
+const { councilOpsRoutes } = require('./src/routes/council-ops')
+const { planningClerkRoutes } = require('./src/routes/planning-clerk')
+const { serviceDeskRoutes } = require('./src/routes/service-desk')
 
-// Intelligent map search: NL queries, stand lookup, POI counts, ward search.
-const { mapSearchRoutes } = require('./src/routes/map-search')
+// map-search endpoints are registered inside tilesRoutes (avoid duplicate).
 
 // spatial-data.ts was a TypeScript rewrite of spatial.js and registers the same
 // routes (e.g. /api/coordinate-points). Since spatial.js is already loaded above,
@@ -261,12 +263,17 @@ async function build() {
     max: 1000,
     timeWindow: '1 minute',
     keyGenerator: (req) => req.headers['x-forwarded-for']?.split(',')[0] || req.ip,
-    errorResponseBuilder: () => ({
+    errorResponseBuilder: (_req, context) => ({
+      statusCode: 429,
       success: false,
       error: 'too_many_requests',
-      message: 'Rate limit exceeded. Please wait before retrying.',
+      message: `Rate limit exceeded. Retry after ${Math.ceil(context.ttl / 1000)}s.`,
     }),
     allowList: (req) =>
+      req.url === '/health' ||
+      req.url === '/ready' ||
+      req.url.startsWith('/api/health') ||
+      req.url.startsWith('/api/ready') ||
       req.url.startsWith('/api/tiles/') ||
       req.url.startsWith('/api/wards') ||
       req.url.startsWith('/api/map-search'),
@@ -373,13 +380,76 @@ async function build() {
     server.log.info('API docs served at /api/docs')
   }
 
-  // Health check - register first
+  // Health check - cheap liveness (process up). Use /ready for probes that
+  // need PostGIS before sending traffic.
   server.get('/health', async (request, reply) => {
     return {
       status: 'ok',
       timestamp: new Date().toISOString(),
       service: 'spartialiq-backend',
       version: '2.0.0'
+    }
+  })
+
+  server.get('/ready', async (request, reply) => {
+    const checks = { database: false, postgis: false, council_ops: false }
+    try {
+      if (!server.pg) {
+        return reply.code(503).send({ status: 'not_ready', checks, error: 'postgres_plugin_missing' })
+      }
+      await server.pg.query('SELECT 1')
+      checks.database = true
+      const pgis = await server.pg.query(`SELECT extname FROM pg_extension WHERE extname = 'postgis'`)
+      checks.postgis = pgis.rows.length > 0
+      const ops = await server.pg.query(`SELECT to_regclass('council_ops.wash_asset') AS t`)
+      checks.council_ops = !!ops.rows[0]?.t
+      const ready = checks.database && checks.postgis
+      if (!ready) {
+        return reply.code(503).send({ status: 'not_ready', checks, timestamp: new Date().toISOString() })
+      }
+      return {
+        status: 'ready',
+        checks,
+        timestamp: new Date().toISOString(),
+        service: 'spartialiq-backend',
+        version: '2.0.0',
+      }
+    } catch (err) {
+      request.log.error({ err }, 'ready check failed')
+      return reply.code(503).send({
+        status: 'not_ready',
+        checks,
+        error: 'database_unreachable',
+        timestamp: new Date().toISOString(),
+      })
+    }
+  })
+
+  // Also expose under /api for proxies that only forward /api/*
+  server.get('/api/health', async () => ({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    service: 'spartialiq-backend',
+    version: '2.0.0',
+  }))
+  server.get('/api/ready', async (request, reply) => {
+    // Delegate to the same logic by re-invoking via inject would be heavy;
+    // duplicate the cheap checks.
+    const checks = { database: false, postgis: false, council_ops: false }
+    try {
+      if (!server.pg) return reply.code(503).send({ status: 'not_ready', checks })
+      await server.pg.query('SELECT 1')
+      checks.database = true
+      const pgis = await server.pg.query(`SELECT extname FROM pg_extension WHERE extname = 'postgis'`)
+      checks.postgis = pgis.rows.length > 0
+      const ops = await server.pg.query(`SELECT to_regclass('council_ops.wash_asset') AS t`)
+      checks.council_ops = !!ops.rows[0]?.t
+      if (!(checks.database && checks.postgis)) {
+        return reply.code(503).send({ status: 'not_ready', checks })
+      }
+      return { status: 'ready', checks, timestamp: new Date().toISOString() }
+    } catch {
+      return reply.code(503).send({ status: 'not_ready', checks, error: 'database_unreachable' })
     }
   })
 
@@ -415,8 +485,14 @@ async function build() {
   try {
     await server.register(async (scope) => {
       scope.addHook('onRequest', server.rateLimit({
-        max: 10,
+        max: 20,
         timeWindow: '1 minute',
+        errorResponseBuilder: (_req, context) => ({
+          statusCode: 429,
+          success: false,
+          error: 'too_many_requests',
+          message: `Too many auth attempts. Retry after ${Math.ceil(context.ttl / 1000)}s.`,
+        }),
       }))
       await scope.register(authRoutes)
     }, { prefix: '/api' })
@@ -523,7 +599,11 @@ async function build() {
     await server.register(gisRoutes, { prefix: '/api' })
     await server.register(gisStyleRoutes, { prefix: '/api' })
     await server.register(planningRoutes, { prefix: '/api' })
-    console.log('✅ Vector tile + property register + GIS editing + symbology registry + planning routes registered')
+    await server.register(councilOpsRoutes, { prefix: '/api' })
+    await server.register(planningClerkRoutes, { prefix: '/api' })
+    await server.register(serviceDeskRoutes, { prefix: '/api' })
+    // map-search lives in tilesRoutes (do not double-register mapSearchRoutes)
+    console.log('✅ Vector tile + property register + GIS editing + symbology registry + planning + council ops + planning clerk + service desk routes registered')
   } catch (error) {
     server.log.error({ err: error }, 'Failed to register tile routes')
   }

@@ -396,7 +396,7 @@ async function tilesRoutes(fastify) {
       reply.header('Cache-Control', 'public, max-age=120').send({ success: true, data: normalised, results: normalised })
     } catch (err) {
       fastify.log.error({ err, q }, 'map search failed')
-      return reply.code(500).send({ error: 'Search failed' })
+      return reply.code(200).send({ success: true, data: [], warning: 'search_degraded' })
     }
   })
 

@@ -65,48 +65,62 @@ function parseBbox(bboxStr) {
 
 async function mapSearchRoutes(fastify) {
   fastify.get('/map-search', async (req, reply) => {
-    const q = String(req.query.q || '').trim().toLowerCase()
-    if (!q) return reply.send({ type: 'empty', message: 'Enter a search term', features: [], count: 0, bbox: VUNGU_BBOX })
+    try {
+      const q = String(req.query.q || '').trim().toLowerCase()
+      if (!q) return reply.send({ type: 'empty', message: 'Enter a search term', features: [], count: 0, bbox: VUNGU_BBOX })
 
-    const bbox = parseBbox(req.query.bbox)
-    const [minLng, minLat, maxLng, maxLat] = bbox
+      const bbox = parseBbox(req.query.bbox)
+      const [minLng, minLat, maxLng, maxLat] = bbox
 
-    // ── 1. Count query: "how many X [in vungu]" ─────────────────────────
-    const countMatch = q.match(/how many|count of?|number of/)
-    if (countMatch) {
-      return handleCountQuery(fastify, q, minLng, minLat, maxLng, maxLat, reply)
-    }
-
-    // ── 2. Stand lookup: "stand HDR-001", "HDR-001", "stand 5" ──────────
-    const standPattern = /(?:stand\s+)?([a-z]+-\d+|\d{1,6})/i
-    const standMatch = q.match(standPattern)
-    if (standMatch || q.includes('stand')) {
-      const result = await handleStandSearch(fastify, q, standMatch, reply)
-      if (result) return result
-    }
-
-    // ── 3. Zone filter: "residential zones", "show commercial" ──────────
-    for (const [key, fragments] of Object.entries(ZONE_KEYWORDS)) {
-      if (q.includes(key)) {
-        return handleZoneSearch(fastify, fragments, minLng, minLat, maxLng, maxLat, reply)
+      // ── 1. Count query: "how many X [in vungu]" ─────────────────────────
+      const countMatch = q.match(/how many|count of?|number of/)
+      if (countMatch) {
+        return await handleCountQuery(fastify, q, minLng, minLat, maxLng, maxLat, reply)
       }
-    }
 
-    // ── 4. POI feature search: "show schools", "hospitals" ──────────────
-    for (const [keyword, fclasses] of Object.entries(POI_KEYWORDS)) {
-      if (q.includes(keyword)) {
-        return handlePoiSearch(fastify, fclasses, minLng, minLat, maxLng, maxLat, reply)
+      // ── 2. Stand lookup: "stand HDR-001", "HDR-001", "stand 5" ──────────
+      const standPattern = /(?:stand\s+)?([a-z]+-\d+|\d{1,6})/i
+      const standMatch = q.match(standPattern)
+      if (standMatch || q.includes('stand')) {
+        const result = await handleStandSearch(fastify, q, standMatch, reply)
+        if (result) return result
       }
-    }
 
-    // ── 5. Ward search: "ward 3", "ward seven" ──────────────────────────
-    const wardMatch = q.match(/ward\s+(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)/i)
-    if (wardMatch) {
-      return handleWardSearch(fastify, wardMatch[1], reply)
-    }
+      // ── 3. Zone filter: "residential zones", "show commercial" ──────────
+      for (const [key, fragments] of Object.entries(ZONE_KEYWORDS)) {
+        if (q.includes(key)) {
+          return await handleZoneSearch(fastify, fragments, minLng, minLat, maxLng, maxLat, reply)
+        }
+      }
 
-    // ── 6. Place name search: fall back to pois_points name ILIKE ───────
-    return handleNameSearch(fastify, q, minLng, minLat, maxLng, maxLat, reply)
+      // ── 4. POI feature search: "show schools", "hospitals" ──────────────
+      for (const [keyword, fclasses] of Object.entries(POI_KEYWORDS)) {
+        if (q.includes(keyword)) {
+          return await handlePoiSearch(fastify, fclasses, minLng, minLat, maxLng, maxLat, reply)
+        }
+      }
+
+      // ── 5. Ward search: bare "ward"/"wards" or "ward 3" / "ward seven" ──
+      if (q === 'ward' || q === 'wards') {
+        return await handleWardList(fastify, reply)
+      }
+      const wardMatch = q.match(/ward\s+(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)/i)
+      if (wardMatch) {
+        return await handleWardSearch(fastify, wardMatch[1], reply)
+      }
+
+      // ── 6. Place name search: fall back to pois_points name ILIKE ───────
+      return await handleNameSearch(fastify, q, minLng, minLat, maxLng, maxLat, reply)
+    } catch (err) {
+      fastify.log.error({ err }, 'map-search failed')
+      return reply.code(200).send({
+        type: 'error',
+        message: 'Search temporarily unavailable. Try a stand number, zone type, or "ward 3".',
+        count: 0,
+        bbox: VUNGU_BBOX,
+        features: [],
+      })
+    }
   })
 
   // ── Vungu mask endpoint: country polygon minus Vungu planning extent ──
@@ -338,6 +352,34 @@ async function handlePoiSearch(fastify, fclasses, minLng, minLat, maxLng, maxLat
   })
 }
 
+async function handleWardList(fastify, reply) {
+  try {
+    const { rows } = await fastify.pg.query(
+      `SELECT fid, name_en, pcode,
+              ST_X(ST_Centroid(geom))::numeric(9,6) as lng,
+              ST_Y(ST_Centroid(geom))::numeric(9,6) as lat
+         FROM wards
+        WHERE ST_Intersects(geom, ST_MakeEnvelope(29.4, -20.1, 30.5, -19.0, 4326))
+        ORDER BY name_en
+        LIMIT 40`,
+    )
+    return reply.send({
+      type: 'ward',
+      message: rows.length ? `${rows.length} wards in Vungu area` : 'No ward polygons loaded',
+      count: rows.length,
+      bbox: VUNGU_BBOX,
+      features: rows.map((w) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [Number(w.lng), Number(w.lat)] },
+        properties: { fid: w.fid, name: `Ward ${w.name_en}`, pcode: w.pcode, lng: Number(w.lng), lat: Number(w.lat) },
+      })),
+    })
+  } catch (err) {
+    fastify.log.warn({ err }, 'ward list unavailable')
+    return reply.send({ type: 'ward', message: 'Ward layer not available', count: 0, bbox: VUNGU_BBOX, features: [] })
+  }
+}
+
 async function handleWardSearch(fastify, wardName, reply) {
   const numWords = { one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9, ten:10 }
   const wardNum = String(numWords[wardName?.toLowerCase()] || wardName)
@@ -371,24 +413,35 @@ async function handleWardSearch(fastify, wardName, reply) {
 }
 
 async function handleNameSearch(fastify, q, minLng, minLat, maxLng, maxLat, reply) {
-  const { rows } = await fastify.pg.query(
-    `SELECT name, fclass,
-            ST_X(geom)::numeric(9,6) as lng,
-            ST_Y(geom)::numeric(9,6) as lat
-     FROM pois_points
-     WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,4326))
-       AND name ILIKE $5
-     UNION ALL
-     SELECT name, fclass,
-            ST_X(ST_Centroid(geom))::numeric(9,6) as lng,
-            ST_Y(ST_Centroid(geom))::numeric(9,6) as lat
-     FROM pois_areas
-     WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,4326))
-       AND name ILIKE $5
-     ORDER BY name
-     LIMIT 20`,
-    [minLng, minLat, maxLng, maxLat, `%${q}%`]
-  )
+  let rows = []
+  try {
+    const r = await fastify.pg.query(
+      `SELECT name, fclass,
+              ST_X(geom)::numeric(9,6) as lng,
+              ST_Y(geom)::numeric(9,6) as lat
+       FROM pois_points
+       WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,4326))
+         AND name ILIKE $5
+       UNION ALL
+       SELECT name, fclass,
+              ST_X(ST_Centroid(geom))::numeric(9,6) as lng,
+              ST_Y(ST_Centroid(geom))::numeric(9,6) as lat
+       FROM pois_areas
+       WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,4326))
+         AND name ILIKE $5
+       ORDER BY name
+       LIMIT 20`,
+      [minLng, minLat, maxLng, maxLat, `%${q}%`],
+    )
+    rows = r.rows
+  } catch (err) {
+    fastify.log.warn({ err }, 'poi name search unavailable')
+    return reply.send({
+      type: 'notfound',
+      message: `No results for "${q}". Try "schools", "hospitals", "residential zones", "ward 3", or a stand number like "HDR-001".`,
+      count: 0, bbox: VUNGU_BBOX, features: [],
+    })
+  }
   if (rows.length === 0) {
     return reply.send({
       type: 'notfound',

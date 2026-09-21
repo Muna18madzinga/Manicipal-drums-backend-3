@@ -34,8 +34,10 @@ const jwt = require('jsonwebtoken')
 const { requireRole } = require('../middleware/jwtAuth')
 const { extractJson } = require('../services/aiClient')
 const { buildSiteContext, getParcelGrounding, postProcessDraft } = require('../services/planningSpatial')
+const { buildSiteAssessmentPdf } = require('../services/siteAssessmentPdf')
+const { getMasterThemeCatalogue } = require('../config/vunguMasterThemes')
 
-const SUGGEST_ROLES = ['planner', 'gis_officer', 'admin']
+const SUGGEST_ROLES = ['planner', 'gis_officer', 'admin', 'eo', 'env_officer', 'building_inspector', 'planning_clerk']
 const PARCEL_LAYERS = ['vungu_farm_cadastre', 'vungu_parcels']
 
 const NIM_URL = 'https://integrate.api.nvidia.com/v1/chat/completions'
@@ -286,6 +288,57 @@ async function planningSuggestRoutes(fastify) {
       area_ha: ctx.parcel.areaHa, roads: ctx.roads.length, nogo: !!ctx.nogo, complexity: ctx.parcel.complexity,
     }, 'planning site-context')
     return reply.send({ data: ctx })
+  })
+
+  // ── Site Planning Screening Report (PDF) — PostGIS facts only ──────────
+  fastify.post('/planning/site-assessment-report', {
+    preHandler: requireRole(fastify, SUGGEST_ROLES),
+    schema: {
+      body: {
+        type: 'object',
+        required: ['layer', 'fid'],
+        properties: {
+          layer: { type: 'string' },
+          fid: { type: 'integer' },
+          applicationRef: { type: 'string' },
+          preparedFor: { type: 'string' },
+          summary: { type: 'object' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { layer, fid, applicationRef, preparedFor, summary } = request.body
+    if (!PARCEL_LAYERS.includes(layer)) return fail(reply, 400, 'bad_layer', 'Unknown parcel layer.')
+    let ctx
+    try {
+      ctx = await buildSiteContext(fastify.pg, { layer, fid })
+    } catch (err) {
+      request.log.error({ err: err && err.message }, 'site-assessment-report query failed')
+      return fail(reply, 500, 'site_context_failed', 'Could not analyse this parcel.')
+    }
+    if (!ctx) return fail(reply, 404, 'parcel_not_found', 'Parcel not found.')
+
+    const pdf = await buildSiteAssessmentPdf({
+      siteContext: ctx,
+      summary: summary || null,
+      meta: {
+        applicationRef: applicationRef || null,
+        preparedFor: preparedFor || 'Town Planning',
+        officer: request.user?.name || request.user?.email || null,
+      },
+    })
+    const filename = `VRDC-Site-Screening-${layer}-${fid}.pdf`
+    reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `attachment; filename="${filename}"`)
+      .send(pdf)
+  })
+
+  // ── Master Plan theme catalogue (honest availability) ──────────────────
+  fastify.get('/planning/master-themes', {
+    preHandler: requireRole(fastify, SUGGEST_ROLES),
+  }, async (_request, reply) => {
+    return reply.send({ success: true, data: getMasterThemeCatalogue() })
   })
 
   // ── Stage 2: Nemotron analysis + questions, or design brief ────────────

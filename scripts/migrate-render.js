@@ -66,6 +66,16 @@ const MIGRATIONS = [
   '111_spatial_layers_catalogue.sql',
   '114_gis_style_registry.sql',
   '115_residency_verification.sql',
+  '116_inspector_work_queue.sql',
+  '117_stage_inspection_field_events.sql',
+  '118_inspector_site_geometry.sql',
+  '119_permit_document_uploads.sql',
+  '120_building_complaints.sql',
+  '121_environmental_health_registers.sql',
+  '122_environmental_health_operations.sql',
+  '123_council_ops_asset_registers.sql',
+  '124_planning_clerk_registers.sql',
+  '125_service_desk_tickets.sql',
 ]
 
 function createPool(env = process.env) {
