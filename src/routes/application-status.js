@@ -107,8 +107,13 @@ async function applicationStatusRoutes(fastify) {
     },
   )
 
-  // Read history (citizen + staff).
-  fastify.get('/applications/:appId/status-history', async (request, reply) => {
+  // Read history. Staff-only, matching the sibling POST that writes it —
+  // an anonymous caller could otherwise enumerate any application's status
+  // trail (from/to + changed_by + notes) by guessing :appId.
+  fastify.get(
+    '/applications/:appId/status-history',
+    { preHandler: requireRole(fastify, STAFF_ROLES) },
+    async (request, reply) => {
     try {
       const { appId } = request.params
       const { rows } = await fastify.pg.query(
@@ -123,7 +128,8 @@ async function applicationStatusRoutes(fastify) {
       request.log.error({ err }, 'status history failed')
       return reply.code(500).send({ success: false, error: 'internal' })
     }
-  })
+  }
+  )
 }
 
 module.exports = { applicationStatusRoutes }

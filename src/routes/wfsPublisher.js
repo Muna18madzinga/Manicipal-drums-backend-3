@@ -8,6 +8,12 @@
 const WFSLayerPublisher = require('../services/qgis/wfsPublisher');
 const path = require('path');
 const logger = require('../utils/logger');
+const { requireRole } = require('../middleware/jwtAuth');
+
+// Who may publish WFS layers from a QGIS project. These endpoints accept an
+// arbitrary server-side projectPath and spawn a PyQGIS subprocess, so they
+// are admin / GIS-operator only — never anonymous.
+const WFS_PUBLISH_ROLES = ['admin', 'gis_officer'];
 
 class WFSPublisherRoutes {
   constructor() {
@@ -21,6 +27,7 @@ class WFSPublisherRoutes {
   registerRoutes(fastify) {
     // Publish specific layers for WFS
     fastify.post('/api/wfs/publish', {
+      preHandler: requireRole(fastify, WFS_PUBLISH_ROLES),
       schema: {
         description: 'Publish specific layers for WFS service',
         tags: ['WFS', 'QGIS'],
@@ -113,6 +120,7 @@ class WFSPublisherRoutes {
 
     // Publish all layers in a project
     fastify.post('/api/wfs/publish-all', {
+      preHandler: requireRole(fastify, WFS_PUBLISH_ROLES),
       schema: {
         description: 'Publish all vector layers in a project for WFS service',
         tags: ['WFS', 'QGIS'],
@@ -165,6 +173,7 @@ class WFSPublisherRoutes {
 
     // Get publishing status/cache info
     fastify.get('/api/wfs/status', {
+      preHandler: requireRole(fastify, WFS_PUBLISH_ROLES),
       schema: {
         description: 'Get WFS publisher cache status',
         tags: ['WFS', 'Status']
@@ -195,6 +204,7 @@ class WFSPublisherRoutes {
 
     // Clear publishing cache
     fastify.delete('/api/wfs/cache', {
+      preHandler: requireRole(fastify, WFS_PUBLISH_ROLES),
       schema: {
         description: 'Clear WFS publisher cache',
         tags: ['WFS', 'Cache']
@@ -221,6 +231,7 @@ class WFSPublisherRoutes {
 
     // Auto-publish and extract styled layer (complete workflow)
     fastify.post('/api/wfs/publish-and-style', {
+      preHandler: requireRole(fastify, WFS_PUBLISH_ROLES),
       schema: {
         description: 'Auto-publish layers and extract styling with OGC Bridge',
         tags: ['WFS', 'OGC', 'Styling'],

@@ -1,7 +1,14 @@
 // Spatial routes for the unified backend
+const { requireAuth, requireRole } = require('../middleware/jwtAuth')
+
+// Who may create/edit layers, insert features, or upload QML styles.
+// These mutate the `layers` / `layer_data` tables, so they are strictly
+// GIS-operator/admin — audit fix: previously open to anonymous requests.
+const SPATIAL_WRITERS = ['admin', 'gis_officer']
+
 async function spatialRoutes(fastify) {
   // Spatial query - find features within bounds
-  fastify.post('/query', async (request, reply) => {
+  fastify.post('/query', { preHandler: requireAuth(fastify) }, async (request, reply) => {
     try {
       const { bbox, layerIds, geometryType = 'all', limit = 1000 } = request.body
       
@@ -89,7 +96,7 @@ async function spatialRoutes(fastify) {
   })
 
   // Create/update layer
-  fastify.post('/layers', async (request, reply) => {
+  fastify.post('/layers', { preHandler: requireRole(fastify, SPATIAL_WRITERS) }, async (request, reply) => {
     try {
       const { id, name, description, type, style, published = false } = request.body
       
@@ -113,7 +120,7 @@ async function spatialRoutes(fastify) {
   })
 
   // Add features to layer
-  fastify.post('/layers/:id/features', async (request, reply) => {
+  fastify.post('/layers/:id/features', { preHandler: requireRole(fastify, SPATIAL_WRITERS) }, async (request, reply) => {
     try {
       const { id } = request.params
       const { features } = request.body
@@ -151,7 +158,7 @@ async function spatialRoutes(fastify) {
   })
 
   // Update layer with QML style
-  fastify.post('/layers/:id/qml-style', async (request, reply) => {
+  fastify.post('/layers/:id/qml-style', { preHandler: requireRole(fastify, SPATIAL_WRITERS) }, async (request, reply) => {
     try {
       const { id } = request.params
       const { qml_content } = request.body

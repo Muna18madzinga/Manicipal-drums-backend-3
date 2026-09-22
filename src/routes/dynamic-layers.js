@@ -2,6 +2,7 @@ const { topology } = require('topojson-server')
 const { QmlParserService } = require('../services/admin/qmlParserService')
 const { SmartQGISExtractor } = require('../services/admin/smartQGISExtractor')
 const { UltimateQGISBridge } = require('../services/admin/ultimateQGISBridge')
+const { requireRole } = require('../middleware/jwtAuth')
 
 // Module-level singletons so extraction cache persists across requests
 const ultimateBridge = new UltimateQGISBridge({
@@ -333,8 +334,12 @@ async function dynamicLayerRoutes(fastify) {
     }
   })
 
-  // Upload QML style to layer
-  fastify.post('/layers/:layerName/qml-style', async (request, reply) => {
+  // Upload QML style to layer. Mutates production symbology (INSERT ... ON
+  // CONFLICT on `layers`, forces published=true) so only GIS operators may
+  // call it — audit fix: was previously open to anonymous requests.
+  fastify.post('/layers/:layerName/qml-style',
+    { preHandler: requireRole(fastify, ['admin', 'gis_officer']) },
+    async (request, reply) => {
     try {
       const { layerName } = request.params
       const { qml_content } = request.body
