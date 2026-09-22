@@ -25,7 +25,13 @@ const MIGRATIONS = [
   '076_production_hardening.sql',
   '077_permit_application_pending_payment.sql',
   '078_missing_gist_indexes.sql',
+  // Clip OSM buildings/water-wise layers to the council buffer — spatial
+  // filter the vector-tile registry depends on (previously local-only).
+  '079_filter_buildings_to_council_buffer.sql',
   '080_survey_tasks.sql',
+  // Exposes `stands` as a vector-tile-compatible view (integer fid over
+  // stands.id UUID); the tile registry serves table `stands_tile_view`.
+  '080_stands_tile_view.sql',
   '081_v_application_summary_add_lnglat.sql',
   // 082–084 were applied to local/dev via psql but were never added to this
   // Render allowlist. They are idempotent and tracked in schema_migrations, so
@@ -64,6 +70,11 @@ const MIGRATIONS = [
   '109_spatial_change_notify.sql',
   '110_local_authorities.sql',
   '111_spatial_layers_catalogue.sql',
+  // Canonical peri-urban zoning source of truth: the vector-tile registry
+  // serves table `zones_master` (spatialLayers.js) which only these two
+  // migrations create — previously applied ad-hoc on local, never deployed.
+  '112_zones_master_view.sql',
+  '113_zones_master_columns.sql',
   '114_gis_style_registry.sql',
   '115_residency_verification.sql',
   '116_inspector_work_queue.sql',
