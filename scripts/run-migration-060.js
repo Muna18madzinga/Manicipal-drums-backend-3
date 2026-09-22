@@ -7,7 +7,7 @@ const fs = require('fs')
 const path = require('path')
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:***REDACTED***@localhost:5432/vungu_master_db_v1'
+  connectionString: process.env.DATABASE_URL || 'postgresql://postgres@localhost:5432/vungu_master_db_v1'
 })
 
 async function run() {

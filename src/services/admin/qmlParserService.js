@@ -1,5 +1,5 @@
 const { XMLParser } = require('fast-xml-parser')
-const { exec } = require('child_process')
+const { execFile } = require('child_process')
 const path = require('path')
 const fs = require('fs')
 
@@ -61,14 +61,14 @@ class QmlParserService {
         
         // Path to QGIS plugin script
         const pluginScript = path.join(__dirname, '../../../vungu-integration/extract_symbology.py')
-        
-        // Command to run QGIS plugin
-        const command = `python "${pluginScript}" --qml "${tempQmlPath}" --layer "${layerName || 'unknown'}"`
-        
+
+        // Arguments are passed as an array (never through a shell) so the
+        // layer name cannot be interpreted as shell metacharacters.
+        const args = [pluginScript, '--qml', tempQmlPath, '--layer', layerName || 'unknown']
+
         console.log('[QML Parser] 🚀 Running QGIS plugin extraction...')
-        console.log('[QML Parser] Command:', command)
-        
-        exec(command, { timeout: 30000 }, (error, stdout, stderr) => {
+
+        execFile('python', args, { timeout: 30000 }, (error, stdout, stderr) => {
           // Clean up temp file
           try {
             fs.unlinkSync(tempQmlPath)

@@ -673,7 +673,10 @@ async function build() {
   // Register QGIS Server Routes
   if (qgisServerRoutes && qgisServerRoutes.createQGISServerRoutes) {
     try {
-      await qgisServerRoutes.createQGISServerRoutes(server)
+      const { requireAuth, requireRole } = require('./src/middleware/jwtAuth')
+      await qgisServerRoutes.createQGISServerRoutes(server, {
+        auth: { requireAuth, requireRole },
+      })
       console.log('✅ QGIS Server routes registered')
     } catch (error) {
       console.error('❌ Failed to register QGIS Server routes:', error.message)

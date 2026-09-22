@@ -64,7 +64,7 @@ class RefinedOGCBridge {
       port: config.dbPort || 5432,
       database: config.dbName || 'vungu_master_db_v1',
       user: config.dbUser || 'postgres',
-      password: config.dbPassword || '***REDACTED***'
+      password: config.dbPassword || process.env.DB_PASSWORD || ''
     }
 
     // Layer name mappings (QGIS names -> Database table names)

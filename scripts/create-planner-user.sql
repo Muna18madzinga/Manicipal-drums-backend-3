@@ -4,7 +4,7 @@
 -- RUN WITH:
 -- psql -U postgres -d vungu_master_db_v1 -f scripts/create-planner-user.sql
 -- OR with password:
--- PGPASSWORD=***REDACTED*** psql -U postgres -h localhost -p 5432 -d vungu_master_db_v1 -f scripts/create-planner-user.sql
+-- psql -U postgres -h localhost -p 5432 -d vungu_master_db_v1 -f scripts/create-planner-user.sql
 
 -- Insert the planner user
 INSERT INTO users (
@@ -26,9 +26,9 @@ INSERT INTO users (
   'Vungu Planner',
   'planner',
   'Vungu Rural District Council',
-  -- Password: 'VunguPlanner2025!'
+  -- Password: set via your own provisioning process (never hardcode)
   -- NOTE: In production, use proper bcrypt hashing. This is a placeholder hash.
-  'hashed_VunguPlanner2025!',
+  'REPLACE_WITH_BCRYPT_HASH',
   '+263 55 2521 500',
   'active',
   true,

@@ -257,7 +257,7 @@ if (require.main === module) {
   const { Pool } = require('pg')
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL ||
-      'postgresql://postgres:***REDACTED***@localhost:5432/vungu_master_db_v1',
+      'postgresql://postgres@localhost:5432/vungu_master_db_v1',
   })
   startEmailWorker(pool, { log: console })
 

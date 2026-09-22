@@ -28,7 +28,7 @@ const { Pool } = require('pg');
 
 const DATABASE_URL =
   process.env.DATABASE_URL ||
-  'postgresql://postgres:postgres@localhost:5432/vungu_master_db_v1';
+  'postgresql://postgres@localhost:5432/vungu_master_db_v1';
 
 // Everything this script writes is tagged with this marker so --undo can find
 // it again without guessing.

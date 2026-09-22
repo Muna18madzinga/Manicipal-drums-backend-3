@@ -1,5 +1,5 @@
 -- Create users table and planner user
--- Run with: PGPASSWORD=***REDACTED*** psql -U postgres -h localhost -p 5432 -d vungu_master_db_v1 -f scripts/setup-and-create-planner.sql
+-- Run with: psql -U postgres -h localhost -p 5432 -d vungu_master_db_v1 -f scripts/setup-and-create-planner.sql
 
 -- Create users table if it doesn't exist
 CREATE TABLE IF NOT EXISTS users (
@@ -24,7 +24,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS organization VARCHAR(255);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true;
 
 -- Create planner user
--- Password: 'VunguPlanner2025!'
+-- Password: set via your own provisioning process (never hardcode)
 -- NOTE: Using plaintext hash placeholder - in production use bcrypt
 INSERT INTO users (
   id,
@@ -47,7 +47,7 @@ INSERT INTO users (
   'Vungu Planner',
   'planner',
   'Vungu Rural District Council',
-  'hashed_VunguPlanner2025!',
+  'REPLACE_WITH_BCRYPT_HASH',
   '+263 55 2521 500',
   'active',
   true,

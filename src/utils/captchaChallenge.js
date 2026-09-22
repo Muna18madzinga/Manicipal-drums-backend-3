@@ -14,9 +14,13 @@ const CODE_LEN = 5
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 
 function secret() {
-  return process.env.CAPTCHA_SECRET
-    || process.env.JWT_SECRET
-    || 'vungu-dev-captcha-secret-change-me'
+  const resolved = process.env.CAPTCHA_SECRET || process.env.JWT_SECRET
+  if (!resolved) {
+    // A captcha HMAC signed with a publicly-known key can be forged, defeating
+    // the bot-protection this is meant to provide. Fail fast instead.
+    throw new Error('[captcha] CAPTCHA_SECRET (or JWT_SECRET) must be set in the environment')
+  }
+  return resolved
 }
 
 function sign(payload) {

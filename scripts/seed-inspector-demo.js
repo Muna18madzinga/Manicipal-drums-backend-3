@@ -26,11 +26,16 @@ try { bcrypt = require('bcrypt'); } catch (_) { bcrypt = require('bcryptjs'); }
 
 const DATABASE_URL =
   process.env.DATABASE_URL ||
-  'postgresql://postgres:postgres@localhost:5432/vungu_master_db_v1';
+  'postgresql://postgres@localhost:5432/vungu_master_db_v1';
+
+// Inspector demo credentials come from the environment (or are generated and
+// printed) so they are never hardcoded in source.
+const INSPECTOR_PASSWORD = process.env.SEED_INSPECTOR_PASSWORD ||
+  require('crypto').randomBytes(18).toString('base64url');
 
 const INSPECTOR = {
   email: 'inspector@vungurdc.gov.zw',
-  password: 'Inspector#2026',
+  password: INSPECTOR_PASSWORD,
   fullName: 'Field Inspector',
 };
 

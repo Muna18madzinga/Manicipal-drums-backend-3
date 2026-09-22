@@ -1,4 +1,6 @@
 // Admin routes for the unified backend
+const bcrypt = require('bcryptjs')
+
 async function adminRoutes(fastify) {
   // Get all projects
   fastify.get('/projects', async (request, reply) => {
@@ -126,8 +128,8 @@ async function adminRoutes(fastify) {
     try {
       const { email, name, role, organization, password } = request.body
       
-      // Hash password (simple for now, will add bcrypt later)
-      const passwordHash = password // TODO: Add bcrypt
+      // Hash the password before storing; never persist plaintext.
+      const passwordHash = await bcrypt.hash(password || '', 10)
       
       const { rows } = await fastify.pg.query(`
         INSERT INTO users (email, name, role, organization, password_hash, active, created_at)

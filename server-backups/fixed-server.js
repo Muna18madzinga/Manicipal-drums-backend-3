@@ -61,7 +61,7 @@ async function build() {
 
   // Register PostgreSQL
   await server.register(require('@fastify/postgres'), {
-    connectionString: process.env.DATABASE_URL || 'postgresql://postgres:***REDACTED***@localhost:5432/vungu_master_db_v1'
+    connectionString: process.env.DATABASE_URL || 'postgresql://postgres@localhost:5432/vungu_master_db_v1'
   })
 
   // Debug: Log all routes - MUST be added BEFORE route registrations

@@ -24,7 +24,7 @@ const path = require('path');
 
 const DATABASE_URL =
   process.env.DATABASE_URL ||
-  'postgresql://postgres:postgres@localhost:5432/vungu_master_db_v1';
+  'postgresql://postgres@localhost:5432/vungu_master_db_v1';
 
 // Applicant names created by automated smoke/e2e suites. Deliberately narrow
 // so a real applicant is never caught by accident.

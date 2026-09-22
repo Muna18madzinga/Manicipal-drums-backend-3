@@ -1,10 +1,19 @@
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { exec } from 'child_process'
+import { execFile } from 'child_process'
 import { promisify } from 'util'
 
-const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
+
+// Block shell metacharacters in paths used by the openDocument helper. The
+// file system allows them, but they must never reach a shell command line.
+const SHELL_METACHARS = /["'&|<>^`$();%\r\n]/
+
+function validatePathForShell(filePath) {
+  if (typeof filePath !== 'string' || filePath.length === 0) return false
+  return !SHELL_METACHARS.test(filePath)
+}
 
 /**
  * Resolve working directory to absolute path
@@ -20,7 +29,7 @@ function resolveWorkingDirectory(workingDirectory) {
 
 export default async function documentRoutes(fastify, options) {
   // Save document to project folder
-  fastify.post('/documents/save', async (request, reply) => {
+  fastify.post('/documents/save', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     try {
       // Process multipart form data
       const parts = request.parts()
@@ -95,7 +104,7 @@ export default async function documentRoutes(fastify, options) {
   })
 
   // List documents in project folder
-  fastify.get('/documents/list', async (request, reply) => {
+  fastify.get('/documents/list', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     try {
       const { workingDirectory } = request.query
       
@@ -149,7 +158,7 @@ export default async function documentRoutes(fastify, options) {
   })
 
   // Save PDF from base64 string (for merged PDFs)
-  fastify.post('/documents/save-pdf', async (request, reply) => {
+  fastify.post('/documents/save-pdf', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     try {
       const { pdfBase64, filePath } = request.body
       
@@ -204,7 +213,7 @@ export default async function documentRoutes(fastify, options) {
   })
 
   // Save ZIP archive from base64 string (for batch export)
-  fastify.post('/documents/save-zip', async (request, reply) => {
+  fastify.post('/documents/save-zip', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     try {
       const { zipBase64, filePath } = request.body
       
@@ -259,7 +268,7 @@ export default async function documentRoutes(fastify, options) {
   })
 
   // Open document in system default viewer
-  fastify.post('/documents/open', async (request, reply) => {
+  fastify.post('/documents/open', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     try {
       const { filePath } = request.body
       
@@ -267,21 +276,26 @@ export default async function documentRoutes(fastify, options) {
         return reply.code(400).send({ ok: false, error: 'File path required' })
       }
 
+      if (!validatePathForShell(filePath)) {
+        fastify.log.warn(`[OPEN] Rejected unsafe file path: ${filePath}`)
+        return reply.code(400).send({ ok: false, error: 'Unsafe file path' })
+      }
+
       if (!fs.existsSync(filePath)) {
         return reply.code(404).send({ ok: false, error: 'File not found' })
       }
 
-      // Open file with default application
-      let command
+      // Open file with default application. Args are passed individually so
+      // the path is never interpreted by a shell.
+      let cmdArgs
       if (process.platform === 'win32') {
-        command = `start "" "${filePath}"`
+        cmdArgs = ['/c', 'start', '', filePath]
+        await execFileAsync('cmd', cmdArgs)
       } else if (process.platform === 'darwin') {
-        command = `open "${filePath}"`
+        await execFileAsync('open', [filePath])
       } else {
-        command = `xdg-open "${filePath}"`
+        await execFileAsync('xdg-open', [filePath])
       }
-
-      await execAsync(command)
       fastify.log.info(`[OPEN] Opened document: ${filePath}`)
 
       return { ok: true }

@@ -3,7 +3,7 @@
  * Integrated approach for perfect QGIS-to-web symbology extraction
  */
 
-const { exec } = require('child_process')
+const { execFile } = require('child_process')
 const path = require('path')
 const fs = require('fs')
 const WFSLayerPublisher = require('../qgis/wfsPublisher')
@@ -101,11 +101,11 @@ class SmartQGISExtractor {
     return new Promise((resolve, reject) => {
       try {
         const scriptPath = path.join(__dirname, '../../../vungu-integration/qgis_api_bridge.py')
-        const command = `python "${scriptPath}" --layer "${layerName}" --method "api"`
-        
+        const args = ['--layer', layerName, '--method', 'api']
+
         console.log(`[SmartQGIS] 🎯 Executing QGIS API bridge...`)
-        
-        exec(command, { timeout: 30000 }, (error, stdout, stderr) => {
+
+        execFile('python', [scriptPath, ...args], { timeout: 30000 }, (error, stdout, stderr) => {
           if (error) {
             reject(new Error(`QGIS API bridge failed: ${stderr}`))
             return
@@ -163,11 +163,11 @@ class SmartQGISExtractor {
     return new Promise((resolve, reject) => {
       try {
         const scriptPath = path.join(__dirname, '../../../vungu-integration/extract_symbology.py')
-        const command = `python "${scriptPath}" --layer "${layerName}" --method "svg"`
-        
+        const args = ['--layer', layerName, '--method', 'svg']
+
         console.log(`[SmartQGIS] 🎨 Executing SVG extractor...`)
-        
-        exec(command, { timeout: 30000 }, (error, stdout, stderr) => {
+
+        execFile('python', [scriptPath, ...args], { timeout: 30000 }, (error, stdout, stderr) => {
           if (error) {
             reject(new Error(`SVG extractor failed: ${stderr}`))
             return
@@ -214,7 +214,8 @@ class SmartQGISExtractor {
       
       // Parse project file for layer symbology
       const projectContent = fs.readFileSync(projectFile, 'utf-8')
-      const layerMatch = projectContent.match(new RegExp(`<layer[^>]*name="${layerName}"[^>]*>.*?</layer>`, 's'))
+      const escapedLayerName = layerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const layerMatch = projectContent.match(new RegExp(`<layer[^>]*name="${escapedLayerName}"[^>]*>.*?</layer>`, 's'))
       
       if (!layerMatch) {
         throw new Error(`Layer ${layerName} not found in project file`)

@@ -3,7 +3,7 @@ services:
     name: manicipal-drums-backend
     runtime: node
     buildCommand: npm ci
-    startCommand: npm run migrate:render && npm run seed:demo && npm start
+    startCommand: npm run migrate:render && npm start
     healthCheckPath: /health
     autoDeploy: true
     envVars:
@@ -18,7 +18,7 @@ services:
       - key: ALLOWED_ORIGINS
         sync: false
       - key: DEMO_SEED_ENABLED
-        value: "true"
+        value: "false"
       - key: DEMO_DEFAULT_PASSWORD
         sync: false
       - key: DEMO_USERS

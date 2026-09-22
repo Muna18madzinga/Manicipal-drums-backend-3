@@ -32,7 +32,12 @@ function normalizeEnabled(value) {
 }
 
 function parseDemoUsers(env = process.env) {
-  const defaultPassword = env.DEMO_DEFAULT_PASSWORD || 'demo1234'
+  // Never fall back to a well-known password. If someone wants the demo
+  // accounts they must set an explicit password, otherwise seeding fails.
+  const defaultPassword = env.DEMO_DEFAULT_PASSWORD
+  if (!defaultPassword) {
+    throw new Error('[demo-seed] DEMO_DEFAULT_PASSWORD is required. Set it explicitly to run the demo seed.')
+  }
   const organization = env.DEMO_ORGANIZATION || 'Vungu Rural District Council'
   const source = env.DEMO_USERS
     ? env.DEMO_USERS.split(',').map(item => item.trim()).filter(Boolean)

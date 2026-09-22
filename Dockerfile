@@ -5,7 +5,7 @@ FROM node:20-alpine AS base
 FROM base AS deps
 WORKDIR /app
 
-# Install dependencies
+# Install production dependencies
 COPY package.json package-lock.json ./
 RUN npm ci --only=production && npm cache clean --force
 
@@ -40,20 +40,14 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 # Start development server
 CMD ["npm", "run", "dev"]
 
-# Build stage
+# Type-check stage: compiles TS so type regressions fail the image build
+# (the production image runs the plain-JS server.js entrypoint, not dist/).
 FROM base AS build
 WORKDIR /app
 
-# Copy package files
 COPY package.json package-lock.json ./
-
-# Install all dependencies
 RUN npm ci
-
-# Copy source code
 COPY . .
-
-# Build the application
 RUN npm run build
 
 # Production stage
@@ -64,10 +58,14 @@ WORKDIR /app
 RUN addgroup -g 1001 -S nodejs
 RUN adduser -S nodejs -u 1001
 
-# Copy built application
-COPY --from=build --chown=nodejs:nodejs /app/dist ./dist
+# Production dependencies only
 COPY --from=deps --chown=nodejs:nodejs /app/node_modules ./node_modules
-COPY --from=build --chown=nodejs:nodejs /app/package.json ./package.json
+
+# The runtime entrypoint (server.js) requires the whole source tree plus the
+# migration scripts (migrate:render) and healthcheck.js, so copy it in full.
+COPY --chown=nodejs:nodejs . .
+
+RUN chown -R nodejs:nodejs /app
 
 # Change to non-root user
 USER nodejs
@@ -80,4 +78,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node healthcheck.js
 
 # Start production server
-CMD ["node", "dist/server.js"]
+CMD ["node", "server.js"]

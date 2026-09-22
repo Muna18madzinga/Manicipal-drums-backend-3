@@ -14,16 +14,20 @@ const dbConfig = {
   port: process.env.DB_PORT || 5432,
   database: process.env.DB_NAME || 'vungu_master_db_v1',
   user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || '***REDACTED***'
+  password: process.env.DB_PASSWORD || ''
 };
 
-// Planner user details
+// Planner user details. The initial password is read from the environment
+// (or generated) so a real credential is never committed to source.
+const SEED_PLANNER_PASSWORD = process.env.SEED_PLANNER_PASSWORD ||
+  require('crypto').randomBytes(18).toString('base64url');
+
 const PLANNER_USER = {
   email: 'planner@vungurdc.gov.zw',
   name: 'Vungu Planner',
   role: 'planner',
   organization: 'Vungu Rural District Council',
-  password: 'VunguPlanner2025!',
+  password: SEED_PLANNER_PASSWORD,
   phone: '+263 55 2521 500'
 };
 

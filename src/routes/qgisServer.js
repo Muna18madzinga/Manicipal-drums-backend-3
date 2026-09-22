@@ -100,9 +100,29 @@ async function qgisServerCapabilitiesRoutes(server, options) {
   })
 }
 
+// Layer names are interpolated into shell commands by the fallback extractors,
+// so they are strictly validated here and these routes require authentication.
+const LAYER_NAME_PATTERN = '^[A-Za-z0-9_\\-\\. /]+$'
+
+function layerNameSchema() {
+  return {
+    params: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['layerName'],
+      properties: {
+        layerName: { type: 'string', pattern: LAYER_NAME_PATTERN, minLength: 1, maxLength: 100 }
+      }
+    }
+  }
+}
+
 // Ultimate QGIS style extraction
-async function ultimateQGISStyleRoutes(server, options) {
-  server.get('/qgis-server/layers/:layerName/style', async (request, reply) => {
+async function ultimateQGISStyleRoutes(server, { auth }) {
+  server.get('/qgis-server/layers/:layerName/style', {
+    schema: layerNameSchema(),
+    preHandler: auth.requireAuth(server)
+  }, async (request, reply) => {
     try {
       const { layerName } = request.params
       const { format, includeSVG, cache } = request.query
@@ -141,8 +161,10 @@ async function ultimateQGISStyleRoutes(server, options) {
 }
 
 // QGIS Server WMS GetLegendGraphic proxy
-async function qgisServerWMSRoutes(server, options) {
-  server.get('/qgis-server/wms/legend/:layerName', async (request, reply) => {
+async function qgisServerWMSRoutes(server, { auth }) {
+  server.get('/qgis-server/wms/legend/:layerName', {
+    schema: layerNameSchema()
+  }, async (request, reply) => {
     try {
       const { layerName } = request.params
       const { format, width, height, scale } = request.query
@@ -188,8 +210,10 @@ async function qgisServerWMSRoutes(server, options) {
 }
 
 // QGIS Server WFS DescribeFeatureType proxy
-async function qgisServerWFSRoutes(server, options) {
-  server.get('/qgis-server/wfs/describe/:layerName', async (request, reply) => {
+async function qgisServerWFSRoutes(server, { auth }) {
+  server.get('/qgis-server/wfs/describe/:layerName', {
+    schema: layerNameSchema()
+  }, async (request, reply) => {
     try {
       const { layerName } = request.params
       const { outputFormat } = request.query
@@ -228,8 +252,10 @@ async function qgisServerWFSRoutes(server, options) {
 }
 
 // QGIS Server OGC API Styles proxy
-async function qgisServerOGCAPIRoutes(server, options) {
-  server.get('/qgis-server/api/styles/:layerName', async (request, reply) => {
+async function qgisServerOGCAPIRoutes(server, { auth }) {
+  server.get('/qgis-server/api/styles/:layerName', {
+    schema: layerNameSchema()
+  }, async (request, reply) => {
     try {
       const { layerName } = request.params
       
@@ -301,8 +327,10 @@ async function qgisServerMetricsRoutes(server, options) {
 }
 
 // QGIS Server cache management
-async function qgisServerCacheRoutes(server, options) {
-  server.delete('/qgis-server/cache', async (request, reply) => {
+async function qgisServerCacheRoutes(server, { auth }) {
+  server.delete('/qgis-server/cache', {
+    preHandler: auth.requireAuth(server)
+  }, async (request, reply) => {
     try {
       console.log('[QGIS-Server] 🗑️ Cache clear requested')
       
@@ -324,7 +352,9 @@ async function qgisServerCacheRoutes(server, options) {
     }
   })
   
-  server.get('/qgis-server/cache/stats', async (request, reply) => {
+  server.get('/qgis-server/cache/stats', {
+    preHandler: auth.requireAuth(server)
+  }, async (request, reply) => {
     try {
       const bridge = getBridge()
       const stats = bridge.getCacheStats()
@@ -346,24 +376,25 @@ async function qgisServerCacheRoutes(server, options) {
 }
 
 // Create all QGIS Server routes
-async function createQGISServerRoutes(server) {
+async function createQGISServerRoutes(server, options = {}) {
+  const auth = options.auth || {}
   console.log('[QGIS-Server] 🚀 Creating QGIS Server routes')
   
   // Health and capabilities
-  await qgisServerHealthRoutes(server)
-  await qgisServerCapabilitiesRoutes(server)
+  await qgisServerHealthRoutes(server, options)
+  await qgisServerCapabilitiesRoutes(server, options)
   
   // Style extraction
-  await ultimateQGISStyleRoutes(server)
+  await ultimateQGISStyleRoutes(server, { auth })
   
   // Service proxies
-  await qgisServerWMSRoutes(server)
-  await qgisServerWFSRoutes(server)
-  await qgisServerOGCAPIRoutes(server)
+  await qgisServerWMSRoutes(server, { auth })
+  await qgisServerWFSRoutes(server, { auth })
+  await qgisServerOGCAPIRoutes(server, { auth })
   
   // Management
-  await qgisServerMetricsRoutes(server)
-  await qgisServerCacheRoutes(server)
+  await qgisServerMetricsRoutes(server, options)
+  await qgisServerCacheRoutes(server, { auth })
   
   console.log('[QGIS-Server] ✅ QGIS Server routes created')
 }

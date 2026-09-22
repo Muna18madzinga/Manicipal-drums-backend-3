@@ -1,5 +1,5 @@
 // Vector GeoPDF Generation Routes
-import { exec } from 'child_process'
+import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { writeFile, unlink, mkdir, readFile } from 'fs/promises'
 import { existsSync } from 'fs'
@@ -10,9 +10,16 @@ import { computeAreaConsistency } from '../utils/area-computation.js'
 import { authenticateWithSchema } from '../utils/schemaAuth.js'
 import { getCapeLoSRID } from '../utils/capeLoSRID.js'
 
-const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+
+// ogr2ogr command strings are quoted full paths or bare PATH names.
+function executableOf(cmd) {
+  return typeof cmd === 'string' ? cmd.replace(/^"|"$/g, '') : cmd
+}
+
+const PROJECTION_PATTERN = /^[A-Za-z0-9:_.+\-]+$/
 
 let cachedOGR2OGRPath = null
 
@@ -33,7 +40,7 @@ async function findOGR2OGR() {
     try {
       if (!ogrPath.includes('\\') && !ogrPath.includes('/')) {
         try {
-          await execAsync(`${ogrPath} --version`)
+          await execFileAsync(ogrPath, ['--version'])
           return ogrPath
         } catch {
           continue
@@ -41,10 +48,9 @@ async function findOGR2OGR() {
       }
 
       if (existsSync(ogrPath)) {
-        const quotedPath = `"${ogrPath}"`
         try {
-          await execAsync(`${quotedPath} --version`)
-          return quotedPath
+          await execFileAsync(executableOf(`"${ogrPath}"`), ['--version'])
+          return `"${ogrPath}"`
         } catch {
           continue
         }
@@ -65,7 +71,7 @@ async function getOGR2OGRCommand() {
 }
 
 async function getGDALVersion(cmd) {
-  const { stdout } = await execAsync(`${cmd} --version`).catch(() => ({ stdout: null }))
+  const { stdout } = await execFileAsync(executableOf(cmd), ['--version']).catch(() => ({ stdout: null }))
   return stdout?.trim() || null
 }
 
@@ -255,6 +261,12 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
         return reply.code(400).send({
           error: 'Missing required fields: parcels, beacons, projection'
         })
+      }
+
+      // Projection flows into GDAL -s_srs/-a_srs flags; enforce a strict
+      // allowlist of EPSG/PROJ-style tokens.
+      if (typeof projection !== 'string' || projection.length > 100 || !PROJECTION_PATTERN.test(projection)) {
+        return reply.code(400).send({ error: 'Invalid projection' })
       }
 
       // Query Outside Figure parcel from database if projectId provided
@@ -594,24 +606,33 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
           fastify.log.info(`[GeoPDF] 📍 Setting PROJ_LIB: ${projLib}`)
         }
 
-        // ogr2ogr syntax: ogr2ogr [options] dst_datasource src_datasource
-        const parcelsCommand = `${ogrCmd} -f PDF -lco GEOREFERENCE=true -lco GEO_ENCODING=ISO32000 -lco COMPATIBILITY=ACROBAT_9 -s_srs ${projection} -a_srs ${projection} "${outputPdf}" "${parcelsGeoJSON}"`
-        const { stdout: parcelsStdout, stderr: parcelsStderr } = await execAsync(parcelsCommand, {
-          shell: true,
-          maxBuffer: 10 * 1024 * 1024,
-          env
-        })
+        // ogr2ogr syntax: ogr2ogr [options] dst_datasource src_datasource.
+        // Args are passed individually so projection/filenames can never be
+        // interpreted as shell commands.
+        const ogrBin = executableOf(ogrCmd)
+        const ogrPdfOptions = [
+          '-f', 'PDF',
+          '-lco', 'GEOREFERENCE=true',
+          '-lco', 'GEO_ENCODING=ISO32000',
+          '-lco', 'COMPATIBILITY=ACROBAT_9',
+          '-s_srs', projection,
+          '-a_srs', projection
+        ]
+        const { stderr: parcelsStderr } = await execFileAsync(
+          ogrBin,
+          [...ogrPdfOptions, outputPdf, parcelsGeoJSON],
+          { maxBuffer: 10 * 1024 * 1024, env }
+        )
         if (parcelsStderr && !parcelsStderr.includes('Warning')) {
           fastify.log.warn(`[GeoPDF] ogr2ogr parcels stderr: ${parcelsStderr.substring(0, 2000)}`)
         }
         
         // Add beacons as points layer
-        const beaconsCommand = `${ogrCmd} -f PDF -update -append -lco GEOREFERENCE=true -lco GEO_ENCODING=ISO32000 -lco COMPATIBILITY=ACROBAT_9 -s_srs ${projection} -a_srs ${projection} "${outputPdf}" "${beaconsGeoJSON}"`
-        const { stdout: beaconsStdout, stderr: beaconsStderr } = await execAsync(beaconsCommand, {
-          shell: true,
-          maxBuffer: 10 * 1024 * 1024,
-          env
-        })
+        const { stderr: beaconsStderr } = await execFileAsync(
+          ogrBin,
+          [...ogrPdfOptions, '-update', '-append', '-lco', 'GEOREFERENCE=true', outputPdf, beaconsGeoJSON],
+          { maxBuffer: 10 * 1024 * 1024, env }
+        )
         if (beaconsStderr && !beaconsStderr.includes('Warning')) {
           fastify.log.warn(`[GeoPDF] ogr2ogr beacons stderr: ${beaconsStderr.substring(0, 2000)}`)
         }

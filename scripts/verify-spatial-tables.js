@@ -17,7 +17,7 @@ const EXPECTED = [
 async function main() {
   const connectionString =
     process.env.DATABASE_URL ||
-    'postgresql://postgres:***REDACTED***@localhost:5432/vungu_master_db_v1'
+    'postgresql://postgres@localhost:5432/vungu_master_db_v1'
   const pool = new Pool({
     connectionString,
     ssl: connectionString.includes('render.com')

@@ -1,13 +1,38 @@
-import { exec } from 'child_process'
+import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { writeFile, unlink, mkdir, readFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
-const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+
+// GDAL command strings are quoted full paths (e.g. "C:\Program Files\QGIS 3.34\...
+// \bin\gdal_translate.exe") or bare PATH names. Strip the quotes for execFile.
+function executableOf(cmd) {
+  return typeof cmd === 'string' ? cmd.replace(/^"|"$/g, '') : cmd
+}
+
+async function probeExecutableVersion(cmd) {
+  if (!cmd) return null
+  try {
+    const { stdout } = await execFileAsync(executableOf(cmd), ['--version'])
+    return stdout?.trim() || null
+  } catch {
+    return null
+  }
+}
+
+// PDF metadata supplied by callers must be plain, single-line text. Strip
+// anything that could corrupt the command line or GDAL's -co parsing.
+function sanitizeGdalMeta(value, fallback) {
+  const cleaned = String(value ?? '').replace(/[\r\n\t"]/g, ' ').trim().slice(0, 200)
+  return cleaned || fallback
+}
+
+const PROJECTION_PATTERN = /^[A-Za-z0-9:_.+\-]+$/
 
 /**
  * Auto-detect GDAL installation in common QGIS locations
@@ -43,22 +68,16 @@ async function findGDAL() {
     try {
       // For simple command names, test if they work
       if (!gdalPath.includes('\\') && !gdalPath.includes('/')) {
-        try {
-          await execAsync(`${gdalPath} --version`)
+        if (await probeExecutableVersion(gdalPath)) {
           return gdalPath
-        } catch {
-          continue
         }
+        continue
       }
       
       // For full paths, check if file exists AND can execute
       if (existsSync(gdalPath)) {
-        const quotedPath = `"${gdalPath}"`
-        try {
-          await execAsync(`${quotedPath} --version`)
-          return quotedPath
-        } catch {
-          continue
+        if (await probeExecutableVersion(gdalPath)) {
+          return `"${gdalPath}"`
         }
       }
     } catch (error) {
@@ -98,21 +117,15 @@ async function findOGR2OGR() {
   for (const ogrPath of commonPaths) {
     try {
       if (!ogrPath.includes('\\') && !ogrPath.includes('/')) {
-        try {
-          await execAsync(`${ogrPath} --version`)
+        if (await probeExecutableVersion(ogrPath)) {
           return ogrPath
-        } catch {
-          continue
         }
+        continue
       }
       
       if (existsSync(ogrPath)) {
-        const quotedPath = `"${ogrPath}"`
-        try {
-          await execAsync(`${quotedPath} --version`)
-          return quotedPath
-        } catch {
-          continue
+        if (await probeExecutableVersion(`"${ogrPath}"`)) {
+          return `"${ogrPath}"`
         }
       }
     } catch (error) {
@@ -149,7 +162,7 @@ export default async function geoPDFRoutes(fastify, options) {
         throw new Error('GDAL/OGR not found in any common location')
       }
       
-      const { stdout } = await execAsync(`${gdalCommand || ogrCommand} --version`)
+      const { stdout } = await execFileAsync(executableOf(gdalCommand || ogrCommand), ['--version'])
       
       fastify.log.info(`[GeoPDF] ✅ GDAL found: ${gdalCommand}`)
       fastify.log.info(`[GeoPDF] Version: ${stdout.trim()}`)
@@ -183,7 +196,7 @@ export default async function geoPDFRoutes(fastify, options) {
    * - projection: EPSG code (e.g., "EPSG:22291" for Cape Lo 31)
    * - metadata: { title, surveyor, date, designation, etc. }
    */
-  fastify.post('/geopdf/generate', async (request, reply) => {
+  fastify.post('/geopdf/generate', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const tempDir = path.join(__dirname, '../../temp/geopdf')
     
     try {
@@ -199,6 +212,21 @@ export default async function geoPDFRoutes(fastify, options) {
         return reply.code(400).send({
           error: 'Missing required fields: mapImage, extent, projection'
         })
+      }
+
+      // Projection is interpolated into GDAL/SRS handling, so enforce a strict
+      // allowlist (EPSG codes, PROJ-style tokens). Anything else is rejected.
+      if (typeof projection !== 'string' || projection.length > 100 || !PROJECTION_PATTERN.test(projection)) {
+        return reply.code(400).send({ error: 'Invalid projection' })
+      }
+
+      // Extent values must be finite numbers (they are joined into an
+      // argument string further down).
+      const { minX, minY, maxX, maxY } = extent
+      for (const v of [minX, minY, maxX, maxY]) {
+        if (typeof v !== 'number' || !Number.isFinite(v)) {
+          return reply.code(400).send({ error: 'Invalid extent' })
+        }
       }
 
       // Generate unique filenames
@@ -229,34 +257,34 @@ export default async function geoPDFRoutes(fastify, options) {
       // Solution: Create GeoTIFF first, then convert to PDF
       const tempTiff = path.join(tempDir, `temp-${timestamp}.tif`)
       
-      // Step 1: Create GeoTIFF with georeferencing
-      // Note: gdalCmd is already quoted, don't add extra quotes
-      const tiffCommand = [
-        gdalCmd,
-        `-of GTiff`,
-        `-a_srs ${projection}`,
-        `-a_ullr ${extent.minX} ${extent.maxY} ${extent.maxX} ${extent.minY}`,
-        `"${inputPng}"`,
-        `"${tempTiff}"`
-      ].join(' ')
-      
+      // Step 1: Create GeoTIFF with georeferencing. Arguments are passed as
+      // an array (no shell) so user data can never be executed as a command.
+      const gdalBin = executableOf(gdalCmd)
+      const tiffArgs = [
+        '-of', 'GTiff',
+        '-a_srs', projection,
+        '-a_ullr', String(minX), String(maxY), String(maxX), String(minY),
+        inputPng,
+        tempTiff
+      ]
+
       // Step 2: Convert GeoTIFF to GeoPDF
-      const pdfCommand = [
-        gdalCmd,
-        `-of PDF`,
-        `-co GEO_ENCODING=ISO32000`,
-        `-co DPI=300`,
-        `-co AUTHOR="${metadata?.surveyorName || 'Survey Task Manager'}"`,
-        `-co TITLE="${metadata?.title || 'Survey Plan'}"`,
-        `-co SUBJECT="${metadata?.designation || 'Cadastral Survey'}"`,
-        `-co CREATOR="Survey Task Manager v1.0"`,
-        `"${tempTiff}"`,
-        `"${outputPdf}"`
-      ].join(' ')
+      const author = sanitizeGdalMeta(metadata?.surveyorName, 'Survey Task Manager')
+      const title = sanitizeGdalMeta(metadata?.title, 'Survey Plan')
+      const subject = sanitizeGdalMeta(metadata?.designation, 'Cadastral Survey')
+      const pdfArgs = [
+        '-of', 'PDF',
+        '-co', 'GEO_ENCODING=ISO32000',
+        '-co', 'DPI=300',
+        '-co', `AUTHOR=${author}`,
+        '-co', `TITLE=${title}`,
+        '-co', `SUBJECT=${subject}`,
+        '-co', 'CREATOR=Survey Task Manager v1.0',
+        tempTiff,
+        outputPdf
+      ]
 
       fastify.log.info('[GeoPDF] 🔧 Running GDAL command...')
-      fastify.log.info(`[GeoPDF] Command: ${tiffCommand}`)
-      fastify.log.info(`[GeoPDF] Command: ${pdfCommand}`)
       fastify.log.info(`[GeoPDF] Extent: ${JSON.stringify(extent)}`)
 
       // Set PROJ_LIB to use QGIS's PROJ data instead of PostgreSQL's
@@ -271,8 +299,7 @@ export default async function geoPDFRoutes(fastify, options) {
 
       // Execute Step 1: Create GeoTIFF
       fastify.log.info('[GeoPDF] Step 1: Creating GeoTIFF...')
-      const { stdout: stdout1, stderr: stderr1 } = await execAsync(tiffCommand, { 
-        shell: true,
+      const { stderr: stderr1 } = await execFileAsync(gdalBin, tiffArgs, { 
         maxBuffer: 10 * 1024 * 1024,
         env
       })
@@ -284,8 +311,7 @@ export default async function geoPDFRoutes(fastify, options) {
       
       // Execute Step 2: Convert to GeoPDF
       fastify.log.info('[GeoPDF] Step 2: Converting to GeoPDF...')
-      const { stdout: stdout2, stderr: stderr2 } = await execAsync(pdfCommand, { 
-        shell: true,
+      const { stderr: stderr2 } = await execFileAsync(gdalBin, pdfArgs, { 
         maxBuffer: 10 * 1024 * 1024,
         env
       })
@@ -335,10 +361,10 @@ export default async function geoPDFRoutes(fastify, options) {
       const gdalCmd = await getGDALCommand()
       
       // Check GDAL version
-      const { stdout: gdalVersion } = await execAsync(`${gdalCmd} --version`).catch(() => ({ stdout: 'Not installed' }))
+      const { stdout: gdalVersion } = await execFileAsync(executableOf(gdalCmd), ['--version']).catch(() => ({ stdout: 'Not installed' }))
       
       // Check supported formats
-      const { stdout: formats } = await execAsync(`${gdalCmd} --formats`).catch(() => ({ stdout: '' }))
+      const { stdout: formats } = await execFileAsync(executableOf(gdalCmd), ['--formats']).catch(() => ({ stdout: '' }))
       const pdfSupported = formats.includes('PDF')
 
       return {

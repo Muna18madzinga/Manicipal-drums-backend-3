@@ -1,5 +1,5 @@
 -- Create planner user directly
--- Run with: PGPASSWORD=***REDACTED*** psql -U postgres -h localhost -p 5432 -d vungu_master_db_v1 -f create-user.sql
+-- Run with: psql -U postgres -h localhost -p 5432 -d vungu_master_db_v1 -f create-user.sql
 
 -- Create users table if not exists
 CREATE TABLE IF NOT EXISTS users (
@@ -26,7 +26,7 @@ VALUES (
   'Vungu Planner',
   'planner',
   'Vungu Rural District Council',
-  'hashed_VunguPlanner2025!',
+  'REPLACE_WITH_BCRYPT_HASH',
   '+263 55 2521 500',
   'active',
   true,

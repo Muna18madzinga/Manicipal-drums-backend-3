@@ -26,11 +26,17 @@ export class AuthService {
   private readonly adminUserModel: AdminUserModel;
 
   constructor(pool: Pool) {
-    this.jwtSecret = process.env.JWT_SECRET || 'your-secret-key';
-    this.jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret';
+    this.jwtSecret = process.env.JWT_SECRET || this.requireSecret('JWT_SECRET');
+    this.jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || this.requireSecret('JWT_REFRESH_SECRET');
     this.tokenExpiry = process.env.JWT_EXPIRY || '15m';
     this.refreshExpiry = process.env.JWT_REFRESH_EXPIRY || '7d';
     this.adminUserModel = new AdminUserModel(pool);
+  }
+
+  // Production should never silently run with a placeholder secret. Fail fast
+  // instead of falling back to a known, forgeable value.
+  private requireSecret(name: string): string {
+    throw new Error(`[auth] ${name} must be set in the environment`);
   }
 
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
