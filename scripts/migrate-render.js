@@ -24,6 +24,10 @@ const MIGRATIONS = [
   '076_available_stands.sql',
   '076_production_hardening.sql',
   '077_permit_application_pending_payment.sql',
+  // 3NF normalisation pass (reference tables, stands/zone cache + v_stands
+  // view, status CHECK, user_profiles). Only fix: v_stands joins the canonical
+  // proposed_peri_urban_zones (112 repoint), not the obsolete vungu_* copy.
+  '078_3nf_normalization.sql',
   '078_missing_gist_indexes.sql',
   // Clip OSM buildings/water-wise layers to the council buffer — spatial
   // filter the vector-tile registry depends on (previously local-only).

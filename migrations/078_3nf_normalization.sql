@@ -170,17 +170,19 @@ CREATE TRIGGER trg_sync_zone_type_cache
   BEFORE INSERT OR UPDATE OF zone_type ON stands
   FOR EACH ROW EXECUTE FUNCTION fn_sync_zone_type_cache();
 
--- 2f. Canonical view that joins zone_type from the zones table
+-- 2f. Canonical view of stands. NOTE: the spec'd zone_id join cannot be
+--     expressed — stands.zone_id is UUID (legacy map-copy pk) while the
+--     canonical proposed_peri_urban_zones.id is integer (112 repoint). The
+--     zones join below therefore does NOT exist; zone_type_value comes from
+--     the 3NF cache instead. Reunifying stands↔zone integrity is tracked as
+--     a data migration (re-seed stands.zone_id to integer zone ids) separately.
 CREATE OR REPLACE VIEW v_stands AS
 SELECT
   s.id, s.stand_number, s.ward,
   s.ward_fid,
   w.name_en                  AS ward_name,
   s.zone_id,
-  COALESCE(
-    z.zone,
-    s.zone_type_cache
-  )                          AS zone_type,
+  s.zone_type_cache          AS zone_type,
   s.use_scale,
   s.area_sqm,
   s.frontage_m,
@@ -199,11 +201,10 @@ SELECT
   s.created_at,
   s.updated_at
 FROM stands s
-LEFT JOIN wards                     w ON w.fid = s.ward_fid
-LEFT JOIN vungu_proposed_peri_urban_zones z ON z.id = s.zone_id;
+LEFT JOIN wards w ON w.fid = s.ward_fid;
 
 COMMENT ON VIEW v_stands IS
-  '3NF-normalised view of stands: zone_type derived from zone_id, ward_name from PostGIS wards.';
+  '3NF-normalised view of stands: ward_name resolved via ward_fid. zone_type sourced from the 3NF cache (zone_id can''t join the integer canonical zones table yet).';
 
 -- ════════════════════════════════════════════════════════════════════════
 -- 3. PLANNING ASSISTANT TEMPLATES — add FK references
@@ -287,7 +288,7 @@ DO $$ BEGIN
            COALESCE(full_name, name),
            job_title,
            department,
-           COALESCE(updated_at, NOW())
+           COALESCE(created_at, NOW())
     FROM users
     ON CONFLICT (user_id) DO NOTHING;
   END IF;
