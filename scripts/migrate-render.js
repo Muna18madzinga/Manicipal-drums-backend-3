@@ -91,6 +91,7 @@ const MIGRATIONS = [
   '123_council_ops_asset_registers.sql',
   '124_planning_clerk_registers.sql',
   '125_service_desk_tickets.sql',
+  '126_stands_zone_id_integer.sql',
 ]
 
 function createPool(env = process.env) {
