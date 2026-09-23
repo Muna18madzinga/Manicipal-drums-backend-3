@@ -67,8 +67,9 @@ const { buildingComplaintRoutes } = require('./src/routes/building-complaints')
 const { environmentalHealthRoutes } = require('./src/routes/environmental-health')
 const { environmentalHealthOpsRoutes } = require('./src/routes/environmental-health-ops')
 // The IT Administrator's console: audit trail, sessions, sign-in security,
-// settings, system health, outbox, announcements and the org structure (124).
+// settings, system health, outbox, announcements and the org structure (127).
 const { adminConsoleRoutes } = require('./src/routes/admin-console')
+const { planningClerkRoutes } = require('./src/routes/planning-clerk')
 
 // Import Public Routes
 const { publicRoutes } = require('./src/routes/public')
@@ -97,7 +98,6 @@ const { surveyorComputeRoutes } = require('./src/routes/surveyorCompute')
 const { controlPointRoutes } = require('./src/routes/controlPoints')
 const { propertyRoutes } = require('./src/routes/properties')
 const { councilOpsRoutes } = require('./src/routes/council-ops')
-const { planningClerkRoutes } = require('./src/routes/planning-clerk')
 const { serviceDeskRoutes } = require('./src/routes/service-desk')
 
 // map-search endpoints are registered inside tilesRoutes (avoid duplicate).
@@ -266,6 +266,9 @@ async function build() {
     max: 1000,
     timeWindow: '1 minute',
     keyGenerator: (req) => req.headers['x-forwarded-for']?.split(',')[0] || req.ip,
+    // statusCode is mandatory here: the built object is thrown, and the global
+    // error handler reads error.statusCode — without it every rate-limited
+    // request answered 500, which reads as "the server broke", not "slow down".
     errorResponseBuilder: (_req, context) => ({
       statusCode: 429,
       success: false,
@@ -491,12 +494,28 @@ async function build() {
 
   // Register Auth Routes — hardened JWT + bcrypt; see src/routes/auth.js.
   // The auth scope gets a tighter rate limit than the rest of the API.
-  // Default global limit (100/min) is fine for read endpoints; bursts on
+  // Default global limit (1000/min) is fine for read endpoints; bursts on
   // /auth/login or /auth/register are almost always abusive.
+  //
+  // WHY THIS IS 60 AND NOT 10
+  // keyGenerator above is the client IP, and a council office is one public
+  // address: every officer in the building shares this budget. At 10/min the
+  // eleventh person to sign in at 8am was told "Rate limit exceeded" — an
+  // answer that reads as an outage and that no amount of waiting explains,
+  // because nothing on the screen could say the limit belonged to the
+  // building rather than to them. Brute force is not what this number stops
+  // anyway: the per-email lockout (security.max_failed_attempts, five
+  // failures, checked before the password) is, and a script wanting a
+  // password wants thousands of tries, not sixty. Override per deployment —
+  // a council behind a busier gateway raises it, a single-user install can
+  // lower it.
+  const authRateMax = Number(process.env.AUTH_RATE_LIMIT_MAX) > 0
+    ? Number(process.env.AUTH_RATE_LIMIT_MAX)
+    : 60
   try {
     await server.register(async (scope) => {
-      scope.addHook('onRequest', server.rateLimit({
-        max: 20,
+      const strict = server.rateLimit({
+        max: authRateMax,
         timeWindow: '1 minute',
         errorResponseBuilder: (_req, context) => ({
           statusCode: 429,
@@ -504,7 +523,16 @@ async function build() {
           error: 'too_many_requests',
           message: `Too many auth attempts. Retry after ${Math.ceil(context.ttl / 1000)}s.`,
         }),
-      }))
+      })
+      scope.addHook('onRequest', (req, reply, done) => {
+        // The CAPTCHA image is a public GET fetched on every mount of the
+        // sign-in and register forms, on every "New image" click, and again
+        // after each failed submit. Spending the sign-in budget on it locks
+        // the user out of the very form it guards. The global 1000/min still
+        // applies.
+        if (req.url.startsWith('/api/auth/captcha')) return done()
+        return strict(req, reply, done)
+      })
       await scope.register(authRoutes)
     }, { prefix: '/api' })
   } catch (authError) {
@@ -588,6 +616,9 @@ async function build() {
     // The IT Admin console. Registered last in this block and guarded by the
     // same try: the council's planning work must not be unavailable because
     // an administration endpoint failed to mount.
+    // The Planning Clerk's nine statutory registers (migration 128). Until
+    // this existed, seven of them lived in one browser's localStorage.
+    await server.register(planningClerkRoutes, { prefix: '/api' })
     await server.register(adminConsoleRoutes, { prefix: '/api' })
     console.log('✅ Development Management (DM Handbook v1.2) + Inspector GIS + Environmental Health + Admin console routes registered')
   } catch (error) {
@@ -615,7 +646,6 @@ async function build() {
     await server.register(gisStyleRoutes, { prefix: '/api' })
     await server.register(planningRoutes, { prefix: '/api' })
     await server.register(councilOpsRoutes, { prefix: '/api' })
-    await server.register(planningClerkRoutes, { prefix: '/api' })
     await server.register(serviceDeskRoutes, { prefix: '/api' })
     // map-search lives in tilesRoutes (do not double-register mapSearchRoutes)
     console.log('✅ Vector tile + property register + GIS editing + symbology registry + planning + council ops + planning clerk + service desk routes registered')

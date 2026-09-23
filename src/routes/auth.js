@@ -18,6 +18,7 @@
  */
 
 const bcrypt = require('bcryptjs')
+const crypto = require('crypto')
 const { v4: uuidv4 } = require('uuid')
 
 const {
@@ -141,6 +142,7 @@ async function authRoutes(fastify) {
       if (!EMAIL_RX.test(email)) {
         return reply.code(400).send({ success: false, message: 'Invalid email address' })
       }
+
       const minLength = await getSetting(fastify, 'security.password_min_length')
       if (password.length < minLength) {
         return reply.code(400).send({ success: false, message: `Password must be at least ${minLength} characters` })
@@ -416,6 +418,249 @@ async function authRoutes(fastify) {
     } catch (err) {
       request.log.error({ err }, 'refresh failed')
       return reply.code(500).send({ success: false, error: 'internal' })
+    }
+  })
+
+  // ════════════════════════════════════════════════════════════════════
+  // PASSWORD RESET (self-service)
+  //
+  // Three endpoints, and the shape of all three is decided by one rule: an
+  // unauthenticated caller must learn NOTHING about whether an address has
+  // an account here. /auth/forgot-password therefore answers with the same
+  // 200 and the same sentence for a council planner, a citizen, a suspended
+  // account, and an address that has never existed.
+  //
+  // What is emailed is 32 random bytes; what is stored is their SHA-256
+  // (migration 126). The token lasts one hour, is single-use, and completing
+  // a reset revokes every session the account had — a reset is how someone
+  // recovers an account they believe was taken, so leaving the taker signed
+  // in would defeat the whole exercise.
+  // ════════════════════════════════════════════════════════════════════
+
+  const RESET_TTL_MINUTES = 60
+  // Re-requesting inside this window returns the same 200 without sending a
+  // second email, so the form cannot be used to flood someone's inbox.
+  const RESET_RESEND_COOLDOWN_SEC = 60
+  const RESET_SAME_ANSWER =
+    'If that address has an account, a reset link is on its way. It is valid for one hour.'
+
+  const hashResetToken = (raw) => crypto.createHash('sha256').update(String(raw)).digest('hex')
+
+  /** `planner@vungurdc.gov.zw` -> `p******@vungurdc.gov.zw`. */
+  function maskEmail(email) {
+    const [local = '', domain = ''] = String(email).split('@')
+    return `${local.slice(0, 1)}${'*'.repeat(Math.max(local.length - 1, 1))}@${domain}`
+  }
+
+  fastify.post('/auth/forgot-password', async (request, reply) => {
+    try {
+      const body = request.body || {}
+      const { email } = body
+
+      if (!isString(email, 255) || !EMAIL_RX.test(email)) {
+        return reply.code(400).send({
+          success: false, error: 'invalid_email', message: 'Enter the email address on your account.',
+        })
+      }
+
+      const cap = captchaOk(body, email)
+      if (!cap.ok) {
+        return reply.code(400).send({
+          success: false,
+          error: 'captcha_failed',
+          message: cap.reason === 'expired'
+            ? 'CAPTCHA expired — refresh the image and try again.'
+            : 'Enter the CAPTCHA characters correctly to continue.',
+        })
+      }
+
+      // Everything below this line ends in the same answer. Failures are
+      // logged, never returned.
+      try {
+        const { rows } = await fastify.pg.query(
+          `SELECT id, email, COALESCE(full_name, name) AS name, active, status
+             FROM users WHERE lower(email) = lower($1)`,
+          [email],
+        )
+        const user = rows[0]
+
+        // A suspended or deleted account gets no link. Restoring it is the IT
+        // desk's decision, not a password's.
+        if (user && user.active && user.status !== 'suspended') {
+          const { rows: recent } = await fastify.pg.query(
+            `SELECT 1 FROM public.password_reset_token
+              WHERE user_id = $1 AND used_at IS NULL AND expires_at > NOW()
+                AND created_at > NOW() - ($2 || ' seconds')::interval
+              LIMIT 1`,
+            [user.id, String(RESET_RESEND_COOLDOWN_SEC)],
+          )
+
+          if (recent.length === 0) {
+            // A live token from an earlier request is spent the moment a new
+            // one is asked for, so only the newest email ever works.
+            await fastify.pg.query(
+              `UPDATE public.password_reset_token SET used_at = NOW()
+                WHERE user_id = $1 AND used_at IS NULL`,
+              [user.id],
+            )
+
+            const raw = crypto.randomBytes(32).toString('base64url')
+            await fastify.pg.query(
+              `INSERT INTO public.password_reset_token
+                 (user_id, token_hash, expires_at, requested_ip, requested_ua)
+               VALUES ($1, $2, NOW() + ($3 || ' minutes')::interval, $4, $5)`,
+              [
+                user.id,
+                hashResetToken(raw),
+                String(RESET_TTL_MINUTES),
+                loginSecurity.clientIp(request),
+                String(request.headers?.['user-agent'] || '').slice(0, 500) || null,
+              ],
+            )
+
+            const appBase = process.env.FRONTEND_URL || 'http://localhost:5174'
+            const resetUrl = `${appBase}/reset-password?token=${raw}`
+            await notifier.enqueue(fastify.pg, {
+              userId: user.id,
+              email:  user.email,
+              kind:   'password_reset',
+              subject: 'Reset your Vungu RDC portal password',
+              text: [
+                `Dear ${user.name || 'portal user'},`,
+                'Someone asked to reset the password for your Vungu Rural District Council portal account.',
+                `Open this link to choose a new password. It stops working in ${RESET_TTL_MINUTES} minutes and can be used once:`,
+                resetUrl,
+                'If this was not you, no action is needed and your password has not changed. If these arrive often, tell council IT.',
+                'Vungu Rural District Council',
+              ].join('\n\n'),
+              payload: { requestedIp: loginSecurity.clientIp(request) },
+            })
+          }
+        }
+      } catch (err) {
+        // Deliberately swallowed: the caller must not be able to tell a send
+        // failure from an address that has no account.
+        request.log.error({ err }, 'forgot-password issue failed')
+      }
+
+      return reply.send({ success: true, message: RESET_SAME_ANSWER })
+    } catch (err) {
+      request.log.error({ err }, 'forgot-password failed')
+      // Same shape even here — a 500 on a known address would itself be a tell.
+      return reply.send({ success: true, message: RESET_SAME_ANSWER })
+    }
+  })
+
+  // Checked before the form renders, so someone on a dead link is told so
+  // instead of typing a new password twice into a page that cannot save it.
+  fastify.get('/auth/reset-password/validate', async (request, reply) => {
+    try {
+      const { token } = request.query || {}
+      if (!isString(token, 200)) {
+        return reply.code(400).send({ success: false, valid: false, error: 'token_required' })
+      }
+      const { rows } = await fastify.pg.query(
+        `SELECT t.used_at, t.expires_at, u.email, u.active, u.status
+           FROM public.password_reset_token t
+           JOIN users u ON u.id = t.user_id
+          WHERE t.token_hash = $1`,
+        [hashResetToken(token)],
+      )
+      const row = rows[0]
+      if (!row) return reply.code(404).send({ success: false, valid: false, error: 'not_found' })
+      if (row.used_at) return reply.code(410).send({ success: false, valid: false, error: 'used' })
+      if (new Date(row.expires_at) < new Date()) {
+        return reply.code(410).send({ success: false, valid: false, error: 'expired' })
+      }
+      if (!row.active || row.status === 'suspended') {
+        return reply.code(403).send({ success: false, valid: false, error: 'account_suspended' })
+      }
+
+      const minLength = await getSetting(fastify, 'security.password_min_length')
+      return reply.send({
+        success: true, valid: true,
+        // Masked: whoever holds the token read it in that mailbox, so the hint
+        // confirms the account without the link itself disclosing an address.
+        data: { email: maskEmail(row.email), expiresAt: row.expires_at, passwordMinLength: minLength },
+      })
+    } catch (err) {
+      request.log.error({ err }, 'reset-password validate failed')
+      return reply.code(500).send({ success: false, valid: false, error: 'internal' })
+    }
+  })
+
+  fastify.post('/auth/reset-password', async (request, reply) => {
+    try {
+      const { token, password } = request.body || {}
+      if (!isString(token, 200) || !isString(password, 255)) {
+        return reply.code(400).send({
+          success: false, error: 'missing_fields', message: 'A reset link and a new password are required.',
+        })
+      }
+
+      const minLength = await getSetting(fastify, 'security.password_min_length')
+      if (password.length < minLength) {
+        return reply.code(400).send({
+          success: false, error: 'password_too_short',
+          message: `Password must be at least ${minLength} characters`,
+        })
+      }
+
+      // Claim the token and read the account in one statement: the UPDATE only
+      // matches a token that is unused and unexpired, so two tabs submitting
+      // the same link cannot both succeed.
+      const { rows } = await fastify.pg.query(
+        `WITH claimed AS (
+           UPDATE public.password_reset_token
+              SET used_at = NOW()
+            WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW()
+            RETURNING user_id
+         )
+         SELECT u.id, u.email, u.active, u.status
+           FROM claimed JOIN users u ON u.id = claimed.user_id`,
+        [hashResetToken(token)],
+      )
+      const user = rows[0]
+      if (!user) {
+        return reply.code(410).send({
+          success: false, error: 'invalid_token',
+          message: 'This reset link has expired or has already been used. Request a new one.',
+        })
+      }
+      if (!user.active || user.status === 'suspended') {
+        return reply.code(403).send({
+          success: false, error: 'account_suspended', message: 'Your account has been suspended.',
+        })
+      }
+
+      const passwordHash = await bcrypt.hash(password, 10)
+      await fastify.pg.query(
+        'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+        [passwordHash, user.id],
+      )
+
+      // A reset is how someone recovers an account they think was taken, so
+      // every existing session goes with the old password.
+      await fastify.pg.query(
+        'UPDATE public.user_session SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL',
+        [user.id],
+      )
+
+      // Recorded as a success, which is also what lifts the lockout —
+      // lockoutState counts failures since the last success. A locked-out
+      // officer who completes a reset can sign in at once, and the failures
+      // stay in the record rather than being deleted.
+      await loginSecurity.record(fastify, request, {
+        email: user.email, userId: user.id, succeeded: true,
+      })
+
+      // Deliberately NOT signed in here. Typing the new password on the
+      // sign-in screen proves it was remembered, and keeps MFA in the loop
+      // for the staff accounts that have it.
+      return reply.send({ success: true, message: 'Password changed. Sign in with your new password.' })
+    } catch (err) {
+      request.log.error({ err }, 'reset-password failed')
+      return reply.code(500).send({ success: false, error: 'internal', message: 'Could not reset the password.' })
     }
   })
 

@@ -60,6 +60,8 @@ describe('Render migration plan', () => {
       '114_gis_style_registry.sql',
       '115_residency_verification.sql',
       '124_admin_console.sql',
+      '125_planning_clerk_registers.sql',
+      '126_password_reset.sql',
     ])
 
     for (const filename of MIGRATIONS) {

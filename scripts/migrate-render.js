@@ -94,6 +94,19 @@ const MIGRATIONS = [
   '126_stands_zone_id_integer.sql',
   // The IT admin console. Depends on public.users only.
   '127_admin_console.sql',
+  // The Planning Clerk's nine statutory registers (spatial_planning.clerk_*).
+  // Its only dependencies are spatial_planning.permit_application and
+  // spatial_planning.set_updated_at(), both from 070, and public.users from
+  // 001 — all of them earlier in this list.
+  //
+  // Not to be confused with 124_planning_clerk_registers.sql, which creates a
+  // separate seven-table planning_clerk schema. 128 is the one the Planning
+  // Clerk console talks to.
+  '128_planning_clerk_registers.sql',
+  // Self-service password reset. Depends on public.users (001) and
+  // public.user_session (097) only by FK on users; the session revoke in the
+  // route is a plain UPDATE that is a no-op where that table is absent.
+  '129_password_reset.sql',
 ]
 
 function createPool(env = process.env) {

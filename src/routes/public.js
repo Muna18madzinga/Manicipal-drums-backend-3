@@ -1,5 +1,10 @@
 // Public routes for the unified backend
+const { registerDistrictOverview } = require('./districtOverview')
+
 async function publicRoutes(fastify) {
+  // Live district figures for the landing page (cached; see districtOverview.js).
+  registerDistrictOverview(fastify)
+
   // Get available layers (cached)
   fastify.get('/layers', async (request, reply) => {
     try {

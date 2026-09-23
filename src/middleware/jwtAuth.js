@@ -147,6 +147,23 @@ function verifyMfaPendingToken(token) {
   return claims
 }
 
+// Short-lived token carrying the sha256 of a CAPTCHA answer. Keeping the
+// answer in the token rather than a table means a challenge survives a
+// restart, works behind more than one instance and needs no sweeping.
+// ponytail: stateless, so one solved challenge is replayable until it
+// expires; add a used-jti table if that ever matters more than the per-email
+// sign-in lockout already does.
+function signCaptchaToken(answerHash) {
+  return jwt.sign({ type: 'captcha', a: answerHash }, getSecret(),
+    { expiresIn: '5m', issuer: 'vungu-portal' })
+}
+
+function verifyCaptchaToken(token) {
+  const claims = verifyToken(token)
+  if (claims.type !== 'captcha') throw new Error('wrong_token_type')
+  return claims
+}
+
 // Long-lived, signed token for the QGIS plugin / API integrations.
 // Replaces the old guessable `vungu-api-<random>` format that any client
 // could forge. Carries type:'api' so it can never be used as a user session.
@@ -340,6 +357,8 @@ module.exports = {
   generateBackupCodes,
   signMfaPendingToken,
   verifyMfaPendingToken,
+  signCaptchaToken,
+  verifyCaptchaToken,
   ACCESS_TTL,
   REFRESH_TTL,
 }

@@ -1604,8 +1604,11 @@ async function developmentManagementRoutes(fastify) {
     }
   })
 
+  // The clerk reads this register but never writes it: the enforcement
+  // register is open to public inspection, and the clerk's console is where
+  // a caller at the counter is answered from. Writes below stay the EO's.
   fastify.get('/enforcement-orders', {
-    preHandler: requireRole(fastify, ['eo', 'planner', 'admin', 'building_inspector', 'gis_officer', 'env_officer']),
+    preHandler: requireRole(fastify, ['eo', 'planner', 'admin', 'building_inspector', 'gis_officer', 'env_officer', 'planning_clerk']),
   }, async (request, reply) => {
     const { status, stand_number, permit_app_id, limit = 50, offset = 0 } = request.query
     try {

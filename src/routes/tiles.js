@@ -166,6 +166,12 @@ async function tilesRoutes(fastify) {
     }
   })
 
+  // Bounding box of the Vungu RDC district polygon (public.districts,
+  // pcode ZW1704), rounded out. A box, not the polygon: this only decides
+  // the ORDER results are shown in, and a polygon containment test per hit
+  // would be real work to settle a tie-break.
+  const VUNGU_EXTENT = [29.09, -19.98, 30.19, -19.09]
+
   fastify.get('/map-search', async (request, reply) => {
     const q = String(request.query?.q || '').trim()
     if (q.length < 1) return { success: true, data: [] }
@@ -391,8 +397,42 @@ async function tilesRoutes(fastify) {
         Number.isFinite(r.center[0]) && Number.isFinite(r.center[1]) &&
         !(r.center[0] === 0 && r.center[1] === 0)
       )
-      // Normalise: ensure every result has an `id` field (frontend uses it as :key)
-      const normalised = data.map((r, i) => ({ id: `${r.type}-${i}`, ...r }))
+
+      // Drop duplicates. The ward lookup runs twice in this handler — once at
+      // the top and again in the autocomplete block at the bottom — so
+      // "Ward 12" came back as two identical rows, which reads to a resident
+      // as two different Ward 12s. Keyed on type+label+rounded centre so two
+      // genuinely different things that share a name (a farm and the parcel
+      // under it) both survive.
+      const seen = new Set()
+      const unique = data.filter((r) => {
+        const key = `${r.type}|${r.label}|${r.center[0].toFixed(4)},${r.center[1].toFixed(4)}`
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      data.length = 0
+      data.push(...unique)
+      // Rank Vungu first.
+      //
+      // Only the ward and road lookups were ever district-scoped; places,
+      // POIs, parcels and zones matched the whole country, so a resident
+      // searching "school" on the council's own website was shown a school
+      // in Bulawayo above the one down the road. Sorting on the district
+      // extent costs nothing — the centre of every hit is already in hand —
+      // and it does not remove the national results, which staff working
+      // outside the district still need.
+      const inDistrict = (c) =>
+        c[0] >= VUNGU_EXTENT[0] && c[0] <= VUNGU_EXTENT[2] &&
+        c[1] >= VUNGU_EXTENT[1] && c[1] <= VUNGU_EXTENT[3]
+      data.sort((a, b) => Number(inDistrict(b.center)) - Number(inDistrict(a.center)))
+
+      // Normalise: ensure every result has an `id` field (frontend uses it as
+      // :key) and say whether the hit is inside the council's own district,
+      // so a caller can label or filter it rather than guessing from coords.
+      const normalised = data.map((r, i) => ({
+        id: `${r.type}-${i}`, ...r, inDistrict: inDistrict(r.center),
+      }))
       reply.header('Cache-Control', 'public, max-age=120').send({ success: true, data: normalised, results: normalised })
     } catch (err) {
       fastify.log.error({ err, q }, 'map search failed')
