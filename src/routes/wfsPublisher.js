@@ -8,6 +8,9 @@
 const WFSLayerPublisher = require('../services/qgis/wfsPublisher');
 const path = require('path');
 const logger = require('../utils/logger');
+const { requireRole } = require('../middleware/jwtAuth');
+
+const GIS_WRITE_ROLES = ['admin', 'gis_officer'];
 
 class WFSPublisherRoutes {
   constructor() {
@@ -19,8 +22,11 @@ class WFSPublisherRoutes {
    * @param {Object} fastify - Fastify instance
    */
   registerRoutes(fastify) {
+    const gisWrite = { preHandler: requireRole(fastify, GIS_WRITE_ROLES) };
+
     // Publish specific layers for WFS
     fastify.post('/api/wfs/publish', {
+      ...gisWrite,
       schema: {
         description: 'Publish specific layers for WFS service',
         tags: ['WFS', 'QGIS'],
@@ -113,6 +119,7 @@ class WFSPublisherRoutes {
 
     // Publish all layers in a project
     fastify.post('/api/wfs/publish-all', {
+      ...gisWrite,
       schema: {
         description: 'Publish all vector layers in a project for WFS service',
         tags: ['WFS', 'QGIS'],
@@ -195,6 +202,7 @@ class WFSPublisherRoutes {
 
     // Clear publishing cache
     fastify.delete('/api/wfs/cache', {
+      ...gisWrite,
       schema: {
         description: 'Clear WFS publisher cache',
         tags: ['WFS', 'Cache']
@@ -221,6 +229,7 @@ class WFSPublisherRoutes {
 
     // Auto-publish and extract styled layer (complete workflow)
     fastify.post('/api/wfs/publish-and-style', {
+      ...gisWrite,
       schema: {
         description: 'Auto-publish layers and extract styling with OGC Bridge',
         tags: ['WFS', 'OGC', 'Styling'],

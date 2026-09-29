@@ -8,6 +8,7 @@ const { topology } = require('topojson-server')
 const { RefinedOGCBridge } = require('../services/admin/refinedOGCBridge')
 const { startProjectWatcher, getWatcherStatus } = require('../services/admin/qgisProjectWatcher')
 const { wmsCache } = require('./tiles')
+const { requireRole } = require('../middleware/jwtAuth')
 
 // In-flight WMS renders, keyed by cache key. QGIS Server runs a small pool of
 // FCGI workers, so one viewport asking for a dozen tiles across N browser tabs
@@ -1071,9 +1072,11 @@ async function ogcServicesRoutes(fastify, options) {
   
   /**
    * POST /ogc/cache/clear
-   * Clear all caches
+   * Clear all caches — staff GIS only
    */
-  fastify.post('/ogc/cache/clear', async (request, reply) => {
+  fastify.post('/ogc/cache/clear', {
+    preHandler: requireRole(fastify, ['admin', 'gis_officer']),
+  }, async (request, reply) => {
     try {
       console.log('[OGC Routes] 🧹 Cache clear requested')
       const bridge = getBridge()

@@ -1,10 +1,24 @@
 // Spatial routes for the unified backend
+const { requireRole, requireAuth } = require('../middleware/jwtAuth')
+
+const GIS_WRITE_ROLES = ['admin', 'gis_officer']
+const STAFF_ROLES = [
+  'admin', 'planner', 'eo', 'env_officer', 'building_inspector',
+  'planning_clerk', 'surveyor', 'gis_officer',
+]
+
 async function spatialRoutes(fastify) {
-  // Spatial query - find features within bounds
-  fastify.post('/query', async (request, reply) => {
+  // Spatial query - find features within bounds (authenticated staff)
+  fastify.post('/query', {
+    preHandler: requireRole(fastify, STAFF_ROLES),
+  }, async (request, reply) => {
     try {
       const { bbox, layerIds, geometryType = 'all', limit = 1000 } = request.body
-      
+      if (!Array.isArray(bbox) || bbox.length !== 4 || bbox.some((n) => !Number.isFinite(Number(n)))) {
+        return reply.code(400).send({ success: false, error: 'bad_bbox' })
+      }
+
+      // Per-table SRID: layer_data is stored as EPSG:4326. Envelope matches storage SRID.
       let query = `
         SELECT 
           layer_id,
@@ -12,8 +26,9 @@ async function spatialRoutes(fastify) {
           properties
         FROM layer_data 
         WHERE geom && ST_MakeEnvelope($1, $2, $3, $4, 4326)
+          AND ST_SRID(geom) IN (0, 4326)
       `
-      const params = [...bbox]
+      const params = bbox.map(Number)
       
       // Filter by layer IDs if specified
       if (layerIds && layerIds.length > 0) {
@@ -30,7 +45,7 @@ async function spatialRoutes(fastify) {
       }
       
       query += ` LIMIT $${params.length + 1}`
-      params.push(limit)
+      params.push(Math.min(Number(limit) || 1000, 5000))
       
       const { rows } = await fastify.pg.query(query, params)
       
@@ -51,8 +66,10 @@ async function spatialRoutes(fastify) {
     }
   })
 
-  // Get layer metadata
-  fastify.get('/layers/:id/metadata', async (request, reply) => {
+  // Get layer metadata (any authenticated user)
+  fastify.get('/layers/:id/metadata', {
+    preHandler: requireAuth(fastify),
+  }, async (request, reply) => {
     try {
       const { id } = request.params
       
@@ -89,7 +106,9 @@ async function spatialRoutes(fastify) {
   })
 
   // Create/update layer
-  fastify.post('/layers', async (request, reply) => {
+  fastify.post('/layers', {
+    preHandler: requireRole(fastify, GIS_WRITE_ROLES),
+  }, async (request, reply) => {
     try {
       const { id, name, description, type, style, published = false } = request.body
       
@@ -113,7 +132,9 @@ async function spatialRoutes(fastify) {
   })
 
   // Add features to layer
-  fastify.post('/layers/:id/features', async (request, reply) => {
+  fastify.post('/layers/:id/features', {
+    preHandler: requireRole(fastify, GIS_WRITE_ROLES),
+  }, async (request, reply) => {
     try {
       const { id } = request.params
       const { features } = request.body
@@ -151,13 +172,25 @@ async function spatialRoutes(fastify) {
   })
 
   // Update layer with QML style
-  fastify.post('/layers/:id/qml-style', async (request, reply) => {
+  fastify.post('/layers/:id/qml-style', {
+    preHandler: requireRole(fastify, GIS_WRITE_ROLES),
+  }, async (request, reply) => {
     try {
       const { id } = request.params
       const { qml_content } = request.body
       
       if (!qml_content) {
         return reply.code(400).send({ error: 'QML content is required' })
+      }
+
+      let QmlParserService
+      try {
+        ({ QmlParserService } = require('../services/admin/qmlParserService'))
+      } catch {
+        return reply.code(503).send({
+          error: 'QML parser unavailable',
+          message: 'qmlParserService is not loaded on this deploy',
+        })
       }
       
       // Initialize QML parser service
@@ -205,7 +238,9 @@ async function spatialRoutes(fastify) {
   })
 
   // Get coordinate points for a project
-  fastify.get('/coordinate-points', async (request, reply) => {
+  fastify.get('/coordinate-points', {
+    preHandler: requireAuth(fastify),
+  }, async (request, reply) => {
     try {
       const { project_id } = request.query
       

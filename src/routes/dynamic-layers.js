@@ -2,6 +2,9 @@ const { topology } = require('topojson-server')
 const { QmlParserService } = require('../services/admin/qmlParserService')
 const { SmartQGISExtractor } = require('../services/admin/smartQGISExtractor')
 const { UltimateQGISBridge } = require('../services/admin/ultimateQGISBridge')
+const { requireRole } = require('../middleware/jwtAuth')
+
+const GIS_WRITE_ROLES = ['admin', 'gis_officer']
 
 // Module-level singletons so extraction cache persists across requests
 const ultimateBridge = new UltimateQGISBridge({
@@ -334,7 +337,9 @@ async function dynamicLayerRoutes(fastify) {
   })
 
   // Upload QML style to layer
-  fastify.post('/layers/:layerName/qml-style', async (request, reply) => {
+  fastify.post('/layers/:layerName/qml-style', {
+    preHandler: requireRole(fastify, GIS_WRITE_ROLES),
+  }, async (request, reply) => {
     try {
       const { layerName } = request.params
       const { qml_content } = request.body
