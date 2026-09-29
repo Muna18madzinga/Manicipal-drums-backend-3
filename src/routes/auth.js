@@ -162,11 +162,11 @@ async function authRoutes(fastify) {
 
       const { rows } = await fastify.pg.query(
         `INSERT INTO users (
-           email, name, full_name, role, organization, phone,
+           email, full_name, role, organization, phone,
            applicant_type, national_id, physical_address,
-           password_hash, status, active, created_at
+           password_hash, status, created_at
          )
-         VALUES ($1, $2, $2, $3, $4, $5, $6, $7, $8, $9, 'active', true, NOW())
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', NOW())
          RETURNING id, email, full_name AS name, role, organization,
                    job_title, department, applicant_type,
                    phone, national_id, physical_address, residency_status`,
@@ -216,9 +216,10 @@ async function authRoutes(fastify) {
       }
 
       const { rows } = await fastify.pg.query(
-        `SELECT id, email, COALESCE(full_name, name) AS name, role, organization,
+        `SELECT id, email, full_name AS name, role, organization,
                 job_title, department, applicant_type, phone,
-                national_id, physical_address, password_hash, active, status,
+                national_id, physical_address, password_hash,
+                (status = 'active') AS active, status,
                 mfa_enabled, residency_status
          FROM users WHERE email = $1`,
         [email],
@@ -267,7 +268,7 @@ async function authRoutes(fastify) {
       }
 
       await fastify.pg.query(
-        'UPDATE users SET last_login_at = NOW(), last_login = NOW() WHERE id = $1',
+        'UPDATE users SET last_login_at = NOW() WHERE id = $1',
         [user.id],
       )
 
@@ -344,7 +345,7 @@ async function authRoutes(fastify) {
       }
 
       const { rows } = await fastify.pg.query(
-        `SELECT id, email, role, active, status FROM users WHERE id = $1`,
+        `SELECT id, email, role, (status = 'active') AS active, status FROM users WHERE id = $1`,
         [claims.sub],
       )
       const user = rows[0]
@@ -378,9 +379,9 @@ async function authRoutes(fastify) {
       }
 
       const { rows } = await fastify.pg.query(
-        `SELECT id, email, COALESCE(full_name, name) AS name, role, organization,
+        `SELECT id, email, full_name AS name, role, organization,
                 job_title, department, applicant_type, phone,
-                national_id, physical_address, active, status,
+                national_id, physical_address, (status = 'active') AS active, status,
                 mfa_secret, mfa_backup_codes, residency_status
          FROM users WHERE id = $1`,
         [claims.sub],
@@ -407,7 +408,7 @@ async function authRoutes(fastify) {
       if (!ok) return reply.code(401).send({ success: false, error: 'invalid_mfa_code' })
 
       await fastify.pg.query(
-        'UPDATE users SET last_login_at = NOW(), last_login = NOW() WHERE id = $1', [user.id])
+        'UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id])
 
       const { accessToken, refreshToken } = await createSession(fastify, user, request)
       setAuthCookies(reply, { accessToken, refreshToken })
@@ -481,7 +482,6 @@ async function authRoutes(fastify) {
 
       const { rows } = await fastify.pg.query(
         `UPDATE users SET
-           name             = COALESCE($1, name),
            full_name        = COALESCE($1, full_name),
            organization     = COALESCE($2, organization),
            job_title        = COALESCE($3, job_title),
@@ -491,7 +491,7 @@ async function authRoutes(fastify) {
            physical_address = COALESCE($7, physical_address),
            updated_at       = NOW()
          WHERE id = $8
-         RETURNING id, email, COALESCE(full_name, name) AS name, role, organization,
+         RETURNING id, email, full_name AS name, role, organization,
                    job_title, department, applicant_type,
                    phone, national_id, physical_address, residency_status`,
         [
@@ -695,11 +695,11 @@ async function authRoutes(fastify) {
 
       const { rows: userRows } = await fastify.pg.query(
         `INSERT INTO users (
-           email, name, full_name, role, job_title, department,
-           password_hash, status, active, created_at
+           email, full_name, role, job_title, department,
+           password_hash, status, created_at
          )
-         VALUES ($1, $2, $2, $3, $4, $5, $6, 'active', true, NOW())
-         RETURNING id, email, COALESCE(full_name, name) AS name, role,
+         VALUES ($1, $2, $3, $4, $5, $6, 'active', NOW())
+         RETURNING id, email, full_name AS name, role,
                    organization, job_title, department, applicant_type`,
         [
           invite.email, name, invite.role, invite.job_title, invite.department,
@@ -746,8 +746,9 @@ async function authRoutes(fastify) {
       const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
 
       const { rows } = await fastify.pg.query(
-        `SELECT id, email, COALESCE(full_name, name) AS name, role, organization,
-                job_title, department, applicant_type, active, status,
+        `SELECT id, email, full_name AS name, role, organization,
+                job_title, department, applicant_type,
+                (status = 'active') AS active, status,
                 created_at, last_login_at
          FROM users ${whereSql} ORDER BY created_at DESC`,
         params,
@@ -791,19 +792,13 @@ async function authRoutes(fastify) {
         `UPDATE users SET
            role       = COALESCE($1, role),
            status     = COALESCE($2, status),
-           active     = CASE
-                          WHEN $2 = 'suspended' THEN false
-                          WHEN $2 = 'active'    THEN true
-                          ELSE active
-                        END,
            job_title  = COALESCE($3, job_title),
            department = COALESCE($4, department),
-           name       = COALESCE($5, name),
            full_name  = COALESCE($5, full_name),
            updated_at = NOW()
          WHERE id = $6
-         RETURNING id, email, COALESCE(full_name, name) AS name, role, status,
-                   active, job_title, department, applicant_type`,
+         RETURNING id, email, full_name AS name, role, status,
+                   (status = 'active') AS active, job_title, department, applicant_type`,
         [
           role || null, status || null,
           isString(jobTitle, 120) ? jobTitle : null,
@@ -826,9 +821,9 @@ async function authRoutes(fastify) {
       const { suspended } = request.body || {}
       const newStatus = suspended ? 'suspended' : 'active'
       const { rows } = await fastify.pg.query(
-        `UPDATE users SET status = $1, active = $2, updated_at = NOW() WHERE id = $3
-         RETURNING id, email, status, active`,
-        [newStatus, !suspended, id],
+        `UPDATE users SET status = $1, updated_at = NOW() WHERE id = $2
+         RETURNING id, email, status, (status = 'active') AS active`,
+        [newStatus, id],
       )
       if (rows.length === 0) return reply.code(404).send({ success: false, error: 'not_found' })
       return reply.send({ success: true, data: rows[0] })
@@ -845,12 +840,12 @@ async function authRoutes(fastify) {
         return reply.code(400).send({ success: false, error: 'cannot_delete_self' })
       }
       // Soft delete (migration 103): the row stays for audit-log attribution and
-      // recovery; active=false + status='deleted' lock the account out of login
+      // recovery; status='deleted' locks the account out of login
       // and authenticate(). The email stays reserved until an admin restores or
       // a DBA anonymises the row.
       const { rowCount } = await fastify.pg.query(
         `UPDATE users
-            SET active = false, status = 'deleted',
+            SET status = 'deleted',
                 deleted_at = NOW(), deleted_by = $2, updated_at = NOW()
           WHERE id = $1 AND deleted_at IS NULL`,
         [id, request.user.id],
@@ -888,7 +883,7 @@ async function authRoutes(fastify) {
       const { rows } = await fastify.pg.query(
         `SELECT i.id, i.token, i.email, i.role, i.job_title, i.department,
                 i.used, i.used_at, i.expires_at, i.created_at,
-                COALESCE(u.full_name, u.name) AS invited_by_name
+                u.full_name AS invited_by_name
          FROM invites i
          LEFT JOIN users u ON u.id = i.invited_by
          ORDER BY i.created_at DESC`,

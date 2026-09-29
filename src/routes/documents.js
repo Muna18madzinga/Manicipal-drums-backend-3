@@ -313,7 +313,7 @@ async function documentRoutes(fastify) {
   fastify.get('/documents/queue', { preHandler: requireRole(fastify, STAFF_ROLES) }, async (_request, reply) => {
     try {
       const { rows } = await fastify.pg.query(
-        `SELECT cd.*, COALESCE(u.full_name, u.name) AS owner_name, u.email AS owner_email
+        `SELECT cd.*, u.full_name AS owner_name, u.email AS owner_email
          FROM citizen_documents cd
          LEFT JOIN users u ON u.id = cd.user_id
          WHERE cd.verification_status IN ('pending', 'under_review')

@@ -23,6 +23,13 @@ See `docs/OPERATIONS_RUNBOOK.md` §2 for the pre-production verification checkli
    A migration must be safe to run twice.
 3. **Additive only**: no `DROP COLUMN`/`DROP TABLE` in routine migrations. Fixing a
    bad migration means writing a new forward migration, not editing an applied one.
+   The one deliberate exception is `131_consolidate_and_shrink.sql`, which removes the
+   duplicates that 078/126/127 added alongside the originals (data is merged into the
+   canonical object first). Take `npm run backup` before applying it anywhere with real data.
+6. **Vocabularies are tables**: a new status/type/category column gets a lookup table in
+   the `ref` schema and a FOREIGN KEY — not a `CHECK (col IN (…))` list or an ENUM (130).
+7. **Describe it**: every new table gets a `COMMENT ON TABLE` in the same migration, then
+   `npm run db:dictionary` regenerates `docs/DATABASE.md`.
 4. **Header comment**: what it does, which routes/features depend on it, and the
    idempotency statement.
 5. **Soft delete**: statutory/evidentiary tables carry `deleted_at TIMESTAMPTZ` +

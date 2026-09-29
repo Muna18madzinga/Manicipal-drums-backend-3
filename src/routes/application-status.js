@@ -42,7 +42,7 @@ async function applicationStatusRoutes(fastify) {
         // Read current row + citizen contact in one query.
         const { rows } = await fastify.pg.query(
           `SELECT da.id, da.user_id, da.status,
-                  u.email, COALESCE(u.full_name, u.name) AS citizen_name
+                  u.email, u.full_name AS citizen_name
            FROM development_applications da
            LEFT JOIN users u ON u.id::text = da.user_id
            WHERE da.id = $1`,
@@ -107,8 +107,10 @@ async function applicationStatusRoutes(fastify) {
     },
   )
 
-  // Read history (citizen + staff).
-  fastify.get('/applications/:appId/status-history', async (request, reply) => {
+  // Read history — staff only (notes may contain internal assessment text).
+  fastify.get('/applications/:appId/status-history', {
+    preHandler: requireRole(fastify, STAFF_ROLES),
+  }, async (request, reply) => {
     try {
       const { appId } = request.params
       const { rows } = await fastify.pg.query(

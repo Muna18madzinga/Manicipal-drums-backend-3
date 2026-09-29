@@ -48,7 +48,7 @@ async function kycRoutes(fastify) {
     async (req, reply) => {
       const { status } = req.query
       try {
-        let q = `SELECT k.*, u.name AS user_name, u.email AS user_email
+        let q = `SELECT k.*, u.full_name AS user_name, u.email AS user_email
                  FROM kyc_verifications k
                  JOIN users u ON u.id = k.user_id`
         const params = []

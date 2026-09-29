@@ -101,7 +101,7 @@ async function zonesRoutes(fastify) {
                 lug.group_code, lug.description AS use_description,
                 lug.development_category, lug.use_scale
          FROM zone_land_use_controls zlc
-         JOIN land_use_groups lug ON lug.group_id = zlc.land_use_group_id
+         JOIN land_use_groups lug ON lug.id = zlc.land_use_group_id
          WHERE zlc.zone_id = $1 AND zlc.deleted_at IS NULL
          ORDER BY zlc.control_type, lug.group_code`,
         [id],
@@ -138,11 +138,10 @@ async function zonesRoutes(fastify) {
       const { rows } = await fastify.pg.query(
         `INSERT INTO proposed_peri_urban_zones
            (zone, zone_code, zone_type, scale_category, authority,
-            zone_description, ward, geom, area_ha, is_active, created_at, updated_at)
+            zone_description, ward, geom, is_active, created_at, updated_at)
          VALUES (
            $1, $2, $3, $4, $5, $6, $7,
-           spatial_planning.geom_from_geojson_checked($8, 4326),
-           ROUND(ST_Area(spatial_planning.geom_from_geojson_checked($8, 4326)::geography)::numeric / 10000, 4),
+           ST_Multi(spatial_planning.geom_from_geojson_checked($8, 4326)),
            true, NOW(), NOW()
          )
          RETURNING id, zone, zone_type, scale_category, ward`,
@@ -183,8 +182,8 @@ async function zonesRoutes(fastify) {
         const g = JSON.stringify(geometry)
         params.push(g)
         const n = params.length
-        sets.push(`geom = spatial_planning.geom_from_geojson_checked($${n}, 4326)`)
-        sets.push(`area_ha = ROUND(ST_Area(spatial_planning.geom_from_geojson_checked($${n}, 4326)::geography)::numeric / 10000, 4)`)
+        // area_ha is GENERATED from geom (migration 131) — never written here.
+        sets.push(`geom = ST_Multi(spatial_planning.geom_from_geojson_checked($${n}, 4326))`)
       }
 
       if (sets.length === 1) return reply.code(400).send({ success: false, error: 'no fields to update' })
@@ -230,10 +229,10 @@ async function zonesRoutes(fastify) {
       const { id } = request.params
       const { rows } = await fastify.pg.query(
         `SELECT zlc.id, zlc.control_type, zlc.authority, zlc.conditions AS notes,
-                lug.group_id, lug.group_code, lug.description,
+                lug.id AS group_id, lug.group_code, lug.description,
                 lug.development_category, lug.use_scale
          FROM zone_land_use_controls zlc
-         JOIN land_use_groups lug ON lug.group_id = zlc.land_use_group_id
+         JOIN land_use_groups lug ON lug.id = zlc.land_use_group_id
          WHERE zlc.zone_id = $1 AND zlc.deleted_at IS NULL
          ORDER BY
            CASE zlc.control_type

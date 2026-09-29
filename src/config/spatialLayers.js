@@ -19,8 +19,10 @@ const GEOM_SRID = 4326
  * @property {number} minzoom
  * @property {number} maxzoom
  * @property {{maxZoom:number, where:string}|null} lowZoomFilter
- * @property {number} [srid]      storage SRID; defaults to GEOM_SRID (900914) for OSM-derived tables.
- *                                Vungu master-plan tables are stored as real EPSG:4326.
+ * @property {number} [srid]      storage SRID; defaults to GEOM_SRID (4326 / EPSG:4326 WGS 84).
+ *                                Legacy imports used CRS84 alias 900914 but geometry columns
+ *                                were re-SRIDed to 4326 via UpdateGeometrySRID. Always use 4326
+ *                                for new envelopes and writes.
  */
 
 /** @type {SpatialLayer[]} */
@@ -63,13 +65,13 @@ const LAYERS = [
   { id: 'places_of_worship_points', table: 'places_of_worship_points', geomType: 'point', group: 'poi', title: 'Worship Points',   attributes: ['fid', 'name', 'fclass'],              minzoom: 13, maxzoom: 22, lowZoomFilter: null },
 
   // --- Vungu RDC Stands Register (application data, served as MVT, EPSG:4326) ---
-  // Served via the same tile endpoint as the gpkg layers. The stands table uses
-  // UUID id; we expose it as the string "id" and use row_number() as a synthetic
-  // integer fid so MapLibre's feature-state (hover) works on integer IDs.
+  // Served via the same PostGIS tile endpoint as OSM basemap tables (not GPKG).
+  // The stands table uses UUID id; we expose it as the string "id" and use
+  // row_number() as a synthetic integer fid so MapLibre feature-state works.
   // area_sqm is cast to int for compact tile encoding.
   { id: 'stands', table: 'stands_tile_view', geomType: 'polygon', group: 'master_plan',
     title: 'Stands Register',
-    attributes: ['fid', 'stand_id', 'stand_number', 'ward', 'zone_type_cache', 'use_scale', 'status', 'area_sqm_int', 'price_usd_cents'],
+    attributes: ['fid', 'stand_id', 'stand_number', 'ward', 'zone_type', 'use_scale', 'status', 'area_sqm_int', 'price_usd_cents'],
     minzoom: 9, maxzoom: 22, lowZoomFilter: null, srid: 4326 },
 
   // --- Vungu RDC Master Plan (council planning data, stored as real EPSG:4326) ---
@@ -81,6 +83,8 @@ const LAYERS = [
   // so frontend styling keys don't churn, but the backing table is the
   // zones_master view over proposed_peri_urban_zones. See docs/SSOT-spatial.md.
   { id: 'vungu_proposed_peri_urban_zones', table: 'zones_master', geomType: 'polygon', group: 'master_plan', title: 'Proposed Peri-Urban Zones',   attributes: ['id', 'zone', 'zone_code'],                                                                                                                                          minzoom: 9,  maxzoom: 22, lowZoomFilter: null, srid: 4326 },
+  // vungu_beyond_peri_urban_zones is a VIEW (migration 131): storage is
+  // beyond_peri_urban_zones; adm3_en/adm2_en are derived from the ward hierarchy.
   { id: 'vungu_beyond_peri_urban_zones',   table: 'vungu_beyond_peri_urban_zones',   geomType: 'polygon', group: 'master_plan', title: 'Beyond Peri-Urban Zones',     attributes: ['fid', 'zone_code', 'settlement', 'adm3_en', 'adm2_en'],                                                                                                                  minzoom: 8,  maxzoom: 22, lowZoomFilter: null, srid: 4326 },
 ]
 

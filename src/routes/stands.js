@@ -689,8 +689,8 @@ async function standsRoutes(fastify) {
     const { rows } = await fastify.pg.query(
       `SELECT a.id, a.reference_no, a.allocated_to, a.allottee_name, a.purpose,
               a.conditions, a.status, a.allocated_at, a.revoked_at, a.revoke_reason,
-              COALESCE(au.full_name, au.name) AS authorized_by_name,
-              COALESCE(al.full_name, al.name) AS allottee_user_name
+              au.full_name AS authorized_by_name,
+              al.full_name AS allottee_user_name
          FROM stand_allocation a
          LEFT JOIN public.users au ON au.id = a.authorized_by
          LEFT JOIN public.users al ON al.id = a.allocated_to
@@ -709,8 +709,8 @@ async function standsRoutes(fastify) {
       `SELECT a.reference_no, a.allottee_name, a.purpose, a.conditions, a.status,
               a.allocated_at, s.stand_number, s.ward,
               ROUND(ST_Area(s.geom::geography)::numeric, 2) AS area_sqm,
-              COALESCE(al.full_name, al.name) AS allottee_user_name,
-              COALESCE(au.full_name, au.name) AS authorized_by_name
+              al.full_name AS allottee_user_name,
+              au.full_name AS authorized_by_name
          FROM stand_allocation a
          JOIN stands s ON s.id = a.stand_id
          LEFT JOIN public.users al ON al.id = a.allocated_to

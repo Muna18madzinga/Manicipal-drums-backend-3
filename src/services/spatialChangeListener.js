@@ -15,10 +15,12 @@ const { LAYERS } = require('../config/spatialLayers')
 const { invalidateTileLayer, emitMapEvent } = require('../routes/tiles')
 
 // table name -> tile-layer id. Most registry entries serve their own table;
-// `stands` serves through stands_tile_view, so map its BASE table too —
-// triggers live on base tables, never on views.
+// layers served through a view also need their BASE table mapped — triggers
+// live on base tables, never on views.
 const TABLE_TO_LAYER = new Map(LAYERS.map((l) => [l.table, l.id]))
-TABLE_TO_LAYER.set('stands', 'stands')
+TABLE_TO_LAYER.set('stands', 'stands')                                               // via stands_tile_view
+TABLE_TO_LAYER.set('proposed_peri_urban_zones', 'vungu_proposed_peri_urban_zones')  // via zones_master
+TABLE_TO_LAYER.set('beyond_peri_urban_zones', 'vungu_beyond_peri_urban_zones')      // via the compat view
 
 const RECONNECT_MIN_MS = 2000
 const RECONNECT_MAX_MS = 30000

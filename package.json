@@ -11,6 +11,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "migrate": "node scripts/migrate-render.js",
+    "db:dictionary": "node scripts/generate-data-dictionary.js",
+    "db:compact": "node scripts/db-compact.js",
     "migrate:render": "node scripts/migrate-render.js",
     "backup": "node scripts/backup-db.js",
     "migrate:060": "node scripts/run-migration-060.js",

@@ -666,7 +666,7 @@ async function loadCitizenContact(fastify, booking) {
   // Try app's user_id first.
   const { rows: appRows } = await fastify.pg.query(
     `SELECT da.user_id,
-            u.email, COALESCE(u.full_name, u.name) AS name
+            u.email, u.full_name AS name
      FROM development_applications da
      LEFT JOIN users u ON u.id::text = da.user_id
      WHERE da.id = $1`,
@@ -678,7 +678,7 @@ async function loadCitizenContact(fastify, booking) {
   // Fallback: citizen_id on the booking itself.
   if (booking.citizen_id) {
     const { rows } = await fastify.pg.query(
-      `SELECT id, email, COALESCE(full_name, name) AS name FROM users WHERE id::text = $1`,
+      `SELECT id, email, full_name AS name FROM users WHERE id::text = $1`,
       [booking.citizen_id],
     )
     if (rows[0]) return { userId: rows[0].id, email: rows[0].email, name: rows[0].name }

@@ -495,7 +495,7 @@ async function applyPaid(fastify, row, actorUserId) {
         // Find the citizen email on the related application.
         const { rows: contactRows } = await client.query(
           `SELECT u.id AS user_id, u.email,
-                  COALESCE(u.full_name, u.name) AS name
+                  u.full_name AS name
            FROM development_applications da
            LEFT JOIN users u ON u.id::text = da.user_id
            WHERE da.id = $1`,

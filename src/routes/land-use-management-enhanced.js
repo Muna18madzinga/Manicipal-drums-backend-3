@@ -52,15 +52,15 @@ async function landUseManagementRoutes(fastify, { auth }) {
 
       const result = await pool.query(
         `SELECT
-           lug.group_id, lug.group_code, lug.description, lug.group_category,
+           lug.id AS group_id, lug.group_code, lug.description, lug.group_category,
            lug.development_category, lug.use_scale, lug.notes, lug.is_active,
            lug.created_at,
            COUNT(zlc.id) as land_use_controls_count
          FROM land_use_groups lug
          LEFT JOIN zone_land_use_controls zlc
-           ON lug.group_id = zlc.land_use_group_id AND zlc.deleted_at IS NULL
+           ON lug.id = zlc.land_use_group_id AND zlc.deleted_at IS NULL
          WHERE ${whereSql}
-         GROUP BY lug.group_id, lug.group_code, lug.description, lug.group_category,
+         GROUP BY lug.id, lug.group_code, lug.description, lug.group_category,
                   lug.development_category, lug.use_scale, lug.notes, lug.is_active, lug.created_at
          ORDER BY lug.group_category, lug.group_code
          LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
@@ -112,9 +112,9 @@ async function landUseManagementRoutes(fastify, { auth }) {
       
       const result = await pool.query(`
         INSERT INTO land_use_groups (group_code, description, group_category, development_category, use_scale, notes, is_active, created_at, created_by)
-        VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)
-        RETURNING *
-      `, [group_code, description, group_category, development_category, use_scale, notes, true, userId]);
+        VALUES ($1, $2, $3, $4, $5, $6, true, NOW(), $7)
+        RETURNING id AS group_id, *
+      `, [group_code, description, group_category, development_category, use_scale, notes, userId]);
       
       reply.send({
         success: true,
@@ -154,8 +154,8 @@ async function landUseManagementRoutes(fastify, { auth }) {
       const result = await pool.query(`
         UPDATE land_use_groups 
         SET group_code = $1, description = $2, group_category = $3, development_category = $4, use_scale = $5, notes = $6, updated_at = NOW(), updated_by = $7
-        WHERE group_id = $8
-        RETURNING *
+        WHERE id = $8
+        RETURNING id AS group_id, *
       `, [group_code, description, group_category, development_category, use_scale, notes, userId, id]);
       
       if (result.rows.length === 0) {
@@ -201,7 +201,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
       // consumer (development-control, zone joins) filters on it. The row
       // stays recoverable; nothing statutory is destroyed.
       await pool.query(
-        'UPDATE land_use_groups SET is_active = FALSE WHERE group_id = $1',
+        'UPDATE land_use_groups SET is_active = FALSE WHERE id = $1',
         [id]
       );
 
@@ -402,7 +402,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
       body: {
         type: 'object',
         properties: {
-          zone_id: { type: 'string', format: 'uuid' },
+          zone_id: { type: 'integer' },
           land_use_group_id: { type: 'string', format: 'uuid' },
           control_type: { type: 'string', enum: ['permitted', 'prohibited', 'special_consent'] },
           authority: { type: 'string', maxLength: 100 },
@@ -550,7 +550,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
           COUNT(zlc.id) as total_controls
         FROM proposed_peri_urban_zones puz
         LEFT JOIN zone_land_use_controls zlc ON puz.id = zlc.zone_id
-        LEFT JOIN land_use_groups lug ON zlc.land_use_group_id = lug.group_id
+        LEFT JOIN land_use_groups lug ON zlc.land_use_group_id = lug.id
         WHERE puz.id = $1
         GROUP BY puz.id, lug.group_code, lug.description, lug.group_category, lug.development_category, lug.use_scale, zlc.control_type
       `, [id]);

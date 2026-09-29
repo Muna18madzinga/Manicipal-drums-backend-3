@@ -101,7 +101,7 @@ async function publicRoutes(fastify) {
       const [layers, places, users] = await Promise.all([
         fastify.pg.query('SELECT COUNT(*) as count FROM layers WHERE published = true'),
         fastify.pg.query('SELECT COUNT(*) as count FROM places'),
-        fastify.pg.query('SELECT COUNT(*) as count FROM users WHERE active = true')
+        fastify.pg.query("SELECT COUNT(*) as count FROM users WHERE status = 'active'")
       ])
       
       return {
@@ -133,7 +133,7 @@ async function publicRoutes(fastify) {
     const [layers, places, users] = await Promise.all([
       count("SELECT COUNT(*) AS count FROM layers WHERE published = true"),
       count("SELECT COUNT(*) AS count FROM places"),
-      count("SELECT COUNT(*) AS count FROM users WHERE active = true"),
+      count("SELECT COUNT(*) AS count FROM users WHERE status = 'active'"),
     ])
     return { data: { layers, places, downloads: 0, users } }
   })

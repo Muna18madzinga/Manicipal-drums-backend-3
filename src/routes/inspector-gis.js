@@ -135,7 +135,7 @@ async function inspectorGisRoutes(fastify) {
       const exists = await pg.query('SELECT 1 FROM spatial_planning.stage_inspection WHERE id = $1', [sid])
       if (!exists.rows[0]) return reply.code(404).send({ success: false, error: 'inspection_not_found' })
       const r = await pg.query(
-        `SELECT e.*, COALESCE(u.full_name, u.name) AS recorded_by_name
+        `SELECT e.*, u.full_name AS recorded_by_name
            FROM spatial_planning.stage_inspection_field_event e
            LEFT JOIN public.users u ON u.id = e.recorded_by
           WHERE e.stage_inspection_id = $1

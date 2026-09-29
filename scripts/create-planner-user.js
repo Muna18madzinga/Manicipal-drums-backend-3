@@ -60,16 +60,15 @@ async function createPlannerUser() {
       const result = await pool.query(`
         UPDATE users 
         SET 
-          name = $1,
+          full_name = $1,
           role = $2,
           organization = $3,
           password_hash = $4,
           phone = $5,
           status = 'active',
-          active = true,
           updated_at = NOW()
         WHERE email = $6
-        RETURNING id, email, name, role, organization, active, created_at
+        RETURNING id, email, full_name AS name, role, organization, (status = 'active') AS active, created_at
       `, [
         PLANNER_USER.name,
         PLANNER_USER.role,
@@ -94,21 +93,19 @@ async function createPlannerUser() {
         INSERT INTO users (
           id,
           email,
-          name,
+          full_name,
           role,
           organization,
           password_hash,
           phone,
           status,
-          email_verified,
-          active,
           created_at,
           updated_at
         ) VALUES (
           gen_random_uuid(),
-          $1, $2, $3, $4, $5, $6, 'active', true, true, NOW(), NOW()
+          $1, $2, $3, $4, $5, $6, 'active', NOW(), NOW()
         )
-        RETURNING id, email, name, role, organization, active, created_at
+        RETURNING id, email, full_name AS name, role, organization, (status = 'active') AS active, created_at
       `, [
         PLANNER_USER.email,
         PLANNER_USER.name,

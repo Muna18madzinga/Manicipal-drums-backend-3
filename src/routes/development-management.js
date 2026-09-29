@@ -637,7 +637,7 @@ async function developmentManagementRoutes(fastify) {
     }
     const { rows } = await pg.query(
       `SELECT e.id, e.event_type, e.actor_id, e.actor_role, e.detail, e.created_at,
-              COALESCE(u.full_name, u.name) AS actor_name
+              u.full_name AS actor_name
          FROM spatial_planning.permit_event e
          LEFT JOIN public.users u ON u.id = e.actor_id
         WHERE e.permit_app_id = $1
@@ -1105,7 +1105,7 @@ async function developmentManagementRoutes(fastify) {
     if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
     try {
       const { rows } = await pg.query(
-        `SELECT vf.*, COALESCE(u.full_name, u.name) AS specialist_name
+        `SELECT vf.*, u.full_name AS specialist_name
            FROM spatial_planning.v_specialist_findings vf
            LEFT JOIN public.users u ON u.id = vf.specialist_id
           WHERE vf.permit_app_id = $1
@@ -1143,7 +1143,7 @@ async function developmentManagementRoutes(fastify) {
 
       const [findings, objections, consultations, buildingPlans, documents, handoffRows, eventsRecent] =
         await Promise.all([
-          safe(`SELECT vf.*, COALESCE(u.full_name, u.name) AS specialist_name
+          safe(`SELECT vf.*, u.full_name AS specialist_name
                   FROM spatial_planning.v_specialist_findings vf
                   LEFT JOIN public.users u ON u.id = vf.specialist_id
                  WHERE vf.permit_app_id = $1
@@ -1160,7 +1160,7 @@ async function developmentManagementRoutes(fastify) {
           safe(`SELECT * FROM spatial_planning.eo_handoff_package
                  WHERE permit_app_id = $1 ORDER BY created_at DESC LIMIT 1`, [id]),
           safe(`SELECT e.event_type, e.actor_role, e.detail, e.created_at,
-                       COALESCE(u.full_name, u.name) AS actor_name
+                       u.full_name AS actor_name
                   FROM spatial_planning.permit_event e
                   LEFT JOIN public.users u ON u.id = e.actor_id
                  WHERE e.permit_app_id = $1 ORDER BY e.created_at DESC LIMIT 12`, [id]),
@@ -1216,7 +1216,7 @@ async function developmentManagementRoutes(fastify) {
     // Citizens (non-staff) only see messages addressed to them or made public.
     const visClause = isStaff ? '' : "AND m.visibility IN ('citizen','public')"
     const { rows } = await pg.query(
-      `SELECT m.*, COALESCE(u.full_name, u.name) AS author_name
+      `SELECT m.*, u.full_name AS author_name
          FROM spatial_planning.case_message m
          LEFT JOIN public.users u ON u.id = m.author_id
         WHERE m.permit_app_id = $1 ${visClause}
@@ -1331,7 +1331,7 @@ async function developmentManagementRoutes(fastify) {
       let generatedDoc = null
       try {
         const offRow = await pg.query(
-          'SELECT COALESCE(full_name, name) AS n FROM public.users WHERE id=$1', [request.user.id])
+          'SELECT full_name AS n FROM public.users WHERE id=$1', [request.user.id])
         const { title, html } = renderDecisionLetter({
           decision: b.decision, permit: rows[0],
           conditions: b.conditions, notes, officerName: offRow.rows[0]?.n || null,
@@ -1490,7 +1490,7 @@ async function developmentManagementRoutes(fastify) {
     }
     const { rows } = await pg.query(
       `SELECT d.id, d.doc_type, d.title, d.mime_type, d.version, d.storage_url, d.created_at,
-              COALESCE(u.full_name, u.name) AS generated_by_name
+              u.full_name AS generated_by_name
          FROM spatial_planning.generated_document d
          LEFT JOIN public.users u ON u.id = d.generated_by
         WHERE d.permit_app_id = $1
@@ -2234,7 +2234,7 @@ async function developmentManagementRoutes(fastify) {
                 COALESCE(pd.mime_type, cd.mime_type) AS mime_type,
                 COALESCE(pd.bytes, cd.bytes)::int AS bytes,
                 pd.added_by AS uploaded_by,
-                COALESCE(u.full_name, u.name) AS uploaded_by_name,
+                u.full_name AS uploaded_by_name,
                 pd.created_at AS uploaded_at,
                 pd.source
            FROM spatial_planning.permit_document pd
@@ -2561,7 +2561,7 @@ async function developmentManagementRoutes(fastify) {
       return reply.code(400).send({ success: false, error: 'bad_id' })
     }
     const { rows } = await pg.query(
-      `SELECT f.*, u.name AS flagged_by_name
+      `SELECT f.*, u.full_name AS flagged_by_name
        FROM spatial_planning.stage_inspection_flag f
        LEFT JOIN public.users u ON u.id = f.flagged_by
        WHERE f.stage_inspection_id = $1
@@ -2579,7 +2579,7 @@ async function developmentManagementRoutes(fastify) {
       return reply.code(400).send({ success: false, error: 'bad_id' })
     }
     const { rows } = await pg.query(
-      `SELECT f.*, si.stage_number, u.name AS flagged_by_name
+      `SELECT f.*, si.stage_number, u.full_name AS flagged_by_name
        FROM spatial_planning.stage_inspection_flag f
        JOIN spatial_planning.stage_inspection si ON si.id = f.stage_inspection_id
        LEFT JOIN public.users u ON u.id = f.flagged_by

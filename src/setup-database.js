@@ -17,7 +17,6 @@ async function setupDatabase() {
       // Add missing columns if they don't exist
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT \'user\'')
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS organization VARCHAR(255)')
-      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true')
       
       console.log('✅ Users table updated with missing columns')
     } catch (error) {
@@ -33,7 +32,6 @@ async function setupDatabase() {
           phone VARCHAR(50),
           status VARCHAR(50) DEFAULT 'active',
           email_verified BOOLEAN DEFAULT false,
-          active BOOLEAN DEFAULT true,
           created_at TIMESTAMP DEFAULT NOW(),
           updated_at TIMESTAMP DEFAULT NOW(),
           last_login_at TIMESTAMP

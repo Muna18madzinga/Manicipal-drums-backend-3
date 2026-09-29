@@ -74,17 +74,15 @@ async function upsertDemoUser(pool, user) {
   const passwordHash = await bcrypt.hash(user.password, 10)
   const { rows } = await pool.query(
     `INSERT INTO users (
-       email, password_hash, name, full_name, role, status, active,
+       email, password_hash, full_name, role, status,
        organization, created_at
      )
-     VALUES ($1, $2, $3, $3, $4, 'active', true, $5, NOW())
+     VALUES ($1, $2, $3, $4, 'active', $5, NOW())
      ON CONFLICT (email) DO UPDATE SET
        password_hash = EXCLUDED.password_hash,
-       name = EXCLUDED.name,
        full_name = EXCLUDED.full_name,
        role = EXCLUDED.role,
        status = 'active',
-       active = true,
        organization = EXCLUDED.organization
      RETURNING id, email, role`,
     [user.email, passwordHash, user.name, user.role, user.organization],

@@ -25,7 +25,9 @@ const MIGRATIONS = [
   '076_production_hardening.sql',
   '077_permit_application_pending_payment.sql',
   '078_missing_gist_indexes.sql',
+  '079_filter_buildings_to_council_buffer.sql',
   '080_survey_tasks.sql',
+  '080_stands_tile_view.sql',
   '081_v_application_summary_add_lnglat.sql',
   // 082–084 were applied to local/dev via psql but were never added to this
   // Render allowlist. They are idempotent and tracked in schema_migrations, so
@@ -64,6 +66,12 @@ const MIGRATIONS = [
   '109_spatial_change_notify.sql',
   '110_local_authorities.sql',
   '111_spatial_layers_catalogue.sql',
+  // Bootstrap permit-master zones table when only the map copy exists (local dumps).
+  '128_bootstrap_proposed_peri_urban.sql',
+  // Runtime-dependent: tile registry serves zones_master + stands tile view.
+  // Omitting these caused fresh deploys to silently return empty 204 tiles.
+  '112_zones_master_view.sql',
+  '113_zones_master_columns.sql',
   '114_gis_style_registry.sql',
   '115_residency_verification.sql',
   '116_inspector_work_queue.sql',
@@ -76,6 +84,15 @@ const MIGRATIONS = [
   '123_council_ops_asset_registers.sql',
   '124_planning_clerk_registers.sql',
   '125_service_desk_tickets.sql',
+  '126_3nf_normalization.sql',
+  '127_zone_id_int_contract.sql',
+  // 129 only creates vungu_clip_boundary; full OSM rewrite is scripts/clip-osm-to-vungu.js
+  '129_clip_osm_to_vungu.sql',
+  // Normalisation: ref lookup schema, then consolidation (drops duplicates —
+  // back up first), then the data-dictionary comments. See docs/DATABASE.md.
+  '130_ref_lookup_schema.sql',
+  '131_consolidate_and_shrink.sql',
+  '132_data_dictionary_comments.sql',
 ]
 
 function createPool(env = process.env) {

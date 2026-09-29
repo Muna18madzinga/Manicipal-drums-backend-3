@@ -441,7 +441,7 @@ async function zoningFor(pg, siteHex, isArea) {
       `SELECT c.control_type, c.authority, c.conditions,
               g.group_code, g.description AS land_use, g.group_category
          FROM zone_land_use_controls c
-         LEFT JOIN land_use_groups g ON g.group_id = c.land_use_group_id
+         LEFT JOIN land_use_groups g ON g.id = c.land_use_group_id
         WHERE c.zone_id = $1 AND c.deleted_at IS NULL
         ORDER BY c.control_type, g.group_code
         LIMIT 100`,

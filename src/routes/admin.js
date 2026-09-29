@@ -32,7 +32,7 @@ async function adminRoutes(fastify) {
       const { rows } = await fastify.pg.query(`
         SELECT 
           p.*,
-          u.name as surveyor_name,
+          u.full_name as surveyor_name,
           u.email as surveyor_email
         FROM survey_projects p
         LEFT JOIN users u ON p.surveyor_id = u.id
@@ -104,14 +104,14 @@ async function adminRoutes(fastify) {
         SELECT 
           id,
           email,
-          name,
+          full_name AS name,
           role,
           organization,
-          active,
+          (status = 'active') AS active,
           created_at,
-          last_login
+          last_login_at AS last_login
         FROM users
-        ORDER BY name
+        ORDER BY full_name
       `)
       
       return rows
@@ -130,9 +130,9 @@ async function adminRoutes(fastify) {
       const passwordHash = password // TODO: Add bcrypt
       
       const { rows } = await fastify.pg.query(`
-        INSERT INTO users (email, name, role, organization, password_hash, active, created_at)
-        VALUES ($1, $2, $3, $4, $5, true, NOW())
-        RETURNING id, email, name, role, organization, active, created_at
+        INSERT INTO users (email, full_name, role, organization, password_hash, status, created_at)
+        VALUES ($1, $2, $3, $4, $5, 'active', NOW())
+        RETURNING id, email, full_name AS name, role, organization, (status = 'active') AS active, created_at
       `, [email, name, role, organization, passwordHash])
       
       return { success: true, user: rows[0] }

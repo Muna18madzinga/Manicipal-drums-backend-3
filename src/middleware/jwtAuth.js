@@ -204,9 +204,9 @@ async function authenticate(fastify, request, reply) {
 
   // Re-validate against DB: catches suspension, deletion, role changes.
   const { rows } = await fastify.pg.query(
-    `SELECT id, email, COALESCE(full_name, name) AS name, role, organization,
+    `SELECT id, email, full_name AS name, role, organization,
             job_title, department, phone, applicant_type,
-            national_id, physical_address, active, status, residency_status
+            national_id, physical_address, (status = 'active') AS active, status, residency_status
      FROM users WHERE id = $1`,
     [claims.sub],
   )

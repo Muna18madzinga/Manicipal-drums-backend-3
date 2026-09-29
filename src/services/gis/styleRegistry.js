@@ -241,7 +241,7 @@ async function writeAudit(client, entry) {
        (layer_id, style_id, event, from_status, to_status, from_version,
         to_version, reason, change_summary, source_path, checksum, actor,
         actor_role, detail)
-     VALUES ($1,$2,$3,$4::gis_style_status,$5::gis_style_status,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb)`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb)`,
     [layerId, styleId, event, fromStatus, toStatus, fromVersion, toVersion,
      reason, changeSummary, sourcePath, styleChecksum, actor, actorRole,
      JSON.stringify(detail)],
@@ -408,7 +408,7 @@ async function transition(db, {
       }
     }
 
-    const sets = ['status = $3::gis_style_status']
+    const sets = ['status = $3']
     const params = [layerId, version, to]
     if (to === 'approved') {
       sets.push('approved_by = $4', 'approved_at = now()')
