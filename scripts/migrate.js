@@ -1,8 +1,13 @@
+require("dotenv").config()
 const fs = require('node:fs')
 const path = require('node:path')
 const { Pool } = require('pg')
 
 const MIGRATIONS = [
+  // Empty-but-shaped placeholders for legacy spatial tables that are only
+  // populated from external sources (ogr2ogr imports / supervisor dump).
+  // Fresh deployments need the shape so indexes, FKs and views parse.
+  '000_legacy_spatial_stubs.sql',
   '001_initial_schema.sql',
   '042_development_applications.sql',
   // '050_enhance_land_use_management_corrected.sql' skipped: ALTER/INSERTs into

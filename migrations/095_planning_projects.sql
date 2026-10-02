@@ -28,7 +28,9 @@ CREATE TABLE IF NOT EXISTS spatial_planning.planning_project (
   geom             geometry(MultiPolygon, 4326),           -- planning-area boundary (for spatial queries)
   created_by       text,                                   -- users.id as text (no FK: avoids id-type coupling)
   created_at       timestamptz NOT NULL DEFAULT now(),
-  updated_at       timestamptz NOT NULL DEFAULT now()
+  updated_at       timestamptz NOT NULL DEFAULT now(),
+  deleted_at       timestamptz,
+  deleted_by       uuid
 );
 
 CREATE INDEX IF NOT EXISTS planning_project_geom_gix    ON spatial_planning.planning_project USING GIST (geom);

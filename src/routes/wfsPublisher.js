@@ -281,8 +281,7 @@ class WFSPublisherRoutes {
           // Import OGC Bridge for complete workflow
           let bridge;
           try {
-            const { getBridge } = require('../services/ogc/unifiedOGCBridge');
-            bridge = getBridge();
+            bridge = undefined; // dead unifiedOGCBridge module removed; canonical refined bridge is wired elsewhere
           } catch (bridgeError) {
             console.log('[WFS Publisher API] ⚠️ OGC Bridge not available, skipping styling extraction');
           }

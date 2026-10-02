@@ -144,6 +144,14 @@ try {
   console.warn('Could not load Dynamic Layers routes:', error.message)
 }
 
+// Import Static Exports Routes (Stream D seam)
+let staticExportsRoutes
+try {
+  staticExportsRoutes = require('./src/routes/staticExports').staticExportsRoutes
+} catch (error) {
+  console.warn('Could not load Static Exports routes:', error.message)
+}
+
 // Import QGIS Server Routes
 let qgisServerRoutes
 try {
@@ -716,6 +724,16 @@ async function build() {
       console.log('✅ Dynamic Layers routes registered')
     } catch (error) {
       console.error('❌ Failed to register Dynamic Layers routes:', error.message)
+    }
+  }
+
+  // Register Static Exports Routes (Stream D seam)
+  if (staticExportsRoutes) {
+    try {
+      await server.register(staticExportsRoutes, { prefix: '/api/static' })
+      console.log('✅ Static Exports routes registered')
+    } catch (error) {
+      console.error('❌ Failed to register Static Exports routes:', error.message)
     }
   }
 

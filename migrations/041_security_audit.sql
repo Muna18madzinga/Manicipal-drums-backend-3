@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS security_audit_log (
     id SERIAL PRIMARY KEY,
     event_type VARCHAR(100) NOT NULL,
     severity VARCHAR(20) NOT NULL CHECK (severity IN ('low', 'medium', 'high', 'critical')),
-    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     ip_address INET NOT NULL,
     user_agent TEXT,
     details JSONB DEFAULT '{}',
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS blocked_ips (
     blocked_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     expires_at TIMESTAMP WITH TIME ZONE,
     is_active BOOLEAN DEFAULT TRUE,
-    created_by INTEGER REFERENCES users(id),
+    created_by UUID REFERENCES users(id),
     notes TEXT
 );
 

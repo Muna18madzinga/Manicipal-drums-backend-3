@@ -22,7 +22,9 @@ CREATE TABLE IF NOT EXISTS spatial_planning.gis_feature (
   geom        geometry(Geometry, 4326) NOT NULL,
   created_by  text,                                   -- users.id as text (no FK: avoids id-type coupling)
   created_at  timestamptz NOT NULL DEFAULT now(),
-  updated_at  timestamptz NOT NULL DEFAULT now()
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  deleted_at  timestamptz,
+  deleted_by  uuid
 );
 
 -- GiST index so /gis/within and tile queries over digitized features stay fast.

@@ -8,9 +8,9 @@
 CREATE TABLE IF NOT EXISTS api_token_revocations (
   id         SERIAL PRIMARY KEY,
   token_jti  TEXT NOT NULL UNIQUE,        -- JWT 'jti' claim or sha256 of legacy token
-  user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  user_id    UUID REFERENCES users(id) ON DELETE CASCADE,
   reason     TEXT,
-  revoked_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  revoked_by UUID REFERENCES users(id) ON DELETE SET NULL,
   revoked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_api_revoc_jti     ON api_token_revocations (token_jti);
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS payment_audit (
   payment_id  UUID NOT NULL REFERENCES payments(id) ON DELETE CASCADE,
   from_status TEXT,
   to_status   TEXT NOT NULL,
-  changed_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  changed_by  UUID REFERENCES users(id) ON DELETE SET NULL,
   ip_address  INET,
   note        TEXT,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -66,7 +66,7 @@ BEGIN
       AND table_name   = 'permit_applications'
       AND column_name  = 'search_vector'
   ) THEN
-    ALTER TABLE spatial_planning.permit_applications
+    ALTER TABLE spatial_planning.permit_application
       ADD COLUMN search_vector TSVECTOR GENERATED ALWAYS AS (
         to_tsvector('english',
           COALESCE(tpd_reference,    '') || ' ' ||
@@ -79,7 +79,7 @@ BEGIN
       ) STORED;
   END IF;
 END $$;
-CREATE INDEX IF NOT EXISTS idx_pa_fts ON spatial_planning.permit_applications USING GIN (search_vector);
+CREATE INDEX IF NOT EXISTS idx_pa_fts ON spatial_planning.permit_application USING GIN (search_vector);
 
 -- ── Statement timeout for web requests ───────────────────────────────────────
 -- Long-running spatial queries (buffer analysis, ILIKE on millions of rows)
@@ -112,7 +112,7 @@ CREATE INDEX IF NOT EXISTS idx_kyc_user_status
   ON kyc_verifications (user_id, status);
 
 -- ── Enforce GeoJSON SRID on permit locations ─────────────────────────────────
--- spatial_planning.permit_applications.location stores click-on-map coordinates.
+-- spatial_planning.permit_application.location stores click-on-map coordinates.
 -- Adding a SRID constraint prevents accidental insertion in Web Mercator (3857).
 DO $$
 BEGIN
@@ -127,7 +127,7 @@ BEGIN
       SELECT 1 FROM pg_constraint
       WHERE conname = 'permit_app_location_srid'
     ) THEN
-      ALTER TABLE spatial_planning.permit_applications
+      ALTER TABLE spatial_planning.permit_application
         ADD CONSTRAINT permit_app_location_srid
         CHECK (location IS NULL OR ST_SRID(location) = 4326);
     END IF;
@@ -140,7 +140,7 @@ CREATE TABLE IF NOT EXISTS rate_limit_log (
   id          SERIAL PRIMARY KEY,
   ip_address  INET NOT NULL,
   endpoint    TEXT,
-  user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  user_id     UUID REFERENCES users(id) ON DELETE SET NULL,
   hit_count   INTEGER NOT NULL DEFAULT 1,
   window_at   TIMESTAMPTZ NOT NULL DEFAULT date_trunc('minute', NOW()),
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()

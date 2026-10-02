@@ -38,10 +38,18 @@ ALTER TABLE zone_land_use_controls
   ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS deleted_by UUID;
 
-ALTER TABLE spatial_planning.planning_project
-  ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS deleted_by UUID;
-
-ALTER TABLE spatial_planning.gis_feature
-  ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS deleted_by UUID;
+-- Guard: those tables are created by later allowlist items (095/091). On a
+-- fresh build they do not exist yet; their deleted_at/deleted_by columns are
+-- added by 095/091 themselves on the fresh path.
+DO $$ BEGIN
+  IF to_regclass('spatial_planning.planning_project') IS NOT NULL THEN
+    ALTER TABLE spatial_planning.planning_project
+      ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS deleted_by UUID;
+  END IF;
+  IF to_regclass('spatial_planning.gis_feature') IS NOT NULL THEN
+    ALTER TABLE spatial_planning.gis_feature
+      ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS deleted_by UUID;
+  END IF;
+END $$;
