@@ -15,12 +15,22 @@ PostGIS on every pan.
 
 ## Backend generation seam
 
-`src/services/staticTiles.js` (to be added):
-- `buildPMTiles({ table, geomColumn, where, zMax })` → shells out to
-  `tippecanoe -zg -o public/static/<table>.pmtiles --force ...` when on PATH;
-  otherwise returns `{ ok: false, reason: 'tippecanoe_not_available' }`.
-- `buildFlatGeobuf({ table, geomColumn })` → `ogr2ogr -f FlatGeobuf out.fgb ...`
-  via the same QGIS/OSGeo4W binaries discovery logic `setup-spatial` uses.
+`scripts/build-static-pmtiles.mjs` (prototype verified 2026-10-02 on the
+post-GWERU-legacy PostGIS build):
+
+1. Read layer extent via PostGIS (`ST_Extent`).
+2. Walk Web-Mercator z/x/y in `--minzoom..--maxzoom`.
+3. GET each `/api/tiles/:layer/:z/:x/:y.pbf` (exact same pipeline the live map
+   uses) and store the gzip-wrapped MVT chunks in an MBTiles sqlite store.
+4. `pmtiles convert` (Protomaps go-pmtiles; optional MDK binding — service
+   calls `PMTILES_BIN || 'pmtiles'`).
+
+`src/services/staticTiles.js` wraps this seam for the route layer and reports
+`{ ok: false, reason }` for missing tooling.
+
+Discovery: we originally tried tippecanoe (MSYS2 has no package) and GDAL's
+PMTiles driver (read-only in 3.9.2). The node:sqlite + go-pmtiles pipeline is
+the reproducible path on this supervisor stack.
 
 Route (to be added, `src/routes/staticExports.js`):
 `GET /api/static/:table/version` → short text: `static-<sha>` describing last

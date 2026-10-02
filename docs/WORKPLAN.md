@@ -36,24 +36,27 @@
 4. Standardise `.gitignore` so `.env`, logs and machine-local artifacts stay out.
 
 ## Stream D — started 2026-10-02
-- Design locked at `app-backend/docs/STREAM-D-DESIGN.md`: PMTiles (tippecanoe)
-  for admin boundaries, FlatGeobuf (ogr2ogr) for country-wide layers;
-  cache-busted via a version probe; MapLibre continues for editing for now,
+- Design locked at `app-backend/docs/STREAM-D-DESIGN.md`: PMTiles, FlatGeobuf,
+  cache-busted version probe, MapLibre continues for editing for now,
   OpenLayers remains a documented second step.
 - Backend seam in place:
-  - `src/services/staticTiles.js` — detects tippecanoe/ogr2ogr, builds
-    `.pmtiles` into `STATIC_TILE_ROOT` (default `public/static/`), returns
-    `{ok:false, reason}` with rich reasons when tooling is missing; FlatGeobuf
-    builder is a deliberate stub until ogr2ogr discovery is wired.
-  - `src/routes/staticExports.js` — `GET /api/static/version/:table` (404 with
-    `no_static_build_for_table` when nothing built) and
-    `POST /api/static/build/:table` (501 with `tippecanoe_not_available` unless
-    tooling exists). Both verified with live probes.
-- Route registered and confirmed in the startup tree.
+  - `src/services/staticTiles.js` — detects tippecanoe, builds `.pmtiles`
+    to `STATIC_TILE_ROOT` with an `{ok, reason}` contract; FlatGeobuf stub
+    documented.
+  - `src/routes/staticExports.js` — `GET /api/static/version/:table` (404
+    with `no_static_build_for_table`) and `POST /api/static/build/:table`
+    (501 `tippecanoe_not_available` when tooling missing), both registered
+    and live-probed.
+  - `scripts/build-static-pmtiles.mjs` — first-run-verified on `districts
+    z0..z6` → valid `.pmtiles` verified with `pmtiles show` (go-pmtiles,
+    Windows x86_64 tested). This is the reproducible PMTiles bake path on
+    supervisor (tippecanoe unavailable, GDAL 3.9 PMTiles driver read-only).
 
 ### Still to do in D
-- Install `tippecanoe` and build the first real `.pmtiles` from
-  `proposed_peri_urban_zones`.
+- Bake `.pmtiles` for the admin-boundary set (wards, districts, zones_master)
+  at production zooms.
+- Serve `public/static/*.pmtiles` via the static file middleware and add the
+  cache-busted `version` probe frontend will read.
 - Wire the FlatGeobuf path via the same QGIS/OSGeo4W binary discovery used by
   `scripts/setup-spatial.mjs`.
 - Frontend: consume `pmtiles://` on the public map explorer for districts with
@@ -80,7 +83,7 @@ friction, D is next paper chapter).
   `advancedQGISStyleExtractor.js` (via `git rm`). `server.js` boots, all routes
   still register.
 - `wfsPublisher.js` no longer requires the dead `../services/ogc/unifiedOGCBridge`
-  module (the require path had already been `missing for a while`, the call was
+  module (the require path was already missing, and the call was
   dead code); styling extraction there is now handled by the canonical
   refined/perfect path used by `ogcServices.js` + `qgisServer.js` +
   `dynamic-layers.js`.
