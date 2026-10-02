@@ -10,7 +10,7 @@
 --   *_by / *_to / author_id → public.users(id) ON DELETE SET NULL
 --
 -- Depends on: migration 070 (permit_application, spatial_planning.set_updated_at()).
--- Apply with: node scripts/migrate-render.js  (080 is in the MIGRATIONS array)
+-- Apply with: node scripts/migrate.js  (080 is in the MIGRATIONS array)
 
 BEGIN;
 

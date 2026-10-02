@@ -10,7 +10,7 @@
 --
 -- Depends on: 085 (generated_document + its doc_type CHECK), 087 (content column).
 -- Idempotent: safe to re-run (DROP CONSTRAINT IF EXISTS / ADD CONSTRAINT).
--- Apply with: node scripts/migrate-render.js  (088 is in the MIGRATIONS array)
+-- Apply with: node scripts/migrate.js  (088 is in the MIGRATIONS array)
 
 BEGIN;
 

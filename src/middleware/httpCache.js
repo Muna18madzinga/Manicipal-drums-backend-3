@@ -8,7 +8,6 @@
  *
  * Cache tiers
  * ───────────
- *   tiles      1 year    Vector tiles (content-addressed; never mutate)
  *   static     1 hour    Layer catalog, planning templates
  *   dynamic    5 min     Exchange rate, stands list
  *   private    no-store  Auth'd user data, payment records
@@ -98,7 +97,9 @@ function setCacheHeaders(reply, tier) {
 function cacheTierForPath(path, method) {
   if (method !== 'GET') return 'none'
 
-  if (/^\/api\/tiles\/\w+\/\d+\/\d+\/\d+\.pbf/.test(path)) return 'immutable'
+  // Tiles: no tier. The tile route sets its own 1-day Cache-Control + ETag;
+  // tiles change when a layer is edited, so a 1-year immutable header here
+  // pinned stale tiles in every browser that had seen them.
   if (path === '/api/tiles/layers' || path.startsWith('/api/tiles/layers')) return 'static'
   if (path.startsWith('/api/planning-assistant/templates')) return 'static'
   if (path === '/api/payments/rate') return 'dynamic'

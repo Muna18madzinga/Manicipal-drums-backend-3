@@ -22,18 +22,25 @@
 // reviewer can check the claim without grepping.
 // ─────────────────────────────────────────────────────────────────────────
 
+const { GMS } = require('../services/gms/roles')
+
 /** Every role the users table's CHECK constraint permits. */
 const ALL_ROLES = [
   'admin', 'planner', 'eo', 'env_officer', 'building_inspector',
-  'planning_clerk', 'surveyor', 'gis_officer', 'viewer',
-  'registered', 'public',
+  'planning_clerk', 'surveyor', 'gis_officer',
+  'gis_head', 'gis_data', 'gis_dev', 'gis_analyst', 'gis_tech', 'gis_clerk', 'dept_editor', 'dept_viewer',
+  'viewer', 'registered', 'public',
 ]
 
 /** Council employees. Mirrors STAFF_ROLES in src/routes/auth.js. */
 const STAFF_ROLES = [
   'admin', 'planner', 'eo', 'env_officer', 'building_inspector',
-  'planning_clerk', 'surveyor', 'gis_officer', 'viewer',
+  'planning_clerk', 'surveyor', 'gis_officer',
+  'gis_head', 'gis_data', 'gis_dev', 'gis_analyst', 'gis_tech', 'gis_clerk', 'dept_editor', 'dept_viewer',
 ]
+
+/** Council clients (citizens). Never staff; they see only their own records. */
+const CLIENT_ROLES = ['registered', 'viewer', 'public']
 
 /** Roles the IT Admin may grant. The rest are issued by the system itself. */
 const ASSIGNABLE_ROLES = STAFF_ROLES
@@ -47,7 +54,15 @@ const ROLE_LABELS = {
   planning_clerk:     { name: 'Planning Clerk',              short: 'Clerk',      summary: 'Intake, fees, document registry and correspondence.' },
   surveyor:           { name: 'Surveyor',                    short: 'Surveyor',   summary: 'Survey tasks, control points, beacon and diagram work.' },
   gis_officer:        { name: 'GIS Officer',                 short: 'GIS',        summary: 'Spatial data, cartography and the published symbology.' },
-  viewer:             { name: 'Viewer',                      short: 'Viewer',     summary: 'Read-only access to the registers. Changes nothing.' },
+  gis_head:           { name: 'Principal GIS Officer',       short: 'GIS Head',   summary: 'Leads the GIS Branch. Approves publication, data sharing, schema and integration changes.' },
+  gis_data:           { name: 'Senior GIS Officer (Data)',   short: 'GIS Data',   summary: 'QA approvals, schemas, the parcel register, survey imports and ERP reconciliation.' },
+  gis_dev:            { name: 'GIS Systems Developer',       short: 'GIS Dev',    summary: 'Users and roles, map services, field forms and the integration console.' },
+  gis_analyst:        { name: 'GIS Officer (Analysis)',      short: 'Analyst',    summary: 'Analysis, imagery, map production and the GIS service desk.' },
+  gis_tech:           { name: 'GIS Technician',              short: 'GIS Tech',   summary: 'Edits assigned layers in the office and the field. Cannot approve or publish.' },
+  gis_clerk:          { name: 'GIS Data Clerk',              short: 'GIS Clerk',  summary: 'Logs requests, raises fees through the ERP, links documents and issues maps.' },
+  dept_editor:        { name: 'Departmental GIS focal point', short: 'Dept editor', summary: "Edits only the layers their department is custodian of; every edit goes through QA." },
+  dept_viewer:        { name: 'Departmental map viewer',     short: 'Dept viewer', summary: 'Views maps, parcel profiles and reports allowed for their department.' },
+  viewer:             { name: 'Citizen (legacy account)',    short: 'Citizen',    summary: 'A client account from before self-registration. Same access as a registered citizen.' },
   registered:         { name: 'Registered citizen',          short: 'Citizen',    summary: 'Applies, pays and tracks their own case. Issued on self-registration.' },
   public:             { name: 'Public',                      short: 'Public',     summary: 'Anonymous visitor. The explorer and the public registers only.' },
 }
@@ -62,7 +77,7 @@ const ROLE_LABELS = {
 const CAPABILITIES = [
   // ── Planning record ───────────────────────────────────────────────
   { id: 'app.read',        group: 'Planning', label: 'Open development applications',
-    roles: ['admin', 'planner', 'eo', 'planning_clerk', 'env_officer', 'building_inspector', 'gis_officer', 'surveyor', 'viewer'],
+    roles: ['admin', 'planner', 'eo', 'planning_clerk', 'env_officer', 'building_inspector', 'gis_officer', 'surveyor'],
     routes: ['/api/development-applications'] },
   { id: 'app.lodge',       group: 'Planning', label: 'Lodge and register an application',
     roles: ['admin', 'planning_clerk', 'planner', 'registered'],
@@ -107,6 +122,14 @@ const CAPABILITIES = [
   { id: 'survey.compute',  group: 'Spatial', label: 'Run survey computations',
     roles: ['admin', 'surveyor'],
     routes: ['/api/survey', '/api/control-points'] },
+
+  // ── GIS Branch (GMS). Role lists are the ones the routes enforce. ────
+  { id: 'gms.register',    group: 'GIS Branch', label: 'Open the parcel register',
+    roles: GMS.viewInternal, routes: ['/api/parcels', '/api/wards', '/api/gms'] },
+  { id: 'gms.import',      group: 'GIS Branch', label: 'Import approved survey data',
+    roles: GMS.importSurvey, routes: ['/api/gms/imports'] },
+  { id: 'gms.integration', group: 'GIS Branch', label: 'Operate the ERP integration console',
+    roles: GMS.integration,  routes: ['/api/integration'] },
 
   // ── Money and documents ───────────────────────────────────────────
   { id: 'pay.record',      group: 'Revenue', label: 'Record payments and receipts',
@@ -158,6 +181,6 @@ function capabilitiesFor(role) {
 }
 
 module.exports = {
-  ALL_ROLES, STAFF_ROLES, ASSIGNABLE_ROLES, ROLE_LABELS,
+  ALL_ROLES, STAFF_ROLES, CLIENT_ROLES, ASSIGNABLE_ROLES, ROLE_LABELS,
   CAPABILITIES, matrix, capabilitiesFor,
 }

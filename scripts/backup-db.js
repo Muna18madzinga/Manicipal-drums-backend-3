@@ -4,11 +4,9 @@
  *   npm run backup
  *   BACKUP_KEEP=30 node scripts/backup-db.js
  *
- * Primary production backup is Render Postgres' automatic snapshots
- * (docs/OPERATIONS_RUNBOOK.md §3); this script is the manual/secondary path —
- * run it before risky migrations or bulk data operations, and on a schedule
- * (Task Scheduler / cron / Render cron job) for the uploads/ directory, which
- * Render snapshots do NOT cover.
+ * This is the ONLY production backup (docs/OPERATIONS_RUNBOOK.md §3): run it
+ * nightly on a schedule (cron / Task Scheduler) and before risky migrations or
+ * bulk data operations, then copy backups/ off the server.
  *
  * Outputs (retention: newest BACKUP_KEEP of each, default 14):
  *   backups/db-YYYYMMDD-HHMMSS.dump      restore: pg_restore -d "$URL" file.dump

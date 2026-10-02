@@ -5,8 +5,8 @@ Status: generated audit · Applies to live DB `vungu_master_db_v2` · Backend `m
 ## How to read this
 
 - **Canonical** = the table the backend should read/write for that concept.
-- **Created by** — `allowlisted` = created by a migration in `scripts/migrate-render.js`
-  `MIGRATIONS` (applied on a fresh Render deploy). `dump/seed-only` = NOT created by
+- **Created by** — `allowlisted` = created by a migration in `scripts/migrate.js`
+  `MIGRATIONS` (applied on a fresh deploy). `dump/seed-only` = NOT created by
   any migration (bootstrapped from gpkg/psql dumps or seed SQL); a fresh deploy does
   **not** create it automatically.
 - **Duplicates/Legacy** = tables that also cover the concept but should NOT be used.
@@ -102,7 +102,7 @@ Legend: ✅ allowlisted migration · ⚠️ dump/seed-only (missing on fresh dep
 | **Runtime reality** | code uses `zone_id/group_id/permission_code` — **schema mismatch**, needs dump/attic patches to align |
 | **Supporting** | ⚠️ `land_use_groups` (created only by non-allowlisted 081 → dump-only on fresh deploy), `zone_land_use_controls` (✅ 050 + ⚠️ 081 — divergent FK targets!), `permission_types` — no CREATE anywhere, `gweru_rural_farms` — no CREATE anywhere |
 | **Readers/Writers** | `development-control-refactored.js`, `land-use-management-enhanced.js`; live gateway = ✅ 075 compliance function |
-| **Notes** | Highest-risk concept: fresh Render deploy has matrix schema ≠ code expectations and no reference rows |
+| **Notes** | Highest-risk concept: fresh deploy has matrix schema ≠ code expectations and no reference rows |
 
 ## 11. Survey tasks (two families — keep separate)
 

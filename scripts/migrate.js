@@ -107,15 +107,22 @@ const MIGRATIONS = [
   // public.user_session (097) only by FK on users; the session revoke in the
   // route is a plain UPDATE that is a no-op where that table is absent.
   '129_password_reset.sql',
+  // Revocable QGIS/API tokens: /auth/generate-api-token records each jti and
+  // the sync routes refuse any token without a live row. FK on users only.
+  '130_api_token_registry.sql',
+  // GIS Management System core register + ERP integration. Depends on
+  // public.users (001) and public.admin_audit_event (127).
+  '132_gis_core_register.sql',
+  // GMS editing, QA queue and feature history. Depends on 132 (gis_ops).
+  '133_gms_editing.sql',
 ]
 
 function createPool(env = process.env) {
   if (!env.DATABASE_URL) {
-    throw new Error('DATABASE_URL is required to run Render migrations.')
+    throw new Error('DATABASE_URL is required to run migrations.')
   }
   return new Pool({
     connectionString: env.DATABASE_URL,
-    ssl: env.DATABASE_URL.includes('render.com') ? { rejectUnauthorized: false } : undefined,
   })
 }
 

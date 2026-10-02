@@ -62,7 +62,7 @@ RUN adduser -S nodejs -u 1001
 COPY --from=deps --chown=nodejs:nodejs /app/node_modules ./node_modules
 
 # The runtime entrypoint (server.js) requires the whole source tree plus the
-# migration scripts (migrate:render) and healthcheck.js, so copy it in full.
+# migration scripts (scripts/migrate.js) and healthcheck.js, so copy it in full.
 COPY --chown=nodejs:nodejs . .
 
 RUN chown -R nodejs:nodejs /app

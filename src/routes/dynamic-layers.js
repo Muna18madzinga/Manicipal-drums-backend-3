@@ -78,13 +78,17 @@ async function getGeometryColumn(fastify, tableName) {
   return result.rows.length > 0 ? result.rows[0].f_geometry_column : 'geom'
 }
 
+// Anonymous route: case/person tables and personal columns are never served.
+const { isPrivateTable, isPersonalColumn } = require('../utils/publicLayers')
+
 async function getAttributeColumns(fastify, tableName, idColumn, geometryColumn) {
   const schema = await getTableSchema(fastify, tableName)
-  
-  // Filter out system columns and geometry
+
+  // Filter out system columns, geometry and anything that identifies a person
   const attributeColumns = schema
-    .filter(col => 
-      col.column_name !== idColumn && 
+    .filter(col =>
+      !isPersonalColumn(col.column_name) &&
+      col.column_name !== idColumn &&
       col.column_name !== geometryColumn &&
       !col.column_name.startsWith('geom_') &&
       !col.column_name.endsWith('_geom') &&
@@ -115,7 +119,7 @@ async function dynamicLayerRoutes(fastify) {
         ORDER BY sl.display_name
       `
       
-      const { rows } = await fastify.pg.query(query)
+      const rows = (await fastify.pg.query(query)).rows.filter(l => !isPrivateTable(l.table_name))
 
       // Probe once per request (cached ~60s). When QGIS integration is off or
       // unreachable, skip extraction entirely — no per-layer retry storm.
@@ -220,15 +224,18 @@ async function dynamicLayerRoutes(fastify) {
         type: 'object',
         properties: {
           bbox: { type: 'string' },
-          limit: { type: 'number', default: 1000 },
-          where: { type: 'string' }
+          limit: { type: 'integer', minimum: 1, maximum: 5000, default: 1000 },
         }
       }
     }
   }, async (request, reply) => {
     try {
       const { tableName } = request.params
-      const { bbox, limit = 1000, where } = request.query
+      // `where` used to be accepted and appended to the SQL verbatim — an
+      // anonymous SQL injection that could read any table. Removed; no caller
+      // used it. Filtering is bbox-only.
+      const { bbox } = request.query
+      const limit = Math.min(5000, Math.max(1, Number(request.query.limit) || 1000))
       
       // Validate table name to prevent SQL injection
       const validTables = await getValidTables(fastify)
@@ -266,12 +273,11 @@ async function dynamicLayerRoutes(fastify) {
 
       const params = []
 
-      if (where) {
-        query += ` AND ${where}`
-      }
-
       if (bbox) {
         const [minX, minY, maxX, maxY] = bbox.split(',').map(Number)
+        if (![minX, minY, maxX, maxY].every(Number.isFinite)) {
+          return reply.code(400).send({ error: 'bbox must be four numbers' })
+        }
         query += ` AND ST_Intersects(${geometryColumn}, ST_MakeEnvelope($1, $2, $3, $4, 4326))`
         params.push(minX, minY, maxX, maxY)
       }
@@ -419,17 +425,19 @@ async function dynamicLayerRoutes(fastify) {
   // Helper functions
   async function getValidTables(fastify) {
     const query = `
-      SELECT table_name 
-      FROM information_schema.tables 
-      WHERE table_schema = 'public' 
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
       AND table_name IN (
         SELECT table_name FROM spatial_layers WHERE is_visible = true
       )
       ORDER BY table_name
     `
-    
+
     const { rows } = await fastify.pg.query(query)
-    return rows.map(row => row.table_name)
+    // This route is anonymous. Case and person records are never map layers,
+    // even if someone flags them visible in spatial_layers.
+    return rows.map(row => row.table_name).filter(t => !isPrivateTable(t))
   }
 
   function getFeatureProperties(row, tableName, idColumn) {

@@ -15,7 +15,7 @@ const { requireAuth, requireRole } = require('../middleware/jwtAuth')
 
 async function kycRoutes(fastify) {
   // ── POST /kyc — citizen submits ─────────────────────────────────────
-  fastify.post('/kyc', { preHandler: requireAuth }, async (req, reply) => {
+  fastify.post('/kyc', { preHandler: requireAuth(fastify) }, async (req, reply) => {
     const { id_type, id_number, full_name } = req.body
     if (!id_type || !id_number || !full_name) {
       return reply.code(400).send({ success: false, error: 'id_type, id_number and full_name required' })
@@ -44,7 +44,7 @@ async function kycRoutes(fastify) {
   })
 
   // ── GET /kyc — admin/staff lists ────────────────────────────────────
-  fastify.get('/kyc', { preHandler: [requireAuth, requireRole(['admin', 'planner'])] },
+  fastify.get('/kyc', { preHandler: requireRole(fastify, ['admin', 'planner']) },
     async (req, reply) => {
       const { status } = req.query
       try {
@@ -64,7 +64,7 @@ async function kycRoutes(fastify) {
     })
 
   // ── GET /kyc/my — citizen's own ─────────────────────────────────────
-  fastify.get('/kyc/my', { preHandler: requireAuth }, async (req, reply) => {
+  fastify.get('/kyc/my', { preHandler: requireAuth(fastify) }, async (req, reply) => {
     try {
       const r = await fastify.pg.query(
         'SELECT * FROM kyc_verifications WHERE user_id = $1', [req.user.id])
@@ -75,7 +75,7 @@ async function kycRoutes(fastify) {
   })
 
   // ── PATCH /kyc/:id/approve ───────────────────────────────────────────
-  fastify.patch('/kyc/:id/approve', { preHandler: [requireAuth, requireRole(['admin'])] },
+  fastify.patch('/kyc/:id/approve', { preHandler: requireRole(fastify, ['admin']) },
     async (req, reply) => {
       const { reviewer_notes } = req.body || {}
       try {
@@ -101,7 +101,7 @@ async function kycRoutes(fastify) {
     })
 
   // ── PATCH /kyc/:id/reject ────────────────────────────────────────────
-  fastify.patch('/kyc/:id/reject', { preHandler: [requireAuth, requireRole(['admin'])] },
+  fastify.patch('/kyc/:id/reject', { preHandler: requireRole(fastify, ['admin']) },
     async (req, reply) => {
       const { reviewer_notes } = req.body || {}
       try {
@@ -120,7 +120,7 @@ async function kycRoutes(fastify) {
     })
 
   // ── GET /kyc/status/:userId ──────────────────────────────────────────
-  fastify.get('/kyc/status/:userId', { preHandler: [requireAuth, requireRole(['admin', 'planner'])] },
+  fastify.get('/kyc/status/:userId', { preHandler: requireRole(fastify, ['admin', 'planner']) },
     async (req, reply) => {
       try {
         const r = await fastify.pg.query(

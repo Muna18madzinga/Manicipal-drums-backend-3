@@ -17,7 +17,7 @@ const fastifyPostgres = require('@fastify/postgres')
 const fastifyCookie = require('@fastify/cookie')
 const { gisRoutes } = require('../gis')
 const { planningRoutes } = require('../planning')
-const { signAccessToken } = require('../../middleware/jwtAuth')
+const { createSession } = require('../../middleware/jwtAuth')
 
 const TEST_USER_ID = randomUUID()
 const TEST_LAYER = 'jesttest-soft'

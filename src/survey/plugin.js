@@ -69,6 +69,8 @@ export default async function surveyPlugin(fastify) {
   fastify.decorate('surveyPg', pool)
 
   fastify.decorate('authenticate', async (request, reply) => {
+    // Idempotent: the plugin-wide hook below already ran for this request.
+    if (request.surveyAuthenticated) return
     const vunguUser = await vunguAuthenticate(fastify, request, reply)
     if (!vunguUser) return // 401/403 already sent
     if (!['surveyor', 'admin'].includes(vunguUser.role)) {
@@ -80,6 +82,17 @@ export default async function surveyPlugin(fastify) {
       provisioned.set(vunguUser.email, surveyUser)
     }
     request.user = surveyUser
+    request.surveyAuthenticated = true
+  })
+
+  // Default-deny for the whole plugin. Authentication used to be opt-in per route, and five route
+  // files (surveyors, parcels, area-parcels, historical survey points, meridian cache) never opted
+  // in: anyone could read surveyors' contact details and create, change or DELETE survey records
+  // without signing in. Every /api/survey route now requires a signed-in surveyor or admin before
+  // its handler runs; routes that also call fastify.authenticate are unaffected (idempotent).
+  fastify.addHook('onRequest', async (request, reply) => {
+    await fastify.authenticate(request, reply)
+    if (reply.sent) return reply // 401/403 already sent: stop here
   })
 
   const routesDir = join(dirname(fileURLToPath(import.meta.url)), 'routes')

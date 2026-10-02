@@ -1174,10 +1174,9 @@ async function adminConsoleRoutes(fastify) {
           newestAgeHours: newest
             ? Math.round((Date.now() - new Date(newest.modifiedAt).getTime()) / 36e5)
             : null,
-          // Stated rather than implied: this endpoint lists the SECONDARY,
-          // manual backups. Render's automatic snapshots are the primary and
-          // are not visible from here.
-          note: 'Manual/secondary backups written by `npm run backup`. Render Postgres snapshots are the primary backup and are managed in the Render dashboard.',
+          // Stated rather than implied: there is no managed-host snapshot, so
+          // these are the only backups.
+          note: 'Backups written by `npm run backup`. These are the only backups: schedule it nightly and copy them off the server.',
         },
       })
     } catch (err) {

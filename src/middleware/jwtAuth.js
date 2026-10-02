@@ -17,9 +17,8 @@
  * it naturally expires. Tying every request to a live session row means
  * logout, admin suspension, and "revoke this device" take effect immediately,
  * and idle sessions can be timed out server-side. Tokens without a `sid`
- * (the long-lived 'api' plugin token, or any token issued before this change)
- * skip the session check and behave exactly as before — no breaking change
- * for the 20+ route files that just call requireAuth/requireRole/requireAdmin.
+ * are refused (security audit 2026-09-29). The 'api' plugin token is a
+ * different type and is checked by verifyApiTokenClaims instead.
  */
 
 const jwt = require('jsonwebtoken')
@@ -101,7 +100,7 @@ async function createSession(fastify, user, request) {
      VALUES ($1, $2, $3, $4, NOW() + ($5 || ' hours')::interval)
      RETURNING id`,
     [user.id, placeholder, request?.headers?.['user-agent'] || null,
-     request?.headers?.['x-forwarded-for']?.split(',')[0] || request?.ip || null,
+     request?.ip || null,
      String(maxHours)],
   )
   const sid = rows[0].id
@@ -147,33 +146,53 @@ function verifyMfaPendingToken(token) {
   return claims
 }
 
-// Short-lived token carrying the sha256 of a CAPTCHA answer. Keeping the
-// answer in the token rather than a table means a challenge survives a
-// restart, works behind more than one instance and needs no sweeping.
-// ponytail: stateless, so one solved challenge is replayable until it
-// expires; add a used-jti table if that ever matters more than the per-email
-// sign-in lockout already does.
-function signCaptchaToken(answerHash) {
-  return jwt.sign({ type: 'captcha', a: answerHash }, getSecret(),
-    { expiresIn: '5m', issuer: 'vungu-portal' })
-}
+// Signed token for the QGIS plugin sync endpoints only. Carries type:'api' so
+// it can never be used as a user session, and a jti that must have a live row
+// in public.api_token (migration 130) so each token can be revoked.
+const API_TOKEN_DAYS = 90
 
-function verifyCaptchaToken(token) {
-  const claims = verifyToken(token)
-  if (claims.type !== 'captcha') throw new Error('wrong_token_type')
-  return claims
-}
-
-// Long-lived, signed token for the QGIS plugin / API integrations.
-// Replaces the old guessable `vungu-api-<random>` format that any client
-// could forge. Carries type:'api' so it can never be used as a user session.
 function signApiToken(payload) {
-  return jwt.sign(
+  const jti = crypto.randomUUID()
+  const token = jwt.sign(
     { sub: payload.id, type: 'api', plugin: payload.pluginName || null },
     getSecret(),
-    { expiresIn: '365d', issuer: 'vungu-portal' },
+    { expiresIn: `${API_TOKEN_DAYS}d`, issuer: 'vungu-portal', jwtid: jti },
   )
+  return { token, jti, expiresAt: new Date(Date.now() + API_TOKEN_DAYS * 86400000) }
 }
+
+/**
+ * Verify a QGIS/API token: signature, type:'api', a live registry row, and an
+ * issuer who is still an active admin or GIS officer. Returns the claims, or
+ * null with the reason in `out.reason`.
+ */
+async function verifyApiTokenClaims(pg, token, out = {}) {
+  let claims
+  try {
+    claims = verifyToken(token)
+  } catch {
+    out.reason = 'invalid_token'
+    return null
+  }
+  if (claims.type !== 'api' || !claims.jti) {
+    out.reason = 'wrong_token_type'
+    return null
+  }
+  const { rows } = await pg.query(
+    `SELECT t.revoked_at, u.role, u.active, u.status
+       FROM public.api_token t JOIN users u ON u.id = t.user_id
+      WHERE t.jti = $1 AND t.user_id = $2`,
+    [claims.jti, claims.sub],
+  )
+  const r = rows[0]
+  if (!r || r.revoked_at || !r.active || r.status === 'suspended' || !API_TOKEN_ROLES.includes(r.role)) {
+    out.reason = 'revoked'
+    return null
+  }
+  pg.query('UPDATE public.api_token SET last_used_at = NOW() WHERE jti = $1', [claims.jti]).catch(() => {})
+  return claims
+}
+const API_TOKEN_ROLES = ['admin', 'gis_officer']
 
 function verifyToken(token) {
   return jwt.verify(token, getSecret(), { issuer: 'vungu-portal' })
@@ -211,9 +230,13 @@ async function authenticate(fastify, request, reply) {
     return null
   }
 
-  // Session liveness + inactivity timeout. Tokens minted before this change
-  // (or the long-lived 'api' token, which never carries sid) skip this check.
-  if (claims.sid) {
+  // Session liveness + inactivity timeout. Every sign-in and refresh mints a
+  // sid; a token without one could never be logged out, so it is refused.
+  if (!claims.sid) {
+    reply.code(401).send({ success: false, error: 'unauthenticated', message: 'Session ended' })
+    return null
+  }
+  {
     const { rows: sessionRows } = await fastify.pg.query(
       `SELECT id, revoked_at, expires_at, last_used_at FROM public.user_session WHERE id = $1`,
       [claims.sid],
@@ -341,6 +364,7 @@ module.exports = {
   signAccessToken,
   signRefreshToken,
   signApiToken,
+  verifyApiTokenClaims,
   verifyToken,
   authenticate,
   requireAuth,
@@ -357,8 +381,6 @@ module.exports = {
   generateBackupCodes,
   signMfaPendingToken,
   verifyMfaPendingToken,
-  signCaptchaToken,
-  verifyCaptchaToken,
   ACCESS_TTL,
   REFRESH_TTL,
 }

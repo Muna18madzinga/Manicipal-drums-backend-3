@@ -12,7 +12,7 @@ Rebuilt as **`Vungu_spatial334`**. `DATABASE_URL` now points at it.
 The original plan was to replay all 78 migration files onto an empty
 database. That is not possible here:
 
-- `scripts/migrate-render.js` drives an explicit ordered allowlist, and it
+- `scripts/migrate.js` drives an explicit ordered allowlist, and it
   lists only **54 of the 78** files.
 - The 24 unlisted files include `000_multi_tenant_schema.sql`,
   `001_admin_schema.sql`, `002_phase2_schema.sql` and **116–122** — the
@@ -122,6 +122,6 @@ Keep both until the system has been tested end to end.
 
 `schema_migrations` was carried across as-is and still records only 23 of the
 78 migration files. **This database is not reproducible from
-`scripts/migrate-render.js`**, and a fresh Render deploy will not match it
+`scripts/migrate.js`**, and a fresh deploy will not match it
 until the allowlist is reconciled. That is the most important follow-up: it
 blocks deployment, not local testing.

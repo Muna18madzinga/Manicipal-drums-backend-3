@@ -95,8 +95,8 @@ QGIS Desktop  ─save .qgs/.qml─►  qgis-projects/  ◄─read─  QGIS Serve
 | GetMap returns XML exception | layer's PostGIS source unreachable from container | `host.docker.internal` / `pg_hba` / credentials |
 | `/api/ogc/health` degraded | backend can't reach :8080 | `QGIS_SERVER_URL`, restart backend |
 
-## Production (Render) note
+## Production note
 Same design: run QGIS Server as a service, bind-mount/copy `qgis-projects/`,
 set `QGIS_SERVER_URL` on the backend, give the container a `pg_service.conf`
-pointing at the managed Postgres. The `image: qgis/qgis-server` + nginx pair
+pointing at the production Postgres. The `image: qgis/qgis-server` + nginx pair
 in `docker-compose.qgis.yml` is the template.

@@ -19,7 +19,7 @@
 -- warning, so the council has run with NO audit trail while appearing to have
 -- one. For a planning authority whose permit and enforcement decisions must be
 -- traceable to an officer, that is the single most serious gap in the system.
--- 041 is superseded, not repaired — it is not in migrate-render.js's allowlist
+-- 041 is superseded, not repaired — it is not in migrate.js's allowlist
 -- and re-running it would still abort.
 --
 -- NAMING

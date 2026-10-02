@@ -12,7 +12,7 @@
 -- A row here is an OVERRIDE that wins over the bundled default for that slug.
 --
 -- Idempotent: safe to re-run (CREATE … IF NOT EXISTS).
--- Apply with: node scripts/migrate-render.js  (094 is in the MIGRATIONS array)
+-- Apply with: node scripts/migrate.js  (094 is in the MIGRATIONS array)
 
 BEGIN;
 

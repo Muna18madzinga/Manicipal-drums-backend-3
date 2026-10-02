@@ -42,8 +42,10 @@ async function publicRoutes(fastify) {
         SELECT 
           ST_AsGeoJSON(geom) as geometry,
           properties
-        FROM layer_data 
+        FROM layer_data
         WHERE layer_id = $1
+          -- Anonymous route: only layers the council has published.
+          AND EXISTS (SELECT 1 FROM layers l WHERE l.id = layer_data.layer_id AND l.published = true)
       `
       const params = [id]
       

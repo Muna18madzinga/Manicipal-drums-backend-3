@@ -306,8 +306,13 @@ async function paymentRoutes(fastify) {
         })
       }
       const u = request.user
+      // Marking money as received is a cashier's act. In production only the
+      // counter (clerk/admin) may do it; a payer confirming their own manual
+      // payment is the DEV/QA shortcut and would otherwise let a client
+      // settle a fee without paying.
       const isStaff = ['admin', 'planning_clerk'].includes(u.role)
-      if (row.payer_id !== u.id && !isStaff) {
+      const payerMayConfirm = process.env.NODE_ENV !== 'production' && row.payer_id === u.id
+      if (!isStaff && !payerMayConfirm) {
         return reply.code(403).send({ success: false, error: 'forbidden' })
       }
       if (row.status === 'paid') {

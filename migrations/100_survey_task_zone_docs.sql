@@ -21,7 +21,7 @@
 --   3. survey_document — rendered DSG Certificate / Report on Survey
 --      content, stored as HTML in the DB (not a file). ponytail: this is
 --      the SAME lesson migration 087 already learned for the permit
---      workflow's generated_document table (Render's filesystem is
+--      workflow's generated_document table (the then-production filesystem was
 --      ephemeral, a file on disk is lost on redeploy) — but that table is
 --      hard-wired to permit_app_id NOT NULL with a doc_type CHECK list
 --      scoped to permit decisions, so it doesn't fit survey_task work

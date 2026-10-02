@@ -24,6 +24,7 @@ const { v4: uuidv4 } = require('uuid')
 const {
   signAccessToken,
   signApiToken,
+  verifyApiTokenClaims,
   verifyToken,
   requireAuth,
   requireAdmin,
@@ -41,19 +42,18 @@ const {
 
 const notifier = require('../services/notifier')
 const {
-  createCaptchaChallenge,
   verifyCaptchaChallenge,
   honeypotTripped,
 } = require('../utils/captchaChallenge')
 
-function captchaOk(body, email) {
-  // Demo accounts in local development skip the puzzle so staff can still
+async function captchaOk(request, body, email) {
+  // Demo accounts in local development skip the check so staff can still
   // one-click sign in; production always requires a valid challenge.
   if (process.env.NODE_ENV !== 'production' && typeof email === 'string' && email.endsWith('@vungu.test')) {
     return { ok: true }
   }
   if (honeypotTripped(body)) return { ok: false, reason: 'bot' }
-  return verifyCaptchaChallenge(body?.captcha_challenge, body?.captcha_answer)
+  return verifyCaptchaChallenge(body?.captcha_token, request.ip)
 }
 const loginSecurity = require('../services/loginSecurity')
 const { getSetting } = require('../services/adminSettings')
@@ -67,28 +67,29 @@ const APPLICANT_TYPES = new Set([
   'resident', 'landowner', 'business', 'consultant', 'visitor',
 ])
 
-// Roles that can be issued via the invite system (employees).
+// Roles that can be issued via the invite system (employees). `viewer` is a
+// client (citizen) role — routing, permit ownership scoping and every data
+// route already treat it that way — so it can never be granted to an employee.
 const INVITABLE_ROLES = new Set([
-  'admin', 'planner', 'viewer',
+  'admin', 'planner',
   'eo', 'env_officer', 'building_inspector', 'planning_clerk',
   'surveyor', 'gis_officer',
+  // GIS Branch (migration 132)
+  'gis_head', 'gis_data', 'gis_dev', 'gis_analyst', 'gis_tech', 'gis_clerk', 'dept_editor', 'dept_viewer',
 ])
 
 const VALID_USER_ROLES = new Set([
   'public', 'registered', 'viewer',
   'admin', 'planner', 'eo', 'env_officer', 'building_inspector',
   'planning_clerk', 'surveyor', 'gis_officer',
+  'gis_head', 'gis_data', 'gis_dev', 'gis_analyst', 'gis_tech', 'gis_clerk', 'dept_editor', 'dept_viewer',
 ])
 
 // Council staff = employees. Identical to INVITABLE_ROLES today, but named
 // separately because it answers a different question — "is this an employee,
 // not a citizen?" — used to scope GET /admin/users?staff=true. Derived from
 // INVITABLE_ROLES so the two never drift.
-//
-// NOTE: `viewer` is deliberately a staff role (the IT-admin invite form
-// creates "Viewer" employees), so a citizen carrying a legacy `viewer` role
-// would be counted as staff. Acceptable: customer self-register only ever
-// issues 'public' / 'registered', so this can't happen for new accounts.
+// Clients (public / registered / viewer) are never in this list.
 const STAFF_ROLES = [...INVITABLE_ROLES]
 
 // Crude but cheap input checks. Joi/zod is overkill here.
@@ -113,26 +114,20 @@ function userToDTO(row) {
 }
 
 async function authRoutes(fastify) {
-  // ── CAPTCHA challenge (public) ────────────────────────────────────────
-  fastify.get('/auth/captcha', async (_request, reply) => {
-    const challenge = createCaptchaChallenge()
-    return reply.send({ success: true, data: challenge })
-  })
-
   // ── Register (customer self-service) ──────────────────────────────────
   fastify.post('/auth/register', async (request, reply) => {
     try {
       const body = request.body || {}
       const { name, email, phone, organization, password } = body
 
-      const cap = captchaOk(body, email)
+      const cap = await captchaOk(request, body, email)
       if (!cap.ok) {
         return reply.code(400).send({
           success: false,
           error: 'captcha_failed',
           message: cap.reason === 'expired'
-            ? 'CAPTCHA expired — refresh the image and try again.'
-            : 'Enter the CAPTCHA characters correctly to create an account.',
+            ? 'The security check expired. It has restarted — try again.'
+            : 'The security check did not pass. It has restarted — try again.',
         })
       }
 
@@ -213,14 +208,14 @@ async function authRoutes(fastify) {
         })
       }
 
-      const cap = captchaOk(body, email)
+      const cap = await captchaOk(request, body, email)
       if (!cap.ok) {
         return reply.code(400).send({
           success: false,
           error: 'captcha_failed',
           message: cap.reason === 'expired'
-            ? 'CAPTCHA expired — refresh the image and try again.'
-            : 'Enter the CAPTCHA characters correctly to sign in.',
+            ? 'The security check expired. It has restarted — try again.'
+            : 'The security check did not pass. It has restarted — try again.',
         })
       }
 
@@ -391,7 +386,11 @@ async function authRoutes(fastify) {
         return reply.code(401).send({ success: false, error: 'wrong_token_type' })
       }
 
-      if (claims.sid) {
+      if (!claims.sid) {
+        clearAuthCookies(reply)
+        return reply.code(401).send({ success: false, error: 'session_revoked' })
+      }
+      {
         const { rows: sessionRows } = await fastify.pg.query(
           'SELECT revoked_at, expires_at FROM public.user_session WHERE id = $1', [claims.sid])
         const session = sessionRows[0]
@@ -463,14 +462,14 @@ async function authRoutes(fastify) {
         })
       }
 
-      const cap = captchaOk(body, email)
+      const cap = await captchaOk(request, body, email)
       if (!cap.ok) {
         return reply.code(400).send({
           success: false,
           error: 'captcha_failed',
           message: cap.reason === 'expired'
-            ? 'CAPTCHA expired — refresh the image and try again.'
-            : 'Enter the CAPTCHA characters correctly to continue.',
+            ? 'The security check expired. It has restarted — try again.'
+            : 'The security check did not pass. It has restarted — try again.',
         })
       }
 
@@ -1250,17 +1249,37 @@ async function authRoutes(fastify) {
   // forged. Minting is restricted to admins (they set up the plugin).
   // ════════════════════════════════════════════════════════════════════
   fastify.post('/auth/generate-api-token', { preHandler: requireAdmin(fastify) }, async (request, reply) => {
-    const { pluginName } = request.body || {}
-    const apiToken = signApiToken({ id: request.user.id, pluginName })
+    const pluginName = isString(request.body?.pluginName, 100) ? request.body.pluginName : 'vungu-qgis-plugin'
+    const { token, jti, expiresAt } = signApiToken({ id: request.user.id, pluginName })
+    await fastify.pg.query(
+      'INSERT INTO public.api_token (jti, user_id, plugin, expires_at) VALUES ($1, $2, $3, $4)',
+      [jti, request.user.id, pluginName, expiresAt],
+    )
     return reply.send({
       success: true,
-      data: {
-        apiToken,
-        email: request.user.email,
-        pluginName: pluginName || 'vungu-qgis-plugin',
-        expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-      },
+      data: { apiToken: token, id: jti, email: request.user.email, pluginName, expiresAt: expiresAt.toISOString() },
     })
+  })
+
+  // Every issued token (never the token itself), newest first, for the admin console.
+  fastify.get('/auth/api-tokens', { preHandler: requireAdmin(fastify) }, async (_request, reply) => {
+    const { rows } = await fastify.pg.query(
+      `SELECT t.jti AS id, t.plugin, t.issued_at, t.expires_at, t.last_used_at, t.revoked_at,
+              u.email AS issued_to
+         FROM public.api_token t JOIN users u ON u.id = t.user_id
+        ORDER BY t.issued_at DESC LIMIT 500`)
+    return reply.send({ success: true, data: rows })
+  })
+
+  // Revoke one token. Takes effect on its next request.
+  fastify.post('/auth/api-tokens/:id/revoke', { preHandler: requireAdmin(fastify) }, async (request, reply) => {
+    const id = String(request.params.id)
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return reply.code(404).send({ success: false, error: 'not_found' })
+    const { rowCount } = await fastify.pg.query(
+      `UPDATE public.api_token SET revoked_at = COALESCE(revoked_at, NOW()), revoked_by = COALESCE(revoked_by, $2)
+        WHERE jti = $1::uuid`, [id, request.user.id])
+    if (!rowCount) return reply.code(404).send({ success: false, error: 'not_found' })
+    return reply.send({ success: true })
   })
 
   fastify.post('/auth/validate-api-token', async (request, reply) => {
@@ -1269,19 +1288,14 @@ async function authRoutes(fastify) {
     // name push them past it) -- cap generously instead of on the general
     // short-string default.
     if (!isString(token, 4096)) return reply.code(400).send({ success: false, error: 'token_required', valid: false })
-    let claims
-    try {
-      claims = verifyToken(token)
-    } catch {
-      return reply.code(401).send({ success: false, error: 'invalid_token', valid: false })
+    const out = {}
+    const claims = await verifyApiTokenClaims(fastify.pg, token, out)
+    if (!claims) {
+      return reply.code(401).send({ success: false, error: out.reason, valid: false })
     }
-    if (claims.type !== 'api') {
-      return reply.code(401).send({ success: false, error: 'wrong_token_type', valid: false })
-    }
-    return reply.send({
-      success: true,
-      data: { valid: true, permissions: ['api.read', 'api.write', 'layers.sync', 'styles.manage'] },
-    })
+    // What the token can actually do: push to qgis_* staging tables and pull
+    // qgis_* and published layers. No other route accepts it.
+    return reply.send({ success: true, data: { valid: true, permissions: ['layers.sync'] } })
   })
 }
 

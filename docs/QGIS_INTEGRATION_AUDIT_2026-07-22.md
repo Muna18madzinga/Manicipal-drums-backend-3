@@ -88,7 +88,7 @@ trusting it.
 
 **`backend/`** (submodule, `main`):
 `qgis-projects/vungu-project.qgs`, `scripts/create-plugin-zip.js`,
-`scripts/migrate-render.js`, `scripts/migrate-render.test.js`,
+`scripts/migrate.js`, `scripts/migrate.test.js`,
 `src/routes/auth.js`, `src/services/admin/perfectQGISStyleExtractor.js`,
 `src/services/admin/refinedOGCBridge.js`, `vungu-qgis-plugin.zip` (rebuilt) —
 plus new: `migrations/111_spatial_layers_catalogue.sql`,

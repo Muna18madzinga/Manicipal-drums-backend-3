@@ -10,6 +10,7 @@
 //   DELETE /api/tiles/cache/:layer  - invalidate one layer (admin only)
 
 const zlib = require('zlib')
+const crypto = require('crypto')
 const { promisify } = require('util')
 const gzip = promisify(zlib.gzip)
 
@@ -36,10 +37,11 @@ const wmsCache = new TileCache({
   keyPrefix: 'wms:',
 })
 
-function etagFor(key) {
-  const day = new Date().toISOString().slice(0, 10)
-  const hash = Buffer.from(`${key}:${day}`).toString('base64').slice(0, 16)
-  return `"${hash}"`
+// Content hash of the tile bytes. The old key-derived tag kept only the
+// first 12 bytes of "layer/z/x/y", so every tile of a layer+zoom shared one
+// ETag and edits never changed it.
+function etagFor(buf) {
+  return `"${crypto.createHash('sha1').update(buf).digest('base64url')}"`
 }
 
 /** Capitalise the first letter of a string for tidy result subtitles. */
@@ -112,12 +114,12 @@ async function tilesRoutes(fastify) {
   }))
 
   fastify.get('/tiles/cache/stats',
-    { preHandler: [requireAuth, requireRole(['admin'])] },
+    { preHandler: requireRole(fastify, ['admin']) },
     async () => ({ success: true, data: { mvt: cache.stats(), wms: wmsCache.stats() } })
   )
 
   fastify.delete('/tiles/cache/:layer',
-    { preHandler: [requireAuth, requireRole(['admin'])] },
+    { preHandler: requireRole(fastify, ['admin']) },
     async (req) => {
       const count = cache.invalidateLayer(req.params.layer)
       return { success: true, data: { invalidated: count, layer: req.params.layer } }
@@ -145,7 +147,10 @@ async function tilesRoutes(fastify) {
                   w.fid`,
         params
       )
-      reply
+      // `return` is load-bearing: in an async handler Fastify 5 treats an
+      // undefined return as "no reply" while @fastify/compress's async onSend
+      // is still running, and ships an empty gzip body (content-length 0).
+      return reply
         .header('Cache-Control', 'public, max-age=3600')
         .send({
           success: true,
@@ -470,6 +475,78 @@ async function tilesRoutes(fastify) {
     return [Math.min(...lngs)-pad, Math.min(...lats)-pad, Math.max(...lngs)+pad, Math.max(...lats)+pad]
   }
 
+  // ── Nearest public services to a point (citizen "what is near here") ─────
+  // One nearest facility per category. KNN (`<->`) on the pois_points GiST
+  // index (SRID 900914, a CRS84 alias) picks it; the distance is exact geography.
+  const SERVICE_CATEGORIES = [
+    ['health', 'Health', ['hospital', 'clinic', 'doctors']],
+    ['pharmacy', 'Pharmacy', ['pharmacy', 'chemist']],
+    ['school', 'School', ['school', 'kindergarten', 'college', 'university']],
+    ['police', 'Police', ['police']],
+    ['fire', 'Fire station', ['fire_station']],
+    ['post', 'Post office', ['post_office']],
+    ['bank', 'Bank or ATM', ['bank', 'atm']],
+    ['market', 'Shops', ['marketplace', 'supermarket', 'convenience']],
+    ['fuel', 'Fuel', ['fuel']],
+  ]
+  fastify.get('/map/nearest-services', async (request, reply) => {
+    const lng = Number(request.query?.lng)
+    const lat = Number(request.query?.lat)
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)
+        || lng < -180 || lng > 180 || lat < -90 || lat > 90) {
+      return reply.code(400).send({ success: false, error: 'valid lng and lat are required' })
+    }
+    try {
+      const data = (await Promise.all(SERVICE_CATEGORIES.map(async ([key, label, fclasses]) => {
+        const { rows } = await fastify.pg.query(
+          `SELECT COALESCE(NULLIF(p.name, ''), initcap(replace(p.fclass, '_', ' '))) AS name, p.fclass,
+                  ST_X(ST_Centroid(p.geom)) AS lng, ST_Y(ST_Centroid(p.geom)) AS lat,
+                  ST_Distance(ST_SetSRID(p.geom, 4326)::geography,
+                              ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography)::int AS dist_m
+           FROM pois_points p
+           WHERE p.fclass = ANY($3)
+           ORDER BY p.geom <-> ST_SetSRID(ST_MakePoint($1, $2), 900914)
+           LIMIT 1`,
+          [lng, lat, fclasses],
+        )
+        const r = rows[0]
+        // Past 50 km a "nearest" facility is not a local service; leave the category out.
+        return r && r.dist_m <= 50000 && { key, label, name: r.name, fclass: r.fclass, dist_m: r.dist_m, center: [Number(r.lng), Number(r.lat)] }
+      }))).filter(Boolean).sort((a, b) => a.dist_m - b.dist_m)
+      return reply.header('Cache-Control', 'public, max-age=300').send({ success: true, data })
+    } catch (err) {
+      request.log.error({ err }, 'nearest services failed')
+      return reply.code(500).send({ success: false, error: 'Failed to find nearby services' })
+    }
+  })
+
+  // ── Development proposals open for objection (public notice layer) ───────
+  // Only what a site notice already publishes: register number, stand, ward,
+  // development type and the objection period. Never the applicant.
+  fastify.get('/map/public-notices', async (request, reply) => {
+    try {
+      const { rows } = await fastify.pg.query(
+        `SELECT COALESCE(pa.dev_register_no, pa.tpd_reference, pa.dev_app_id) AS reference,
+                pa.stand_number, pa.suburb_ward, pa.development_type,
+                pn.objection_period_start::text AS objection_start,
+                pn.objection_period_end::text AS objection_end,
+                ST_X(ST_Centroid(pa.location)) AS lng, ST_Y(ST_Centroid(pa.location)) AS lat
+         FROM spatial_planning.public_notice pn
+         JOIN spatial_planning.permit_application pa ON pa.id = pn.permit_app_id
+         WHERE pa.location IS NOT NULL
+           AND NOT COALESCE(pn.objection_period_closed, FALSE)
+           AND (pn.objection_period_end IS NULL OR pn.objection_period_end >= CURRENT_DATE)
+         ORDER BY pn.objection_period_end NULLS LAST
+         LIMIT 200`,
+      )
+      const data = rows.map(({ lng, lat, ...r }) => ({ ...r, center: [Number(lng), Number(lat)] }))
+      return reply.header('Cache-Control', 'public, max-age=300').send({ success: true, data })
+    } catch (err) {
+      request.log.error({ err }, 'public notices failed')
+      return reply.code(500).send({ success: false, error: 'Failed to load public notices' })
+    }
+  })
+
   fastify.get('/map-query', async (request, reply) => {
     const q = String(request.query?.q || '').trim().toLowerCase()
     if (!q) return reply.send({ type: 'empty', message: 'Enter a query', results: [], bbox: VUNGU_BOX })
@@ -484,11 +561,11 @@ async function tilesRoutes(fastify) {
               `SELECT COUNT(*)::int as n,
                       json_agg(json_build_object(
                         'name', name, 'fclass', fclass,
-                        'lng', ST_X(geom)::numeric(9,6),
-                        'lat', ST_Y(geom)::numeric(9,6)
+                        'lng', ST_X(ST_Centroid(geom))::numeric(9,6),
+                        'lat', ST_Y(ST_Centroid(geom))::numeric(9,6)
                       )) as pts
                FROM pois_points
-               WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,4326))
+               WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,900914))
                  AND fclass = ANY(ARRAY[${ph}])`,
               [...VUNGU_BOX, ...fclasses]
             )
@@ -537,7 +614,7 @@ async function tilesRoutes(fastify) {
         if (/road|street|highway/.test(q)) {
           const { rows } = await fastify.pg.query(
             `SELECT COUNT(*)::int as n FROM roads
-             WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,4326))`, VUNGU_BOX)
+             WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,900914))`, VUNGU_BOX)
           return reply.send({ type: 'road', message: `${rows[0].n} road segments in Vungu area`,
             count: rows[0].n, bbox: VUNGU_BOX, results: [] })
         }
@@ -564,7 +641,7 @@ async function tilesRoutes(fastify) {
             count: rows.length, bbox,
             results: rows.map(s => ({
               type: 'stand', label: `Stand ${s.stand_number}`,
-              subtitle: `${cap(s.status)} · Ward ${s.ward||'—'} · ${s.area_sqm}m²`,
+              subtitle: `${cap(s.status)} · ${s.ward||'Vungu RDC'} · ${s.area_sqm}m²`,
               status: s.status,
               center: [Number(s.lng), Number(s.lat)],
               bbox: [Number(s.lng)-0.003, Number(s.lat)-0.003, Number(s.lng)+0.003, Number(s.lat)+0.003]
@@ -579,9 +656,9 @@ async function tilesRoutes(fastify) {
           const ph = fclasses.map((_, i) => `$${i+5}`).join(', ')
           const { rows } = await fastify.pg.query(
             `SELECT name, fclass,
-                    ST_X(geom)::numeric(9,6) as lng, ST_Y(geom)::numeric(9,6) as lat
+                    ST_X(ST_Centroid(geom))::numeric(9,6) as lng, ST_Y(ST_Centroid(geom))::numeric(9,6) as lat
              FROM pois_points
-             WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,4326))
+             WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,900914))
                AND fclass = ANY(ARRAY[${ph}])
              ORDER BY name LIMIT 50`,
             [...VUNGU_BOX, ...fclasses])
@@ -614,7 +691,7 @@ async function tilesRoutes(fastify) {
             `SELECT COALESCE(NULLIF(name,''), ref, fclass) as label, fclass, ref,
                     ST_X(ST_Centroid(geom))::numeric(9,6) as lng,
                     ST_Y(ST_Centroid(geom))::numeric(9,6) as lat
-             FROM roads WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,4326))
+             FROM roads WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,900914))
                AND fclass = ANY(ARRAY[${ph}]) AND name IS NOT NULL AND name != ''
              ORDER BY name LIMIT 30`, [...VUNGU_BOX, ...fclasses])
           rows = res.rows
@@ -623,7 +700,7 @@ async function tilesRoutes(fastify) {
             `SELECT COALESCE(NULLIF(name,''), ref, fclass) as label, fclass, ref,
                     ST_X(ST_Centroid(geom))::numeric(9,6) as lng,
                     ST_Y(ST_Centroid(geom))::numeric(9,6) as lat
-             FROM roads WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,4326))
+             FROM roads WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,900914))
                AND (name ILIKE $5 OR ref ILIKE $5)
              ORDER BY name LIMIT 30`, [...VUNGU_BOX, `%${nameTerm}%`])
           rows = res.rows
@@ -632,7 +709,7 @@ async function tilesRoutes(fastify) {
             `SELECT COALESCE(NULLIF(name,''), ref, fclass) as label, fclass,
                     ST_X(ST_Centroid(geom))::numeric(9,6) as lng,
                     ST_Y(ST_Centroid(geom))::numeric(9,6) as lat
-             FROM roads WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,4326))
+             FROM roads WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,900914))
                AND fclass IN ('primary','secondary','trunk') AND name IS NOT NULL AND name != ''
              ORDER BY name LIMIT 30`, VUNGU_BOX)
           rows = res.rows
@@ -662,7 +739,7 @@ async function tilesRoutes(fastify) {
                   ST_X(ST_Centroid(geom))::numeric(9,6) as lng,
                   ST_Y(ST_Centroid(geom))::numeric(9,6) as lat
            FROM wards WHERE pcode LIKE 'ZW1704%'
-             AND ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,4326)) ${cond}
+             AND ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,900914)) ${cond}
            ORDER BY (CASE WHEN name_en ~ '^[0-9]+$' THEN LPAD(name_en,4,'0') ELSE name_en END)
            LIMIT 20`, params)
         if (rows.length) {
@@ -735,19 +812,19 @@ async function tilesRoutes(fastify) {
       }
 
       // ── Waterways / rivers ────────────────────────────────────────────────
-      if (/\b(river|stream|waterway|dam|lake|water)\b/.test(q)) {
-        const nameTerm = q.replace(/\b(river|stream|waterway|dam|lake|water|show|all|vungu|in)\b/gi,' ').trim().replace(/\s+/g,' ')
+      if (/\b(rivers?|streams?|waterways?|dams?|lakes?|water)\b/.test(q)) {
+        const nameTerm = q.replace(/\b(rivers?|streams?|waterways?|dams?|lakes?|water|show|all|vungu|in)\b/gi,' ').trim().replace(/\s+/g,' ')
         const { rows } = await fastify.pg.query(
           nameTerm.length > 1
             ? `SELECT COALESCE(NULLIF(name,''),'Waterway') as wname, fclass,
                       ST_X(ST_Centroid(geom))::numeric(9,6) as lng,
                       ST_Y(ST_Centroid(geom))::numeric(9,6) as lat
-               FROM waterways WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,4326))
+               FROM waterways WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,900914))
                  AND name ILIKE $5 LIMIT 30`
             : `SELECT COALESCE(NULLIF(name,''),'Waterway') as wname, fclass,
                       ST_X(ST_Centroid(geom))::numeric(9,6) as lng,
                       ST_Y(ST_Centroid(geom))::numeric(9,6) as lat
-               FROM waterways WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,4326))
+               FROM waterways WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,900914))
                  AND name IS NOT NULL AND name != '' ORDER BY name LIMIT 30`,
           nameTerm.length > 1 ? [...VUNGU_BOX, `%${nameTerm}%`] : VUNGU_BOX)
         if (rows.length) {
@@ -821,7 +898,7 @@ async function tilesRoutes(fastify) {
                   ST_X(ST_Centroid(ST_Union(geom)))::numeric(9,6) as lng,
                   ST_Y(ST_Centroid(ST_Union(geom)))::numeric(9,6) as lat
            FROM landuse
-           WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,4326))
+           WHERE ST_Intersects(geom, ST_MakeEnvelope($1,$2,$3,$4,900914))
              AND fclass ILIKE $5
            GROUP BY fclass ORDER BY n DESC LIMIT 20`, [...VUNGU_BOX, `%${term||'%'}%`])
         if (rows.length) {
@@ -839,7 +916,7 @@ async function tilesRoutes(fastify) {
       }
 
       // ── Cemetery / Waste ──────────────────────────────────────────────────
-      if (/\b(cemeter|burial|grave)\b/.test(q)) {
+      if (/\b(cemeter(y|ies)|burials?|graves?)\b/.test(q)) {
         const { rows } = await fastify.pg.query(
           `SELECT COALESCE(NULLIF(name,''),'Cemetery') as label,
                   ST_X(ST_Centroid(geom))::numeric(9,6) as lng,
@@ -860,7 +937,7 @@ async function tilesRoutes(fastify) {
       }
       if (/\b(waste|landfill|dump)\b/.test(q)) {
         const { rows } = await fastify.pg.query(
-          `SELECT COALESCE(NULLIF(name,''),'Waste site') as label,
+          `SELECT COALESCE(NULLIF(use,''),'Waste site') as label,
                   ST_X(ST_Centroid(geom))::numeric(9,6) as lng,
                   ST_Y(ST_Centroid(geom))::numeric(9,6) as lat
            FROM vungu_waste_management WHERE geom IS NOT NULL LIMIT 10`)
@@ -1007,14 +1084,11 @@ async function tilesRoutes(fastify) {
     }
 
     const key = `${layerId}/${z}/${x}/${y}`
-    const etag = etagFor(key)
-
-    if (request.headers['if-none-match'] === etag) {
-      return reply.code(304).send()
-    }
 
     const cached = await cache.get(key)
     if (cached) {
+      const etag = etagFor(cached)
+      if (request.headers['if-none-match'] === etag) return reply.code(304).send()
       return reply
         .header('Content-Type', 'application/vnd.mapbox-vector-tile')
         .header('Content-Encoding', 'gzip')
@@ -1036,6 +1110,7 @@ async function tilesRoutes(fastify) {
       }
       const compressed = await gzip(Buffer.from(rawTile), { level: 6 })
       await cache.set(key, compressed)
+      const etag = etagFor(compressed)
 
       return reply
         .header('Content-Type', 'application/vnd.mapbox-vector-tile')

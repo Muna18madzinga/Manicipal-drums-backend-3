@@ -58,7 +58,7 @@ async function councilOpsRoutes(fastify) {
     const { fetchWardFacts, buildWardProfilePdf } = require('../services/wardProfilePdf')
     const facts = await fetchWardFacts(pg, ward)
     const pdf = await buildWardProfilePdf(facts, request.user?.name || request.user?.email)
-    reply
+    return reply
       .header('Content-Type', 'application/pdf')
       .header('Content-Disposition', `attachment; filename="VRDC-Ward-Profile-${ward.replace(/\s+/g, '_')}.pdf"`)
       .send(pdf)
@@ -76,7 +76,7 @@ async function councilOpsRoutes(fastify) {
       particulars: b.particulars || {},
       officer: request.user?.name || request.user?.email,
     })
-    reply
+    return reply
       .header('Content-Type', 'application/pdf')
       .header('Content-Disposition', 'attachment; filename="VRDC-s74-Evidence.pdf"')
       .send(pdf)
@@ -91,7 +91,7 @@ async function councilOpsRoutes(fastify) {
       subject: request.body?.subject || 'All Vungu — theme schedule',
       officer: request.user?.name || request.user?.email,
     })
-    reply
+    return reply
       .header('Content-Type', 'application/pdf')
       .header('Content-Disposition', 'attachment; filename="VRDC-Council-Map-Schedule.pdf"')
       .send(pdf)

@@ -83,6 +83,11 @@ const RULES = [
   { match: '/development-control', event: 'DETERMINATION', severity: 'critical', entity: 'application' },
   { match: '/development-applications', event: 'APPLICATION', severity: 'high',  entity: 'application' },
   { match: '/planner/committee',   event: 'COMMITTEE',     severity: 'high',     entity: 'committee_item' },
+  { match: '/gms/imports',         event: 'SURVEY_IMPORT', severity: 'critical', entity: 'general_plan' },
+  { match: '/gms/edit-sessions',   event: 'GIS_EDIT',      severity: 'high',     entity: 'edit_session' },
+  { match: '/gms/features',        event: 'GIS_EDIT',      severity: 'high',     entity: 'feature' },
+  { match: '/gms/parcels',         event: 'PARCEL',        severity: 'high',     entity: 'parcel' },
+  { match: '/integration',         event: 'INTEGRATION',   severity: 'medium',   entity: 'integration' },
   { match: '/gis-styles',          event: 'SYMBOLOGY',     severity: 'medium',   entity: 'gis_style' },
   { match: '/gis',                 event: 'SPATIAL',       severity: 'medium',   entity: 'feature' },
   { match: '/land-use',            event: 'LAND_USE',      severity: 'medium',   entity: 'land_use' },
@@ -109,7 +114,7 @@ function categorize(method, url) {
  */
 function entityId(req) {
   const p = req.params || {}
-  const value = p.id ?? p.applicationId ?? p.permitId ?? p.inspectionId ?? p.userId ?? p.key
+  const value = p.id ?? p.parcel_id ?? p.applicationId ?? p.permitId ?? p.inspectionId ?? p.userId ?? p.key
   if (value === undefined || value === null) return null
   return String(value).slice(0, 64)
 }
@@ -137,7 +142,7 @@ async function auditLog(fastify) {
       if (!user?.id) return
 
       const { event, severity, entity } = categorize(req.method, url)
-      const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip || null
+      const ip = req.ip || null
       const ua = req.headers['user-agent'] || null
       const ms = Number(reply.elapsedTime)
 

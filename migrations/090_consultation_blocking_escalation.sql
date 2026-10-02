@@ -13,7 +13,7 @@
 --
 -- Depends on: 070 (application_consultation), 085 (priority/task_status/task_type).
 -- Idempotent: safe to re-run (ADD COLUMN IF NOT EXISTS).
--- Apply with: node scripts/migrate-render.js  (090 is in the MIGRATIONS array)
+-- Apply with: node scripts/migrate.js  (090 is in the MIGRATIONS array)
 
 BEGIN;
 

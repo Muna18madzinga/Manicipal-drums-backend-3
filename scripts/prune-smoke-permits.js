@@ -39,7 +39,6 @@ const BACKUP =
   const commit = process.argv.includes('--commit');
   const c = new Client({
     connectionString: DATABASE_URL,
-    ssl: DATABASE_URL.includes('render.com') ? { rejectUnauthorized: false } : undefined,
   });
   await c.connect();
   try {

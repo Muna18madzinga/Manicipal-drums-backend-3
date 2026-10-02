@@ -3,7 +3,7 @@ require('dotenv').config()
 const { Pool } = require('pg')
 const fs = require('fs')
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes('render.com') ? { rejectUnauthorized: false } : false })
+const pool = new Pool({ connectionString: process.env.DATABASE_URL })
 
 ;(async () => {
   // Pick one mid-sized farm (big enough to be a real subdivision, small enough

@@ -111,17 +111,22 @@ function buildDescription(stand, district) {
  *   authority:object|null, stand:object|null}}
  */
 async function resolveLocation(pg, lng, lat) {
-  const j = await jurisdictionResolver(pg, lng, lat)
+  // The ward is answered for every point, parcel or not: "which ward am I in"
+  // is the first thing a resident asks, and bare land still has a ward.
+  const [j, ward] = await Promise.all([
+    jurisdictionResolver(pg, lng, lat),
+    wardResolver(pg, lng, lat),
+  ])
   let stand = null
   if (j.in_jurisdiction) {
     stand = await parcelResolver(pg, lng, lat)
     if (stand) {
       stand.district = j.district
-      stand.ward = await wardResolver(pg, lng, lat)
+      stand.ward = ward
       stand.description = buildDescription(stand, j.district)
     }
   }
-  return { ...j, stand }
+  return { ...j, ward, stand }
 }
 
 /**

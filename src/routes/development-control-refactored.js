@@ -405,7 +405,65 @@ async function developmentControlRoutes(fastify) {
         }
       }
       
-      // Get all development matrix rules for this zone
+      const uses = await usesForZone(zone.zone_id)
+      return {
+        success: true,
+        data: {
+          parcel: parcel,
+          zone,
+          development_summary: {
+            permitted_count: uses.permitted_uses.length,
+            prohibited_count: uses.prohibited_uses.length,
+            consent_required_count: uses.consent_required_uses.length
+          },
+          ...uses
+        }
+      }
+    } catch (error) {
+      return reply.status(500).send({
+        success: false,
+        error: 'Failed to get permitted uses',
+        details: error.message
+      })
+    }
+  })
+
+  // GET /api/development-control/zoning-at?lng=&lat=
+  // Zone and permitted uses at a map point, for the citizen map. Public, like
+  // permitted-uses: the development matrix is published planning law.
+  fastify.get('/zoning-at', async (request, reply) => {
+    const lng = Number(request.query?.lng)
+    const lat = Number(request.query?.lat)
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)
+        || lng < -180 || lng > 180 || lat < -90 || lat > 90) {
+      return reply.code(400).send({ success: false, error: 'valid lng and lat are required' })
+    }
+    try {
+      // Overlapping zones: prefer the one with the most active rules, as
+      // permitted-uses does for a named zone.
+      const { rows } = await fastify.pg.query(
+        `SELECT z.id AS zone_id, z.zone_code, z.zone AS zone_name
+         FROM proposed_peri_urban_zones z
+         WHERE z.is_active = TRUE
+           AND ST_Contains(z.geom, ST_SetSRID(ST_MakePoint($1, $2), 4326))
+         ORDER BY (SELECT COUNT(*) FROM development_matrix dm
+                   WHERE dm.zone_id = z.id AND dm.is_active = TRUE) DESC
+         LIMIT 1`,
+        [lng, lat]
+      )
+      const zone = rows[0] || null
+      if (!zone) {
+        return { success: true, data: { zone: null, permitted_uses: [], prohibited_uses: [], consent_required_uses: [] } }
+      }
+      return { success: true, data: { zone, ...(await usesForZone(zone.zone_id)) } }
+    } catch (error) {
+      request.log.error({ err: error }, 'zoning-at failed')
+      return reply.status(500).send({ success: false, error: 'Failed to look up zoning' })
+    }
+  })
+
+  // Development matrix rules for one zone, grouped P / X / SC.
+  async function usesForZone(zoneId) {
       const matrixQuery = `
         SELECT 
           g.group_code,
@@ -425,10 +483,8 @@ async function developmentControlRoutes(fastify) {
         ORDER BY g.group_category, g.group_code
       `
       
-      console.log(`🔍 Querying development matrix for zone_id: ${zone.zone_id}`)
-      const { rows: matrixRows } = await fastify.pg.query(matrixQuery, [zone.zone_id])
-      console.log(`📊 Found ${matrixRows.length} development rules for ${zone.zone_name}`)
-      
+      const { rows: matrixRows } = await fastify.pg.query(matrixQuery, [zoneId])
+
       // Group by permission type
       const permitted = []
       const prohibited = []
@@ -458,34 +514,12 @@ async function developmentControlRoutes(fastify) {
         }
       })
       
-      return { 
-        success: true, 
-        data: {
-          parcel: parcel,
-          zone: {
-            zone_id: parcel.zone_id,
-            zone_code: parcel.zone_code,
-            zone_name: parcel.zone_name
-          },
-          development_summary: {
-            permitted_count: permitted.length,
-            prohibited_count: prohibited.length,
-            consent_required_count: consentRequired.length
-          },
-          permitted_uses: permitted,
-          prohibited_uses: prohibited,
-          consent_required_uses: consentRequired
-        }
+      return {
+        permitted_uses: permitted,
+        prohibited_uses: prohibited,
+        consent_required_uses: consentRequired
       }
-      
-    } catch (error) {
-      return reply.status(500).send({ 
-        success: false, 
-        error: 'Failed to get permitted uses',
-        details: error.message 
-      })
-    }
-  })
+  }
 
   // POST /api/development-control/update-compliance
   fastify.post('/update-compliance', staffOnly, async (request, reply) => {
@@ -914,7 +948,10 @@ async function developmentControlRoutes(fastify) {
   })
 
   // GET /api/development-control/applications/:id/summary - Get full summary
-  fastify.get('/applications/:id/summary', authd, async (request, reply) => {
+  // Staff only: these legacy rows carry no owner, so there is no way to check
+  // that a client is reading their own application (was login-only — any
+  // signed-in citizen could read any application by id).
+  fastify.get('/applications/:id/summary', staffOnly, async (request, reply) => {
     const { id } = request.params
     
     const { rows } = await fastify.pg.query(

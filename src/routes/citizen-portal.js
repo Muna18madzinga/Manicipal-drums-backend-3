@@ -28,18 +28,21 @@ async function citizenPortalRoutes(fastify) {
 
   // Stands the council is offering for allocation. Filters: zone (exact),
   // ward (ILIKE substring). The 'status' filter is not exposed because the
-  // citizen surface only renders available stands.
+  // citizen surface only renders available stands. Reads `stands` (the table
+  // planners edit and map search / tiles / reserve use), not the legacy
+  // spatial_planning.available_stand seed; aliases keep the old row shape.
   fastify.get('/available-stands', { preHandler: requireAuth(fastify) }, async (request, reply) => {
     const { zone, ward } = request.query
     try {
       const { rows } = await pg.query(
-        `SELECT id, stand_number, suburb_ward, area_sqm, zone, status,
-                description, longitude, latitude
-         FROM spatial_planning.available_stand
+        `SELECT id, stand_number, ward AS suburb_ward, area_sqm, zone_type AS zone, status,
+                description, ST_X(centroid) AS longitude, ST_Y(centroid) AS latitude,
+                ST_AsGeoJSON(geom, 7)::json AS geometry
+         FROM stands
          WHERE status = 'available'
-           AND ($1::text IS NULL OR zone = $1)
-           AND ($2::text IS NULL OR suburb_ward ILIKE '%' || $2 || '%')
-         ORDER BY stand_number`,
+           AND ($1::text IS NULL OR zone_type = $1)
+           AND ($2::text IS NULL OR ward ILIKE '%' || $2 || '%')
+         ORDER BY ward, stand_number`,
         [zone || null, ward || null])
       return { success: true, data: rows }
     } catch (err) {

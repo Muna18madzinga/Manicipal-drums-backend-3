@@ -99,6 +99,10 @@ const { controlPointRoutes } = require('./src/routes/controlPoints')
 const { propertyRoutes } = require('./src/routes/properties')
 const { councilOpsRoutes } = require('./src/routes/council-ops')
 const { serviceDeskRoutes } = require('./src/routes/service-desk')
+const { gmsRoutes } = require('./src/routes/gms')
+const { gmsIntegrationRoutes } = require('./src/routes/gms-integration')
+const { gmsEditingRoutes } = require('./src/routes/gms-editing')
+const { gmsMapRoutes } = require('./src/routes/gms-map')
 
 // map-search endpoints are registered inside tilesRoutes (avoid duplicate).
 
@@ -168,7 +172,11 @@ try {
 async function build() {
   const server = Fastify({
     logger: true,
-    trustProxy: true
+    // Which proxies may set X-Forwarded-For. Default 'loopback' = a reverse
+    // proxy (nginx/Caddy) on the same machine; request.ip is then the real
+    // client. Behind a proxy on another host set TRUST_PROXY to its IP/CIDR.
+    // Never `true`: that lets any caller spoof their IP past rate limits.
+    trustProxy: process.env.TRUST_PROXY || 'loopback'
   })
 
   // Payment provider webhooks (Paynow, EcoCash, Stripe) verify HMAC/hash
@@ -214,12 +222,12 @@ async function build() {
     contentSecurityPolicy: {
       directives: {
         defaultSrc:    ["'self'"],
-        scriptSrc:     ["'self'", "'unsafe-inline'"], // Vue needs inline scripts
+        scriptSrc:     ["'self'", "'unsafe-inline'", 'https://challenges.cloudflare.com'], // Vue inline; Turnstile bot check
         styleSrc:      ["'self'", "'unsafe-inline'"],
         imgSrc:        ["'self'", 'data:', 'blob:', '*.openstreetmap.org', '*.cartocdn.com'],
         connectSrc:    ["'self'", 'https://api.maptiler.com', 'https://basemaps.cartocdn.com'],
         workerSrc:     ["'self'", 'blob:'],
-        frameSrc:      ["'none'"],
+        frameSrc:      ['https://challenges.cloudflare.com'], // Turnstile widget iframe only
         objectSrc:     ["'none'"],
         upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,
       },
@@ -265,7 +273,7 @@ async function build() {
   await server.register(require('@fastify/rate-limit'), {
     max: 1000,
     timeWindow: '1 minute',
-    keyGenerator: (req) => req.headers['x-forwarded-for']?.split(',')[0] || req.ip,
+    keyGenerator: (req) => req.ip,
     // statusCode is mandatory here: the built object is thrown, and the global
     // error handler reads error.statusCode — without it every rate-limited
     // request answered 500, which reads as "the server broke", not "slow down".
@@ -329,16 +337,13 @@ async function build() {
     limits: { fileSize: 50 * 1024 * 1024 },
   })
 
-  // Static serving for uploaded photos. Mounted at /uploads — the same
-  // path the inspection-photos route hands back as `storage_url`.
-  // The directory is created on demand by the route handler if missing.
+  // Uploaded files (IDs, deeds, plans, inspection photos) are NOT served
+  // statically — that exposed every citizen's documents to anyone with the
+  // URL. /uploads/* is answered by protected-uploads.js, which requires a
+  // session and releases a file only to staff or the record's owner.
   const uploadsRoot = path.resolve(process.cwd(), 'uploads')
   try { require('node:fs').mkdirSync(uploadsRoot, { recursive: true }) } catch { /* noop */ }
-  await server.register(require('@fastify/static'), {
-    root: uploadsRoot,
-    prefix: '/uploads/',
-    decorateReply: false,
-  })
+  await server.register(require('./src/routes/protected-uploads').protectedUploadRoutes)
 
   // (Removed) onRoute debug log — was extremely noisy at startup and
   // leaked the entire route surface to stdout. Use `server.printRoutes()`
@@ -524,15 +529,7 @@ async function build() {
           message: `Too many auth attempts. Retry after ${Math.ceil(context.ttl / 1000)}s.`,
         }),
       })
-      scope.addHook('onRequest', (req, reply, done) => {
-        // The CAPTCHA image is a public GET fetched on every mount of the
-        // sign-in and register forms, on every "New image" click, and again
-        // after each failed submit. Spending the sign-in budget on it locks
-        // the user out of the very form it guards. The global 1000/min still
-        // applies.
-        if (req.url.startsWith('/api/auth/captcha')) return done()
-        return strict(req, reply, done)
-      })
+      scope.addHook('onRequest', strict)
       await scope.register(authRoutes)
     }, { prefix: '/api' })
   } catch (authError) {
@@ -647,6 +644,13 @@ async function build() {
     await server.register(planningRoutes, { prefix: '/api' })
     await server.register(councilOpsRoutes, { prefix: '/api' })
     await server.register(serviceDeskRoutes, { prefix: '/api' })
+    // GIS Management System, phase 1: parcel register + ERP integration
+    // (migration 132). The integration plugin owns the outbox worker.
+    await server.register(gmsRoutes, { prefix: '/api' })
+    await server.register(gmsIntegrationRoutes, { prefix: '/api' })
+    // Phase 2 (migration 133): editing, QA, map workspace.
+    await server.register(gmsEditingRoutes, { prefix: '/api' })
+    await server.register(gmsMapRoutes, { prefix: '/api' })
     // map-search lives in tilesRoutes (do not double-register mapSearchRoutes)
     console.log('✅ Vector tile + property register + GIS editing + symbology registry + planning + council ops + planning clerk + service desk routes registered')
   } catch (error) {

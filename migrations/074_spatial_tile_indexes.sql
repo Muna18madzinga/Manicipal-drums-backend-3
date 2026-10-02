@@ -3,7 +3,7 @@
 -- attribute index roads.fclass needs for the low-zoom road filter.
 --
 -- The zimbabwe.gpkg layers are imported separately (ogr2ogr), and may not
--- be present yet in a freshly-provisioned database (e.g. a new Render
+-- be present yet in a freshly-provisioned database (e.g. a new
 -- Postgres). So every CREATE INDEX is guarded by a to_regclass() check:
 -- the migration succeeds whether or not the spatial tables exist, and
 -- creating the indexes simply becomes a no-op until the data is loaded.

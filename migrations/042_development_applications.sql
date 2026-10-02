@@ -2,7 +2,7 @@
 -- Creates tables for the map-centric development application system
 
 -- Ensure Supabase-style roles referenced by the RLS/GRANT block below exist
--- on vanilla Postgres (Render). NOLOGIN since auth is enforced at the app
+-- on vanilla Postgres. NOLOGIN since auth is enforced at the app
 -- layer via JWT; these roles exist only so GRANTs and RLS policies parse.
 DO $$
 BEGIN

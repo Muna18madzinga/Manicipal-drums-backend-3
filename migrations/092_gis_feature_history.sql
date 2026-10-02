@@ -6,7 +6,7 @@
 -- /api/gis routes) so the ACTING user is captured, not just the row owner.
 --
 -- Idempotent: safe to re-run (CREATE … IF NOT EXISTS).
--- Apply with: node scripts/migrate-render.js  (092 is in the MIGRATIONS array)
+-- Apply with: node scripts/migrate.js  (092 is in the MIGRATIONS array)
 
 BEGIN;
 

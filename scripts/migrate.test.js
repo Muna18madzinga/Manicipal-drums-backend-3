@@ -1,8 +1,8 @@
 const fs = require('node:fs')
 const path = require('node:path')
-const { MIGRATIONS } = require('./migrate-render')
+const { MIGRATIONS } = require('./migrate')
 
-describe('Render migration plan', () => {
+describe('migration plan', () => {
   test('references SQL migration files that exist in order', () => {
     expect(MIGRATIONS).toEqual([
       '001_initial_schema.sql',
@@ -78,6 +78,9 @@ describe('Render migration plan', () => {
       '127_admin_console.sql',
       '128_planning_clerk_registers.sql',
       '129_password_reset.sql',
+      '130_api_token_registry.sql',
+      '132_gis_core_register.sql',
+      '133_gms_editing.sql',
     ])
 
     for (const filename of MIGRATIONS) {
@@ -88,7 +91,7 @@ describe('Render migration plan', () => {
 
   // The list above is a pin: changing the deploy plan should be a deliberate,
   // reviewed edit rather than a side effect. The cost is that it goes stale
-  // silently — 114 and 115 were added to migrate-render.js without it, and the
+  // silently — 114 and 115 were added to migrate.js without it, and the
   // suite sat red until somebody looked. These two invariants fail with a
   // message that says what is wrong, so the next drift is diagnosable in one
   // line rather than in a 60-entry array diff.

@@ -243,7 +243,6 @@ async function seed (db) {
 ;(async () => {
   const pool = new Pool({
     connectionString: DATABASE_URL,
-    ssl: DATABASE_URL.includes('render.com') ? { rejectUnauthorized: false } : undefined,
   })
   const db = await pool.connect()
   const undoing = process.argv.includes('--undo')

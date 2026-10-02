@@ -20,9 +20,6 @@ async function main() {
     'postgresql://postgres@localhost:5432/vungu_master_db_v1'
   const pool = new Pool({
     connectionString,
-    ssl: connectionString.includes('render.com')
-      ? { rejectUnauthorized: false }
-      : undefined,
   })
   try {
     const { rows } = await pool.query(

@@ -30,7 +30,7 @@
 --             stage_inspection), 080 (survey_task/survey_finding), 065 (plan_reviews),
 --             082 (planner case columns), PostGIS.
 -- Idempotent: safe to re-run (IF NOT EXISTS / DROP CONSTRAINT IF EXISTS).
--- Apply with: node scripts/migrate-render.js   (085 is in the MIGRATIONS array)
+-- Apply with: node scripts/migrate.js   (085 is in the MIGRATIONS array)
 
 BEGIN;
 

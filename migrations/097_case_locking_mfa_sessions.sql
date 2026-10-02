@@ -19,7 +19,7 @@
 --      already-issued refresh token before its 14-day expiry.
 --
 -- Idempotent: safe to re-run (ADD COLUMN IF NOT EXISTS / CREATE ... IF NOT EXISTS).
--- Apply with: node scripts/migrate-render.js (097 is in the MIGRATIONS array)
+-- Apply with: node scripts/migrate.js (097 is in the MIGRATIONS array)
 
 BEGIN;
 

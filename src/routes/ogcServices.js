@@ -9,6 +9,7 @@ const { RefinedOGCBridge } = require('../services/admin/refinedOGCBridge')
 const { startProjectWatcher, getWatcherStatus } = require('../services/admin/qgisProjectWatcher')
 const { wmsCache } = require('./tiles')
 const { requireRole } = require('../middleware/jwtAuth')
+const { isPrivateTable, isPersonalColumn, publicLayerTables } = require('../utils/publicLayers')
 
 // In-flight WMS renders, keyed by cache key. QGIS Server runs a small pool of
 // FCGI workers, so one viewport asking for a dozen tiles across N browser tabs
@@ -412,7 +413,10 @@ async function ogcServicesRoutes(fastify, options) {
       } = request.query
       
       console.log(`[OGC Routes] 📦 WFS GetFeature for ${layerName}`)
-      
+      if (isPrivateTable(layerName)) {
+        return reply.status(404).send({ success: false, error: 'Layer not found' })
+      }
+
       // Try QGIS Server first
       try {
         const bridge = getBridge()
@@ -453,17 +457,25 @@ async function ogcServicesRoutes(fastify, options) {
             error: `Invalid layer name: ${layerName}`
           })
         }
+        // Anonymous route: only published map layers — never a case or
+        // person table (it used to serve any table with a geom column).
+        if (!(await publicLayerTables(pool)).includes(tableName)) {
+          await pool.end()
+          return reply.status(404).send({ success: false, error: 'Layer not found' })
+        }
 
         // Dynamic column discovery - query information_schema for actual table columns
         const columnsQuery = `
-          SELECT column_name 
-          FROM information_schema.columns 
+          SELECT column_name
+          FROM information_schema.columns
           WHERE table_schema = 'public' AND table_name = $1
           AND column_name NOT IN ('geom', 'geometry')
           ORDER BY ordinal_position
         `
         const columnsResult = await pool.query(columnsQuery, [tableName])
-        const columns = columnsResult.rows.map(r => `"${r.column_name}"`)
+        const columns = columnsResult.rows
+          .filter(r => !isPersonalColumn(r.column_name))
+          .map(r => `"${r.column_name}"`)
         
         // Build query with dynamic columns
         let query = `
@@ -494,9 +506,7 @@ async function ogcServicesRoutes(fastify, options) {
           }
         }
         
-        if (maxFeatures) {
-          query += ` LIMIT ${parseInt(maxFeatures)}`
-        }
+        query += ` LIMIT ${Math.min(10000, Math.max(1, parseInt(maxFeatures, 10) || 5000))}`
         
         const result = await pool.query(query, params)
         await pool.end()

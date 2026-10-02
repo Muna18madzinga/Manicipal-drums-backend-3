@@ -21,7 +21,7 @@
 -- Depends on: 085 (eo_handoff_package, case_message, permit_event), 082
 --             (permit_application case columns), 070 (permit_application).
 -- Idempotent: safe to re-run (ADD COLUMN IF NOT EXISTS / CREATE OR REPLACE VIEW).
--- Apply with: node scripts/migrate-render.js  (086 is in the MIGRATIONS array)
+-- Apply with: node scripts/migrate.js  (086 is in the MIGRATIONS array)
 
 BEGIN;
 

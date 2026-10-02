@@ -39,10 +39,8 @@ const REASONS = Object.freeze({
   IP_BLOCKED: 'ip_blocked',
 })
 
-/** The caller's address, honouring one proxy hop (Render sits in front). */
+/** The caller's address. Fastify resolves proxies per TRUST_PROXY (server.js). */
 function clientIp(request) {
-  const forwarded = request.headers?.['x-forwarded-for']
-  if (typeof forwarded === 'string' && forwarded.length) return forwarded.split(',')[0].trim()
   return request.ip || null
 }
 

@@ -2,13 +2,13 @@
 
 ## How migrations run
 
-`scripts/migrate-render.js` holds the **canonical ordered allowlist** (`MIGRATIONS`).
+`scripts/migrate.js` holds the **canonical ordered allowlist** (`MIGRATIONS`).
 Only files in that array are ever applied; applied filenames are recorded in the
 `schema_migrations` table (`filename TEXT PRIMARY KEY, applied_at TIMESTAMPTZ`) and
 skipped on re-run. Run with:
 
 ```bash
-DATABASE_URL=postgresql://… node scripts/migrate-render.js   # or: npm run migrate
+DATABASE_URL=postgresql://… node scripts/migrate.js   # or: npm run migrate
 ```
 
 See `docs/OPERATIONS_RUNBOOK.md` §2 for the pre-production verification checklist.

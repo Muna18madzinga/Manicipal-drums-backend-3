@@ -7,28 +7,31 @@
 // All paths here are ABSOLUTE (/api/qgis/..., /api/qgis-plugin/...); the
 // module must be registered WITHOUT a prefix or the routes double-prefix.
 
-const { verifyToken } = require('../middleware/jwtAuth')
+const { verifyApiTokenClaims, requireRole } = require('../middleware/jwtAuth')
+const { publicLayerTables } = require('../utils/publicLayers')
 
-// Verify a signed API token (type:'api'). Returns the claims, or sends a 401
-// reply and returns null. Replaces the old "accept any string starting
-// vungu-api-" check, which let anyone forge an API identity (fix F3).
-async function verifyApiToken(request, reply) {
+// Verify a signed API token. Returns the claims, or sends a 401 reply and
+// returns null. Replaces the old "accept any string starting vungu-api-" check,
+// which let anyone forge an API identity (fix F3).
+//
+// Security audit 2026-09-29: the token must also have a live row in
+// public.api_token (revoked one by one from the admin console) and an issuer
+// who is still an active admin or GIS officer. The token only ever reaches the
+// sync push/pull/download routes below; it is refused everywhere else.
+async function verifyApiToken(request, reply, server) {
   const authHeader = request.headers.authorization
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     reply.status(401).send({ success: false, error: 'No token provided', message: 'Authorization header required' })
     return null
   }
-  try {
-    const claims = verifyToken(authHeader.slice(7).trim())
-    if (claims.type !== 'api') {
-      reply.status(401).send({ success: false, error: 'Invalid token', message: 'Wrong token type' })
-      return null
-    }
-    return claims
-  } catch {
-    reply.status(401).send({ success: false, error: 'Invalid token', message: 'Token verification failed' })
+  const out = {}
+  const claims = await verifyApiTokenClaims(server.pg, authHeader.slice(7).trim(), out)
+  if (!claims) {
+    const message = out.reason === 'revoked' ? 'Token has been revoked' : 'Token verification failed'
+    reply.status(401).send({ success: false, error: 'Invalid token', message })
     return null
   }
+  return claims
 }
 
 // Strict identifier sanitizer — table and column names built from user input
@@ -64,7 +67,7 @@ async function createQGISRoutes(server) {
   // Push: QGIS Desktop -> portal
   // ------------------------------------------------------------
   server.post('/api/qgis/sync/upload', async (request, reply) => {
-    const claims = await verifyApiToken(request, reply)
+    const claims = await verifyApiToken(request, reply, server)
     if (!claims) return
 
     const { layer_name, crs, features, field_types, style } = request.body || {}
@@ -153,7 +156,7 @@ async function createQGISRoutes(server) {
   // Pull: portal -> QGIS Desktop
   // ------------------------------------------------------------
   server.get('/api/qgis/sync/download/:layerName', async (request, reply) => {
-    const claims = await verifyApiToken(request, reply)
+    const claims = await verifyApiToken(request, reply, server)
     if (!claims) return
 
     const base = sanitizeIdentifier(request.params.layerName)
@@ -168,6 +171,12 @@ async function createQGISRoutes(server) {
       )
       if (!tables.length) return reply.status(404).send({ success: false, error: 'Layer not found' })
       const table = tables[0].table_name
+      // Least privilege (security audit 2026-09-29): a sync token downloads GIS layers only — the
+      // plugin's own qgis_* staging tables and published, non-private map layers. It used to read
+      // ANY public table by name, e.g. /sync/download/users returned every account with its
+      // password hash and MFA secret. Anything else is 404, the same as a missing layer.
+      const allowed = table.startsWith('qgis_') || (await publicLayerTables(server.pg)).includes(table)
+      if (!allowed) return reply.status(404).send({ success: false, error: 'Layer not found' })
 
       const { rows: cols } = await server.pg.query(
         `SELECT column_name, data_type FROM information_schema.columns
@@ -218,7 +227,7 @@ async function createQGISRoutes(server) {
     }
   })
 
-  server.get('/api/qgis-plugin/style-sync/status', async () => {
+  server.get('/api/qgis-plugin/style-sync/status', { preHandler: requireRole(server, ['admin']) }, async () => {
     return {
       success: true,
       status: 'idle',
@@ -227,7 +236,7 @@ async function createQGISRoutes(server) {
     }
   })
 
-  server.post('/api/qgis-plugin/style-sync/force', async () => {
+  server.post('/api/qgis-plugin/style-sync/force', { preHandler: requireRole(server, ['admin']) }, async () => {
     return {
       success: true,
       message: 'Style sync forced',
@@ -235,7 +244,7 @@ async function createQGISRoutes(server) {
     }
   })
 
-  server.get('/api/qgis-plugin/metrics', async () => {
+  server.get('/api/qgis-plugin/metrics', { preHandler: requireRole(server, ['admin']) }, async () => {
     return {
       success: true,
       data: {
@@ -245,7 +254,7 @@ async function createQGISRoutes(server) {
     }
   })
 
-  server.get('/api/qgis-plugin/security/metrics', async () => {
+  server.get('/api/qgis-plugin/security/metrics', { preHandler: requireRole(server, ['admin']) }, async () => {
     return {
       success: true,
       data: {
@@ -254,7 +263,7 @@ async function createQGISRoutes(server) {
     }
   })
 
-  server.post('/api/qgis-plugin/security/audit-log', async (request) => {
+  server.post('/api/qgis-plugin/security/audit-log', { preHandler: requireRole(server, ['admin']) }, async (request) => {
     request.log.info({ event: request.body && request.body.event }, '[QGIS] plugin audit event')
     return {
       success: true,

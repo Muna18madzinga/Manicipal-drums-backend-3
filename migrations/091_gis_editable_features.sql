@@ -9,7 +9,7 @@
 -- imported cadastre / master-plan layers (vungu_parcels, vungu_farm_cadastre …).
 --
 -- Idempotent: safe to re-run (CREATE … IF NOT EXISTS).
--- Apply with: node scripts/migrate-render.js  (091 is in the MIGRATIONS array)
+-- Apply with: node scripts/migrate.js  (091 is in the MIGRATIONS array)
 
 BEGIN;
 

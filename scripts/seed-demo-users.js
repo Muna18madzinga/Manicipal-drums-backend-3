@@ -17,6 +17,14 @@ const VALID_ROLES = new Set([
   'planning_clerk',
   'surveyor',
   'gis_officer',
+  'gis_head',
+  'gis_data',
+  'gis_dev',
+  'gis_analyst',
+  'gis_tech',
+  'gis_clerk',
+  'dept_editor',
+  'dept_viewer',
 ])
 
 const DEFAULT_DEMO_USERS = [
@@ -29,6 +37,16 @@ const DEFAULT_DEMO_USERS = [
   { email: 'demo.surveyor@vungu.test', name: 'Demo Surveyor', role: 'surveyor' },
   { email: 'demo.gis@vungu.test', name: 'Demo GIS Officer', role: 'gis_officer' },
   { email: 'demo.viewer@vungu.test', name: 'Demo Viewer', role: 'viewer' },
+  // GIS Branch (migration 132). dept_* accounts need a department: they see
+  // and edit only what their department is custodian of.
+  { email: 'demo.gis-head@vungu.test', name: 'Demo Principal GIS Officer', role: 'gis_head' },
+  { email: 'demo.gis-data@vungu.test', name: 'Demo Senior GIS Officer (Data)', role: 'gis_data' },
+  { email: 'demo.gis-dev@vungu.test', name: 'Demo GIS Systems Developer', role: 'gis_dev' },
+  { email: 'demo.gis-analyst@vungu.test', name: 'Demo GIS Analyst', role: 'gis_analyst' },
+  { email: 'demo.gis-tech@vungu.test', name: 'Demo GIS Technician', role: 'gis_tech' },
+  { email: 'demo.gis-clerk@vungu.test', name: 'Demo GIS Data Clerk', role: 'gis_clerk' },
+  { email: 'demo.dept-editor@vungu.test', name: 'Demo Planning GIS Focal Point', role: 'dept_editor', department: 'Planning' },
+  { email: 'demo.dept-viewer@vungu.test', name: 'Demo Engineering Viewer', role: 'dept_viewer', department: 'Engineering' },
   // The applicant. Every staff role had an account and the citizen did not,
   // so the one journey that begins outside the council could not be walked.
   { email: 'demo.citizen@vungu.test', name: 'Demo Citizen', role: 'registered' },
@@ -49,6 +67,7 @@ function parseDemoUsers(env = process.env) {
   const source = env.DEMO_USERS
     ? env.DEMO_USERS.split(',').map(item => item.trim()).filter(Boolean)
     : DEFAULT_DEMO_USERS.map(user => `${user.email}:${user.name}:${user.role}`)
+  const departments = new Map(DEFAULT_DEMO_USERS.map(u => [u.email, u.department ?? null]))
 
   return source.map((entry) => {
     const [email, name, role, password] = entry.split(':').map(part => part.trim())
@@ -64,6 +83,7 @@ function parseDemoUsers(env = process.env) {
       role,
       password: password || defaultPassword,
       organization,
+      ...(departments.get(email) ? { department: departments.get(email) } : {}),
     }
   })
 }
@@ -76,9 +96,6 @@ function createPool(env = process.env) {
     database: env.DB_NAME || 'vungu_master_db_v1',
     user: env.DB_USER || 'postgres',
     password: env.DB_PASSWORD || '',
-    ssl: env.DATABASE_URL && env.DATABASE_URL.includes('render.com')
-      ? { rejectUnauthorized: false }
-      : undefined,
   })
 }
 
@@ -87,9 +104,9 @@ async function upsertDemoUser(pool, user) {
   const { rows } = await pool.query(
     `INSERT INTO users (
        email, password_hash, name, full_name, role, status, active,
-       organization, created_at
+       organization, department, created_at
      )
-     VALUES ($1, $2, $3, $3, $4, 'active', true, $5, NOW())
+     VALUES ($1, $2, $3, $3, $4, 'active', true, $5, $6, NOW())
      ON CONFLICT (email) DO UPDATE SET
        password_hash = EXCLUDED.password_hash,
        name = EXCLUDED.name,
@@ -97,9 +114,10 @@ async function upsertDemoUser(pool, user) {
        role = EXCLUDED.role,
        status = 'active',
        active = true,
-       organization = EXCLUDED.organization
+       organization = EXCLUDED.organization,
+       department = COALESCE(EXCLUDED.department, users.department)
      RETURNING id, email, role`,
-    [user.email, passwordHash, user.name, user.role, user.organization],
+    [user.email, passwordHash, user.name, user.role, user.organization, user.department ?? null],
   )
   return rows[0]
 }

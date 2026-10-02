@@ -3,7 +3,7 @@
 -- Migration 085 created spatial_planning.generated_document to hold the
 -- council's authoritative copies of letters/reports that were previously only
 -- produced client-side. It modelled storage_url as a NOT NULL file pointer —
--- but the production deploy (Render) has an EPHEMERAL filesystem, so a file on
+-- but the production deploy at the time had an EPHEMERAL filesystem, so a file on
 -- disk is lost on every redeploy. For the EO decision letters (approval,
 -- conditional approval, refusal) we therefore store the rendered document
 -- CONTENT in the database and serve it through an API route, rather than
@@ -16,7 +16,7 @@
 --
 -- Depends on: 085 (generated_document), 086.
 -- Idempotent: safe to re-run.
--- Apply with: node scripts/migrate-render.js  (087 is in the MIGRATIONS array)
+-- Apply with: node scripts/migrate.js  (087 is in the MIGRATIONS array)
 
 BEGIN;
 

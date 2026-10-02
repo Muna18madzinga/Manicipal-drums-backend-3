@@ -14,7 +14,7 @@
 --
 -- Depends on: 070 (permit_application, application_objection, set_updated_at()).
 -- Idempotent: safe to re-run (CREATE/ALTER … IF [NOT] EXISTS).
--- Apply with: node scripts/migrate-render.js  (089 is in the MIGRATIONS array)
+-- Apply with: node scripts/migrate.js  (089 is in the MIGRATIONS array)
 
 BEGIN;
 

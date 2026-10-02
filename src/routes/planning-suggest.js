@@ -69,7 +69,7 @@ function llmRateKey(request) {
     const token = request.cookies?.vungu_at || (auth && auth.startsWith('Bearer ') ? auth.slice(7).trim() : null)
     if (token) { const d = jwt.decode(token); if (d && d.sub) return 'u:' + d.sub }
   } catch { /* fall through to IP */ }
-  return 'ip:' + (request.headers['x-forwarded-for']?.split(',')[0] || request.ip)
+  return 'ip:' + request.ip
 }
 
 /** Strip heavy geometry from the site context — the reasoner works over facts, not polygons. */
