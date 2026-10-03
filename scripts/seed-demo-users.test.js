@@ -45,7 +45,11 @@ describe('demo user seeding config', () => {
   })
 
   test('rejects unknown roles before touching the database', () => {
+    // DEMO_DEFAULT_PASSWORD is supplied deliberately: without it the config
+    // guard in parseDemoUsers fires first and this test would pass for the
+    // wrong reason -- asserting a password error while claiming to test roles.
     expect(() => parseDemoUsers({
+      DEMO_DEFAULT_PASSWORD: 'demo1234',
       DEMO_USERS: 'demo.bad@vungu.test:Bad Role:superuser',
     })).toThrow('Invalid demo role')
   })

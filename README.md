@@ -3,7 +3,7 @@
 Fastify + PostgreSQL/PostGIS API for the Vungu Rural District Council.
 The full system README (architecture, citizen flows, design rationale,
 authoritative documents) lives in the **frontend repo**:
-[`~/Manicipal-drums-frontend/README.md`](../Manicipal-drums-frontend/README.md).
+[`../app-frontend/README.md`](../app-frontend/README.md).
 
 This file is the operational manual: how to set the backend up, run
 migrations, configure environment, run the email worker, and find
@@ -214,7 +214,7 @@ Roles:
   `planning_clerk`, `surveyor`, `gis_officer`, `viewer`.
 
 Defence-in-depth on registration: the frontend
-([`src/views/RegisterView.vue`](../Manicipal-drums-frontend/src/views/RegisterView.vue))
+([`src/views/RegisterView.vue`](../app-frontend/src/views/RegisterView.vue))
 maps `applicant_type` → safe role; the backend then ignores body
 `role` entirely; the DB has a `users_role_check` constraint that
 prevents writing any value outside the allow-list.
@@ -225,7 +225,7 @@ prevents writing any value outside the allow-list.
 
 54 method-level entries across 8 plugins. Full list with auth scopes
 in the frontend README under
-[“API surface”](../Manicipal-drums-frontend/README.md#api-surface-54-endpoints).
+[“API surface”](../app-frontend/README.md#api-surface-54-endpoints).
 
 Plugins (load order in `server.js`):
 
@@ -307,6 +307,36 @@ File: `src/workers/emailWorker.js`
 Built in: `console`, `smtp` (requires nodemailer).
 
 ---
+
+## Tests
+
+Three tiers, split by prerequisite rather than by subject. `npm test` runs only
+the first, so it is green regardless of whether a database or a server happens to
+be running.
+
+```bash
+npm test          # 26 suites, no database, no listening port
+npm run test:db   # 6 integration suites against a disposable seeded database
+npm run test:live # 2 suites that drive real HTTP against a server
+```
+
+| Command | Needs | How it gets them |
+|---|---|---|
+| `npm test` | nothing | — |
+| `npm run test:db` | demo users, the Tsamba township, the migration chain | `scripts/prepare-acceptance-db.js` builds a scratch database (`vungu_acceptance_test`) and leaves your `.env` database alone. Runs serially, because these suites share one database and the migration 107 topology trigger rejects overlapping stands globally. |
+| `npm run test:live` | a server on `PORT` | `scripts/run-live-server-tests.js` reuses a healthy server if one is listening, otherwise starts one and shuts it down afterwards (the server uses `listenInCluster`, so the cleanup targets the whole process tree). |
+
+The suite-to-tier mapping lives in one place, `scripts/test-suites.js`, which is
+read by `jest.config.js` and by both runners. A suite excluded from `npm test`
+therefore cannot also be a suite that nothing runs.
+
+Two related notes:
+
+- The integration suites need `migration 132`+, which a fresh migration chain
+  provides. If they fail with `401 invalid_credentials`, the database was not
+  prepared — run `npm run test:db:prepare`.
+- `docs/PERMIT-WORKFLOW-OVERRIDE.md` records an open question about admin
+  `override: true` on the permit status route.
 
 ## Smoke tests
 

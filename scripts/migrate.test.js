@@ -5,6 +5,12 @@ const { MIGRATIONS } = require('./migrate')
 describe('migration plan', () => {
   test('references SQL migration files that exist in order', () => {
     expect(MIGRATIONS).toEqual([
+      // Reviewed 2026-10-03: empty-but-shaped placeholders for the legacy
+      // spatial tables (buildings, development_matrix, ...). They exist so a
+      // fresh database's indexes, foreign keys and views parse before the real
+      // ogr2ogr / supervisor-dump imports populate them. Legitimate, and it
+      // must stay first -- everything else assumes those tables exist.
+      '000_legacy_spatial_stubs.sql',
       '001_initial_schema.sql',
       '042_development_applications.sql',
       '060_invite_system_and_roles.sql',
