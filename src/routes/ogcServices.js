@@ -796,8 +796,14 @@ async function ogcServicesRoutes(fastify, options) {
       
       // Return image directly or as JSON wrapper
       if (request.query.raw === 'true') {
-        reply.header('Content-Type', result.contentType)
-        return reply.send(Buffer.from(result.legend.split(',')[1], 'base64'))
+        // The bridge states how the data URL is encoded rather than letting us
+        // assume base64: the offline fallback is percent-encoded, and decoding
+        // that as base64 shipped corrupt bytes labelled image/svg+xml.
+        const payload = result.legend.slice(result.legend.indexOf(',') + 1)
+        reply.header('Content-Type', result.mediaType || result.contentType || 'image/png')
+        return reply.send(
+          result.encoding === 'uri' ? decodeURIComponent(payload) : Buffer.from(payload, 'base64')
+        )
       }
       
       return {

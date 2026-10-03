@@ -5358,7 +5358,7 @@ def my_form_open(dialog, layer, feature):
         <ymax>-15.54997080000000054</ymax>
       </wgs84extent>
       <id>roads_7a18e925_7636_41bc_a426_72844c086bed</id>
-      <datasource>dbname='Vungu_spatial333' host=localhost port=5432 key='fid' srid=900914 type=MultiLineString checkPrimaryKeyUnicity='1' table="public"."roads" (geom)</datasource>
+      <datasource>service='vungu' sslmode=disable key='fid' srid=900914 type=MultiLineString checkPrimaryKeyUnicity='1' table="public"."roads" (geom)</datasource>
       <layername>roads</layername>
       <srs>
         <spatialrefsys nativeFormat="Wkt">

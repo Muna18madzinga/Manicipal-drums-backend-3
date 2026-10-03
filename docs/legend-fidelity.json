@@ -1,0 +1,397 @@
+{
+  "generatedAt": "2026-10-03T13:24:27.209Z",
+  "qgisServer": "http://localhost:8080",
+  "backend": "http://localhost:3000",
+  "project": "qgis-projects\\vungu-project.qgs",
+  "qgisUp": false,
+  "health": {
+    "status": 0,
+    "body": "fetch failed"
+  },
+  "totals": {
+    "layers": 10,
+    "legendPng": 0,
+    "legendViaBridgePng": 0,
+    "bridgeDegraded": 10,
+    "sldOk": 0,
+    "drift": 0,
+    "failed": 10
+  },
+  "layers": [
+    {
+      "layer": "gweru_beyond_periurban_zones",
+      "legend": {
+        "status": 0,
+        "bytes": 0,
+        "png": false,
+        "error": "fetch failed"
+      },
+      "bridge": {
+        "status": 200,
+        "bytes": 207,
+        "png": false,
+        "degraded": true
+      },
+      "sld": {
+        "status": 0,
+        "bytes": 0,
+        "rules": 0,
+        "colours": [],
+        "error": "fetch failed"
+      },
+      "extracted": {
+        "source": "project-file",
+        "fallback": false,
+        "renderer": "categorizedSymbol",
+        "symbols": 7,
+        "colours": [
+          "#aeb178",
+          "#d9b96b",
+          "#c19a6b",
+          "#979a5f",
+          "#dde6ad",
+          "#a5754a",
+          "#efeadf",
+          "#bdc3c7",
+          "#232323",
+          "#7f8c8d"
+        ]
+      },
+      "fail": true
+    },
+    {
+      "layer": "gweru_chiefdoms",
+      "legend": {
+        "status": 0,
+        "bytes": 0,
+        "png": false,
+        "error": "fetch failed"
+      },
+      "bridge": {
+        "status": 200,
+        "bytes": 207,
+        "png": false,
+        "degraded": true
+      },
+      "sld": {
+        "status": 0,
+        "bytes": 0,
+        "rules": 0,
+        "colours": [],
+        "error": "fetch failed"
+      },
+      "extracted": {
+        "source": "project-file",
+        "fallback": false,
+        "renderer": "categorizedSymbol",
+        "symbols": 4,
+        "colours": [
+          "#d7191c",
+          "#fdae61",
+          "#abdda4",
+          "#2b83ba",
+          "#bdc3c7",
+          "#232323",
+          "#7f8c8d"
+        ]
+      },
+      "fail": true
+    },
+    {
+      "layer": "gweru_health_centres",
+      "legend": {
+        "status": 0,
+        "bytes": 0,
+        "png": false,
+        "error": "fetch failed"
+      },
+      "bridge": {
+        "status": 200,
+        "bytes": 207,
+        "png": false,
+        "degraded": true
+      },
+      "sld": {
+        "status": 0,
+        "bytes": 0,
+        "rules": 0,
+        "colours": [],
+        "error": "fetch failed"
+      },
+      "extracted": {
+        "source": "project-file",
+        "fallback": false,
+        "renderer": "singleSymbol",
+        "symbols": 1,
+        "colours": [
+          "#d32f2f",
+          "#ffffff"
+        ]
+      },
+      "fail": true
+    },
+    {
+      "layer": "gweru_peri_urban_zone",
+      "legend": {
+        "status": 0,
+        "bytes": 0,
+        "png": false,
+        "error": "fetch failed"
+      },
+      "bridge": {
+        "status": 200,
+        "bytes": 207,
+        "png": false,
+        "degraded": true
+      },
+      "sld": {
+        "status": 0,
+        "bytes": 0,
+        "rules": 0,
+        "colours": [],
+        "error": "fetch failed"
+      },
+      "extracted": {
+        "source": "project-file",
+        "fallback": false,
+        "renderer": "categorizedSymbol",
+        "symbols": 12,
+        "colours": [
+          "#f6ecae",
+          "#f1dd7c",
+          "#e6c65f",
+          "#d8ab47",
+          "#efe0b8",
+          "#4f83c2",
+          "#cf9cba",
+          "#e5a49e",
+          "#c6c6c6",
+          "#c3d284",
+          "#8fb4dd",
+          "#efeadf",
+          "#bdc3c7",
+          "#232323",
+          "#7f8c8d"
+        ]
+      },
+      "fail": true
+    },
+    {
+      "layer": "gweru_rivers",
+      "legend": {
+        "status": 0,
+        "bytes": 0,
+        "png": false,
+        "error": "fetch failed"
+      },
+      "bridge": {
+        "status": 200,
+        "bytes": 207,
+        "png": false,
+        "degraded": true
+      },
+      "sld": {
+        "status": 0,
+        "bytes": 0,
+        "rules": 0,
+        "colours": [],
+        "error": "fetch failed"
+      },
+      "extracted": {
+        "source": "project-file",
+        "fallback": false,
+        "renderer": "singleSymbol",
+        "symbols": 1,
+        "colours": [
+          "#000000"
+        ]
+      },
+      "fail": true
+    },
+    {
+      "layer": "gweru_rural_farms",
+      "legend": {
+        "status": 0,
+        "bytes": 0,
+        "png": false,
+        "error": "fetch failed"
+      },
+      "bridge": {
+        "status": 200,
+        "bytes": 207,
+        "png": false,
+        "degraded": true
+      },
+      "sld": {
+        "status": 0,
+        "bytes": 0,
+        "rules": 0,
+        "colours": [],
+        "error": "fetch failed"
+      },
+      "extracted": {
+        "source": "project-file",
+        "fallback": false,
+        "renderer": "graduatedSymbol",
+        "symbols": 4,
+        "colours": [
+          "#ffffcc",
+          "#c2e699",
+          "#78c679",
+          "#238443",
+          "#8c8c6e"
+        ]
+      },
+      "fail": true
+    },
+    {
+      "layer": "gweru_rural_planning_boundary",
+      "legend": {
+        "status": 0,
+        "bytes": 0,
+        "png": false,
+        "error": "fetch failed"
+      },
+      "bridge": {
+        "status": 200,
+        "bytes": 207,
+        "png": false,
+        "degraded": true
+      },
+      "sld": {
+        "status": 0,
+        "bytes": 0,
+        "rules": 0,
+        "colours": [],
+        "error": "fetch failed"
+      },
+      "extracted": {
+        "source": "project-file",
+        "fallback": false,
+        "renderer": "singleSymbol",
+        "symbols": 1,
+        "colours": [
+          "#000000",
+          "#1a73e8"
+        ]
+      },
+      "fail": true
+    },
+    {
+      "layer": "proposed_peri_urban_zones",
+      "legend": {
+        "status": 0,
+        "bytes": 0,
+        "png": false,
+        "error": "fetch failed"
+      },
+      "bridge": {
+        "status": 200,
+        "bytes": 207,
+        "png": false,
+        "degraded": true
+      },
+      "sld": {
+        "status": 0,
+        "bytes": 0,
+        "rules": 0,
+        "colours": [],
+        "error": "fetch failed"
+      },
+      "extracted": {
+        "source": "project-file",
+        "fallback": false,
+        "renderer": "categorizedSymbol",
+        "symbols": 12,
+        "colours": [
+          "#f6ecae",
+          "#f1dd7c",
+          "#e6c65f",
+          "#d8ab47",
+          "#efe0b8",
+          "#4f83c2",
+          "#cf9cba",
+          "#e5a49e",
+          "#c6c6c6",
+          "#c3d284",
+          "#8fb4dd",
+          "#efeadf",
+          "#bdc3c7",
+          "#232323",
+          "#7f8c8d"
+        ]
+      },
+      "fail": true
+    },
+    {
+      "layer": "roads",
+      "legend": {
+        "status": 0,
+        "bytes": 0,
+        "png": false,
+        "error": "fetch failed"
+      },
+      "bridge": {
+        "status": 200,
+        "bytes": 207,
+        "png": false,
+        "degraded": true
+      },
+      "sld": {
+        "status": 0,
+        "bytes": 0,
+        "rules": 0,
+        "colours": [],
+        "error": "fetch failed"
+      },
+      "extracted": {
+        "source": "project-file",
+        "fallback": false,
+        "renderer": "categorizedSymbol",
+        "symbols": 27,
+        "colours": [
+          "#202020",
+          "#59381d",
+          "#9e4a2a",
+          "#c19a6b",
+          "#cf9077",
+          "#bdc3c7"
+        ]
+      },
+      "fail": true
+    },
+    {
+      "layer": "zimbabwe",
+      "legend": {
+        "status": 0,
+        "bytes": 0,
+        "png": false,
+        "error": "fetch failed"
+      },
+      "bridge": {
+        "status": 200,
+        "bytes": 207,
+        "png": false,
+        "degraded": true
+      },
+      "sld": {
+        "status": 0,
+        "bytes": 0,
+        "rules": 0,
+        "colours": [],
+        "error": "fetch failed"
+      },
+      "extracted": {
+        "source": "project-file",
+        "fallback": false,
+        "renderer": "singleSymbol",
+        "symbols": 1,
+        "colours": [
+          "#000000",
+          "#bdbdbd"
+        ]
+      },
+      "fail": true
+    }
+  ]
+}

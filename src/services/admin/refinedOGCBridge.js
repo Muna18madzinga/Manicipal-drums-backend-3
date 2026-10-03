@@ -496,6 +496,11 @@ class RefinedOGCBridge {
         success: true,
         legend: legendData,
         contentType: params.FORMAT,
+        // Explicit, because the two paths are encoded differently and callers
+        // that stream raw bytes MUST NOT guess: QGIS Server's PNG arrives as a
+        // base64 data URL, the offline fallback as a percent-encoded one.
+        mediaType: params.FORMAT,
+        encoding: 'base64',
         metadata: {
           layerName,
           service: 'WMS GetLegendGraphic'
@@ -513,9 +518,12 @@ class RefinedOGCBridge {
         success: true,
         legend: this.createDefaultLegendSVG(layerName),
         contentType: 'image/svg+xml',
+        mediaType: 'image/svg+xml',
+        encoding: 'uri',
         metadata: {
           layerName,
-          service: 'Generated Default'
+          service: 'Generated Default',
+          qgisServerReachable: false
         }
       }
     }
