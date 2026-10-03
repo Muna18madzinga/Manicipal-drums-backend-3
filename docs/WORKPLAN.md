@@ -125,3 +125,61 @@ pilot project silently returned the flat default symbol with `success: true`.
 - `healthcheck.js`, `jest.config.js`, `server.js` kept at root where the
   Dockerfile expects them.
 - Boot verified post-move.
+
+## Stream F — done 2026-10-03 (proving the "too complex to translate" claim)
+
+The paper claims QGIS is the authority and that symbology MapLibre cannot
+express is rendered by QGIS Server instead of approximated. Making that
+checkable found the claim was **structurally true but silently leaky**.
+
+What already existed and works: `classifyFidelity()` in `src/services/gis/styleDoc.js`
+implements the ladder `direct → converted → server → unsupported`; `compileMaplibre()`
+turns `server` into `{ layers: [], strategy: 'wms' }`; `styleRegistry` stores that
+strategy and `routes/gisStyles.js` serves it; the client skips any layer whose
+strategy is not `vector`. So the mechanism is wired end to end.
+
+The hole: `qgisImport.convertSymbol()` read the *first* symbol layer's properties
+and nothing else. A QGIS `GradientFill` has `color1`/`color2` and **no `color`**,
+so it became `fill: '#cccccc'` grey with `fillStyle: 'solid'` — not in
+`PATTERN_FILL_STYLES`, so no fidelity rung fired, so it classified `direct` and
+compiled to an ordinary vector layer. The portal showed flat grey where the GIS
+officer had drawn a ramp, at the *highest* fidelity rating, saying nothing. Same
+for shapeburst, pattern tiles, SVG fills, marker-line and font markers.
+
+Fixed:
+- `SERVER_ONLY_CLASSES` in `qgisImport.js` lists the 14 symbol-layer classes
+  MapLibre has no equivalent for, each with the reason; any one of them in a
+  symbol stack taints the whole symbol.
+- `classifyFidelity()` raises `server` for them, naming the class, so a planner
+  can see *why* a layer delegated.
+- Fixtures: `test/fixtures/qgs/untranslatable-symbols.qgs` — 12 maplayers,
+  9 of them the cases the real project does not contain. Its `*_control`
+  layers assert the opposite failure mode (blanket "send everything to WMS")
+  does not pass.
+- `npm run verify:render` (`scripts/verify-render-fidelity.mjs`): asserts two
+  invariants — nothing classified `server`/`unsupported` may compile a MapLibre
+  layer, and none may publish as `vector` — then writes
+  `docs/RENDER-FIDELITY-REPORT.md` and exits non-zero on violation.
+- `test/render-fidelity.test.js`, 20 tests: one per class plus the controls.
+- Frontend: `getWMSLegendGraphicUrl()` omitted `raw=true`, so it would have
+  received a JSON wrapper instead of image bytes; fixed and layer-encoded.
+
+Honest limits of what is now proven:
+- `direct 31 / converted 14 / server 9`, and **all 9 `server` styles are
+  fixtures**. The published registry holds 25 `direct` + 7 `converted` and
+  **zero** delegated layers. The claim is proven against authored symbology, not
+  against council data — the corpus contains no hatch, gradient, pattern tile,
+  marker-line, data-defined or blend-mode symbology at all.
+- `GetLegendGraphic` is proven as a working endpoint
+  (`GET /api/ogc/wms/legend/:layer?raw=true`, plus 3 encoding regression tests),
+  but **no UI consumes it**. `MapLegend.vue` renders from the `gis_style`
+  registry, not from QGIS. So the legend leg is a backend capability, not a
+  user-visible fallback, and the paper should not claim otherwise.
+- The `server` leg itself (does QGIS Server actually rasterise these correctly?)
+  still needs `npm run qgis:up` — see the network blocker in
+  `docs/LEGEND-FIDELITY-REPORT.md`.
+
+Pre-existing test debt, unrelated to this stream: 8 suites / 39 tests fail on a
+clean checkout (`migrate`, `seed-demo-users`, and six acceptance suites that
+need seeded users). Verified by re-running them with this stream's source
+changes stashed — identical failures.

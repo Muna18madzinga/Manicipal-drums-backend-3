@@ -116,6 +116,42 @@ function symbolLayerProps(symbolLayer) {
   return props
 }
 
+/**
+ * QGIS symbol-layer classes MapLibre GL JS has no equivalent for.
+ *
+ * The property reader below can only find a flat colour and a stroke width on
+ * these, so without this table they arrive in the portal as an invented
+ * approximation while still scoring `direct` -- a GradientFill has no `color`
+ * property at all, so it became flat grey #cccccc, and a LayerPatternFill's
+ * authored tile became a solid fill of the tile's stroke colour. That is the
+ * exact failure this ladder exists to prevent: the portal quietly showing
+ * something the GIS officer never drew.
+ *
+ * Each one is routed to QGIS Server instead, which is the whole point of the
+ * `server` rung: rasterised by the authority rather than re-invented.
+ *
+ * Deliberately NOT listed: SimpleFill/GradientFill's solid siblings, SimpleLine,
+ * SimpleMarker, Ellipse and FilledMarker with a shape MapLibre has (those
+ * classify as `converted`, with the substitution named in the note), and
+ * GeometryGenerator, which is handled separately as `unsupported`.
+ */
+const SERVER_ONLY_CLASSES = {
+  GradientFill: 'MapLibre GL JS has no gradient fill, so the ramp exists only as QGIS-rendered pixels',
+  ShapeburstFill: 'a shapeburst radiates from a point inside the polygon, which no fill-pattern can express',
+  LinePatternFill: 'the authored hatch tile needs a raster fill-pattern sprite rendered from the QGIS SVG',
+  PointPatternFill: 'the authored point tile needs a raster fill-pattern sprite rendered from the QGIS SVG',
+  SVGFill: 'the fill is an SVG document carrying its own colours, not a solid fill plus an outline',
+  MarkerLine: 'vertex and shield decoration along a line has no MapLibre line-shield',
+  FontMarker: 'glyph markers need a rendered sprite; MapLibre can only place images we generate',
+  LineBurial: 'the line is buried by an attribute offset, and MapLibre has no per-feature line-offset field',
+  Fence: 'fence symbology generates parallel offset lines per feature, not a stroke on the source line',
+  Arrow: 'arrow heads along a line are placed by the QGIS renderer, not recomputable by the client',
+  Raster: 'the symbol is a raster file stretched per feature',
+  VectorField: 'field glyphs are placed and scaled by the QGIS renderer',
+  AnimatedMarker: 'the symbol animates over time, which a static tile cannot reproduce',
+  RandomMarkerFill: 'QGIS randomises marker placement per feature and the client cannot recompute it',
+}
+
 /** Detects the QGIS features MapLibre cannot express, for fidelity scoring. */
 function symbolLayerFlags(symbolLayer) {
   const flags = {}
@@ -128,6 +164,17 @@ function symbolLayerFlags(symbolLayer) {
     }
   }
   if (symbolLayer['@class'] === 'GeometryGenerator') flags.geometryGenerator = true
+
+  // Any untranslatable layer in the stack taints the whole symbol: MapLibre
+  // draws one layer per symbol layer it understands and would silently omit the
+  // rest, so the layer is rasterised by QGIS Server instead.
+  const cls = symbolLayer['@class']
+  if (cls && SERVER_ONLY_CLASSES[cls]) {
+    if (!flags.serverOnly) flags.serverOnly = []
+    if (!flags.serverOnly.some((e) => e.cls === cls)) {
+      flags.serverOnly.push({ cls, why: SERVER_ONLY_CLASSES[cls] })
+    }
+  }
   return flags
 }
 
@@ -391,6 +438,7 @@ function buildDoc({ layerId, geometry, rendererNode, maplayer, sourcePath, minZo
       ...(flags.blendMode ? { blendMode: flags.blendMode } : {}),
       ...(flags.dataDefined ? { dataDefined: { symbol: true } } : {}),
       ...(flags.geometryGenerator ? { geometryGenerator: true } : {}),
+      ...(flags.serverOnly ? { serverOnly: flags.serverOnly } : {}),
     },
     labels,
     minZoom: minZoom ?? null,
@@ -536,6 +584,7 @@ module.exports = {
   scaleToZoom,
   visibilityZoom,
   RENDERER_MAP,
+  SERVER_ONLY_CLASSES,
   GEOM_BY_CODE,
   GEOM_BY_NAME,
 }

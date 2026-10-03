@@ -493,6 +493,12 @@ function classifyFidelity(doc) {
   if (r.geometryGenerator) {
     raise('unsupported', 'geometry-generator symbology derives new geometry at draw time; neither vector tiles nor a WMS of the source layer reproduces it -- the generated geometry must be materialised as its own PostGIS layer')
   }
+  // Symbol-layer classes the MapLibre translation cannot represent at all. This
+  // is the rung the paper's fallback claim rests on: the layer is rasterised by
+  // QGIS Server rather than shown as an approximation nobody chose.
+  for (const entry of r.serverOnly || []) {
+    raise('server', `${doc.layerId}: QGIS ${entry.cls} symbol layer -- ${entry.why}; rendered by QGIS Server so the portal shows what QGIS Desktop shows`)
+  }
   if (doc.labels?.expression && !doc.labels?.field) {
     raise('server', 'label text comes from a QGIS expression rather than a plain field')
   }

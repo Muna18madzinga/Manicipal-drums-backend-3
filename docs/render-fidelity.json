@@ -1,0 +1,830 @@
+{
+  "generatedAt": "2026-10-03T15:21:02.575Z",
+  "fixtures": "test\\fixtures\\qgs\\untranslatable-symbols.qgs",
+  "project": "qgis-projects\\vungu-project.qgs",
+  "canonicalQml": "qgis-projects\\canonical-qml",
+  "totals": {
+    "styles": 54,
+    "fixtures": 12,
+    "project": 10,
+    "canonical": 32,
+    "violations": 0,
+    "problems": 0
+  },
+  "byLevel": {
+    "direct": 31,
+    "converted": 14,
+    "server": 9
+  },
+  "byStrategy": {
+    "vector": 45,
+    "wms": 9
+  },
+  "problems": [],
+  "layers": [
+    {
+      "layer": "solid_fill_control",
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "expected": "direct"
+    },
+    {
+      "layer": "solid_line_control",
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": null,
+      "violations": [],
+      "expected": "direct"
+    },
+    {
+      "layer": "circle_marker_control",
+      "level": "converted",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [
+        "renderer.symbol: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)"
+      ],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "expected": "converted"
+    },
+    {
+      "layer": "brush_hatch_control",
+      "level": "server",
+      "strategy": "wms",
+      "vectorLayers": 0,
+      "serverOnly": [],
+      "notes": [
+        "renderer.symbol: fill style \"cross\" is a procedural hatch; MapLibre needs a raster fill-pattern sprite, so this layer renders via QGIS Server WMS",
+        "renderer.symbol: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)"
+      ],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "expected": "server"
+    },
+    {
+      "layer": "gradient_fill",
+      "level": "server",
+      "strategy": "wms",
+      "vectorLayers": 0,
+      "serverOnly": [
+        "GradientFill"
+      ],
+      "notes": [
+        "renderer.symbol: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "gradient_fill: QGIS GradientFill symbol layer -- MapLibre GL JS has no gradient fill, so the ramp exists only as QGIS-rendered pixels; rendered by QGIS Server so the portal shows what QGIS Desktop shows"
+      ],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "expected": "server"
+    },
+    {
+      "layer": "shapeburst_fill",
+      "level": "server",
+      "strategy": "wms",
+      "vectorLayers": 0,
+      "serverOnly": [
+        "ShapeburstFill"
+      ],
+      "notes": [
+        "renderer.symbol: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "shapeburst_fill: QGIS ShapeburstFill symbol layer -- a shapeburst radiates from a point inside the polygon, which no fill-pattern can express; rendered by QGIS Server so the portal shows what QGIS Desktop shows"
+      ],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "expected": "server"
+    },
+    {
+      "layer": "line_pattern_fill",
+      "level": "server",
+      "strategy": "wms",
+      "vectorLayers": 0,
+      "serverOnly": [
+        "LinePatternFill"
+      ],
+      "notes": [
+        "renderer.symbol: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "line_pattern_fill: QGIS LinePatternFill symbol layer -- the authored hatch tile needs a raster fill-pattern sprite rendered from the QGIS SVG; rendered by QGIS Server so the portal shows what QGIS Desktop shows"
+      ],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "expected": "server"
+    },
+    {
+      "layer": "point_pattern_fill",
+      "level": "server",
+      "strategy": "wms",
+      "vectorLayers": 0,
+      "serverOnly": [
+        "PointPatternFill"
+      ],
+      "notes": [
+        "renderer.symbol: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "point_pattern_fill: QGIS PointPatternFill symbol layer -- the authored point tile needs a raster fill-pattern sprite rendered from the QGIS SVG; rendered by QGIS Server so the portal shows what QGIS Desktop shows"
+      ],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "expected": "server"
+    },
+    {
+      "layer": "svg_fill",
+      "level": "server",
+      "strategy": "wms",
+      "vectorLayers": 0,
+      "serverOnly": [
+        "SVGFill"
+      ],
+      "notes": [
+        "renderer.symbol: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "svg_fill: QGIS SVGFill symbol layer -- the fill is an SVG document carrying its own colours, not a solid fill plus an outline; rendered by QGIS Server so the portal shows what QGIS Desktop shows"
+      ],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "expected": "server"
+    },
+    {
+      "layer": "stacked_fill_with_gradient",
+      "level": "server",
+      "strategy": "wms",
+      "vectorLayers": 0,
+      "serverOnly": [
+        "GradientFill"
+      ],
+      "notes": [
+        "renderer.symbol: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "stacked_fill_with_gradient: QGIS GradientFill symbol layer -- MapLibre GL JS has no gradient fill, so the ramp exists only as QGIS-rendered pixels; rendered by QGIS Server so the portal shows what QGIS Desktop shows"
+      ],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "expected": "server"
+    },
+    {
+      "layer": "marker_line",
+      "level": "server",
+      "strategy": "wms",
+      "vectorLayers": 0,
+      "serverOnly": [
+        "MarkerLine"
+      ],
+      "notes": [
+        "renderer.symbol: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "marker_line: QGIS MarkerLine symbol layer -- vertex and shield decoration along a line has no MapLibre line-shield; rendered by QGIS Server so the portal shows what QGIS Desktop shows"
+      ],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": null,
+      "violations": [],
+      "expected": "server"
+    },
+    {
+      "layer": "font_marker",
+      "level": "server",
+      "strategy": "wms",
+      "vectorLayers": 0,
+      "serverOnly": [
+        "FontMarker"
+      ],
+      "notes": [
+        "renderer.symbol: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "font_marker: QGIS FontMarker symbol layer -- glyph markers need a rendered sprite; MapLibre can only place images we generate; rendered by QGIS Server so the portal shows what QGIS Desktop shows"
+      ],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "expected": "server"
+    },
+    {
+      "layer": "gweru_beyond_periurban_zones",
+      "level": "converted",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [
+        "category \"Communal\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"FLSCF\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"FLSCF_A2\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"FLSCF_SSCF_A1\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Resettlement Area\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"SSCF\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "renderer.fallback: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)"
+      ],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": []
+    },
+    {
+      "layer": "gweru_chiefdoms",
+      "level": "converted",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [
+        "category \"Bunina\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Chiwundura\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Gambiza\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Sogwala\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)"
+      ],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": []
+    },
+    {
+      "layer": "gweru_health_centres",
+      "level": "converted",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [
+        "renderer.symbol: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)"
+      ],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": []
+    },
+    {
+      "layer": "gweru_peri_urban_zone",
+      "level": "converted",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [
+        "category \"Low Density Residential\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Medium Density Residential\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Mixed Density Residential\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"High Density Residential\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Densification Zone [LDR]\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Economic Corridor [Mixed Business]\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Light Industry\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Institutional\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Cemetry\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Residential Agricultural Plots\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Railways Common User Facilities\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "renderer.fallback: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)"
+      ],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": []
+    },
+    {
+      "layer": "gweru_rivers",
+      "level": "converted",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [
+        "renderer.symbol: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)"
+      ],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": null,
+      "violations": []
+    },
+    {
+      "layer": "gweru_rural_farms",
+      "level": "converted",
+      "strategy": "vector",
+      "vectorLayers": 2,
+      "serverOnly": [],
+      "notes": [
+        "range[0] 0-500: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "range[1] 500-2000: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "range[2] 2000-10000: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "range[3] 10000-500000: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "graduated renderer compiled to a MapLibre `step` expression over the classification attribute"
+      ],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": []
+    },
+    {
+      "layer": "gweru_rural_planning_boundary",
+      "level": "converted",
+      "strategy": "vector",
+      "vectorLayers": 2,
+      "serverOnly": [],
+      "notes": [
+        "renderer.symbol: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)"
+      ],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": []
+    },
+    {
+      "layer": "proposed_peri_urban_zones",
+      "level": "converted",
+      "strategy": "vector",
+      "vectorLayers": 2,
+      "serverOnly": [],
+      "notes": [
+        "category \"Low Density Residential\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Medium Density Residential\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Mixed Density Residential\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"High Density Residential\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Densification Zone [LDR]\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Economic Corridor [Mixed Business]\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Light Industry\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Institutional\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Cemetry\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Residential Agricultural Plots\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Railways Common User Facilities\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "renderer.fallback: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)"
+      ],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": []
+    },
+    {
+      "layer": "roads",
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 2,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": null,
+      "violations": []
+    },
+    {
+      "layer": "zimbabwe",
+      "level": "converted",
+      "strategy": "vector",
+      "vectorLayers": 2,
+      "serverOnly": [],
+      "notes": [
+        "renderer.symbol: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)"
+      ],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": []
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": null,
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": null,
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "converted",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [
+        "category \"Communal\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"FLSCF\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"FLSCF_A2\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"FLSCF_SSCF_A1\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Resettlement Area\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"SSCF\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "renderer.fallback: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)"
+      ],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "converted",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [
+        "category \"Low Density Residential\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Medium Density Residential\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Mixed Density Residential\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"High Density Residential\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Densification Zone [LDR]\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Economic Corridor [Mixed Business]\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Light Industry\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Institutional\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Cemetry\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Residential Agricultural Plots\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Railways Common User Facilities\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "renderer.fallback: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)"
+      ],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "converted",
+      "strategy": "vector",
+      "vectorLayers": 2,
+      "serverOnly": [],
+      "notes": [
+        "category \"Low Density Residential\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Medium Density Residential\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Mixed Density Residential\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"High Density Residential\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Densification Zone [LDR]\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Economic Corridor [Mixed Business]\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Light Industry\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Institutional\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Cemetry\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Residential Agricultural Plots\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Railways Common User Facilities\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "renderer.fallback: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)"
+      ],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "converted",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [
+        "category \"Bulawayo\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Harare\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Manicaland\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Mashonaland Central\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Mashonaland East\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Mashonaland West\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Masvingo\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Matabeleland North\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Matabeleland South\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "category \"Midlands\": millimetre widths converted to pixels at 3.78 px/mm (96 DPI)",
+        "renderer.fallback: millimetre widths converted to pixels at 3.78 px/mm (96 DPI)"
+      ],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": null,
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 2,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": null,
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": null,
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": null,
+      "violations": [],
+      "geometryInferred": true
+    },
+    {
+      "level": "direct",
+      "strategy": "vector",
+      "vectorLayers": 1,
+      "serverOnly": [],
+      "notes": [],
+      "valid": true,
+      "validationErrors": [],
+      "inventedColour": "opacity undefined",
+      "violations": [],
+      "geometryInferred": true
+    }
+  ]
+}

@@ -133,3 +133,45 @@ Tested: `npm run migrate` against a scratch `vungu_migrate_test` database
 77 schema_migrations rows, 155 public+spatial_planning tables,
 `zones_master`, `spatial_planning.permit_application`, `public.wards` all
 present.
+
+## Incident 2026-10-03 (evening) — the postgres role password stopped matching `.env`
+
+During the render-fidelity work the backend began returning HTTP 500 on any
+endpoint that touches the database, and `psql` refused the documented supervisor
+password for both `postgres` and `vungu_admin`:
+
+    FATAL:  password authentication failed for user "postgres"
+    DETAIL:  Connection matched file ".../pg_hba.conf" line 117:
+             "host    all             all             ::1/128                 scram-sha-256"
+
+The same password authenticated successfully earlier in the session, and nothing
+run in this session issues `ALTER ROLE`, so the cause is unattributed. What was
+established: the stored SCRAM verifier changed (`rolpassword` was still
+non-null, `password_encryption` was already `scram-sha-256`), and the
+`vungu_admin` role could log in but had **no password set at all**, so it was
+only reachable while loopback auth was relaxed.
+
+Recovery, performed 2026-10-03:
+
+1. Backed up `pg_hba.conf` and prepended two **loopback-only** `trust` rules
+   (127.0.0.1/32 and ::1/128), then reloaded. Loopback only — not `0.0.0.0/0`.
+2. Reset `postgres` and `vungu_admin` to exactly the password
+   `app-backend/.env` already expects (read from the file, never echoed).
+3. Restored `pg_hba.conf` from that backup, so the trust rules are gone and the
+   two deliberate QGIS Server container rules added earlier the same day
+   (172.16.0.0/12, 192.168.65.0/24) survive.
+4. Verified: SCRAM auth succeeds with the `.env` value, and `GET /api/stands`
+   returned to 200.
+
+Residual risk, unresolved:
+
+- Anything holding the previous `postgres` password is now broken, and the
+  supervisor's own tooling may use a different value than `.env`. One password
+  source of truth needs to be agreed before production.
+- The `ALTER ROLE` that caused this has not been located. If statement logging
+  is enabled, the server log around the failure window should show it:
+  `C:\Program Files\PostgreSQL\18\data\log\postgresql-2026-10-03_*.log`.
+
+Backups left in the PostgreSQL data directory: `pg_hba.conf.bak-20261003`
+(before the container rules) and `pg_hba.conf.bak-trust-20261003` (before the
+temporary trust rules).

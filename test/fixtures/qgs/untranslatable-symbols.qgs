@@ -1,0 +1,312 @@
+<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>
+<!--
+  test/fixtures/qgs/untranslatable-symbols.qgs
+  ---------------------------------------------------------------------------
+  A fixture project, NOT council cartography. It exists because the paper's
+  fallback claim ("symbology too complex to translate directly is rendered by
+  QGIS Server") can only be believed if the portal is shown to DETECT that
+  complexity -- and the real vungu-project.qgs contains none of these symbol
+  layers, so on real data the claim is vacuously true and untested.
+
+  Every maplayer below is named for what it is meant to prove. The `*_control`
+  layers are the other half of the proof: they must stay `direct`, otherwise a
+  fix that simply routed everything to QGIS Server would look like a pass.
+
+  Written in the modern QGIS 3.x <Option> property form, which is what
+  qgisImport.symbolLayerProps() reads and what QGIS 3.40 (the version that
+  authored vungu-project.qgs) writes.
+
+  Note that a GradientFill carries `color1`/`color2` and no `color` at all --
+  which is precisely why the importer used to hand the portal flat #cccccc grey
+  while scoring the layer `direct`.
+-->
+<qgis version="3.40.0-Bratislava" projectname="untranslatable-symbols">
+  <projectlayers>
+
+    <!-- ══ controls: MapLibre expresses these exactly ══════════════════════ -->
+
+    <maplayer type="vector" geometry="Polygon" hasScaleBasedVisibilityFlag="0">
+      <datasource>table="public"."fixture_solid"</datasource>
+      <layername>solid_fill_control</layername>
+      <layerOpacity>1</layerOpacity>
+      <renderer-v2 type="singleSymbol" symbollevels="0" forceraster="0" enableorderby="0">
+        <symbols>
+          <symbol type="fill" name="0" alpha="1" clip_to_extent="1" force_rhr="0">
+            <layer class="SimpleFill" pass="0" locked="0">
+              <Option type="Map">
+                <Option type="QString" name="color" value="230,240,255,255"/>
+                <Option type="QString" name="style" value="solid"/>
+                <Option type="QString" name="outline_color" value="35,35,35,255"/>
+                <Option type="QString" name="outline_width" value="0.26"/>
+                <Option type="QString" name="outline_width_unit" value="Pixel"/>
+                <Option type="QString" name="outline_style" value="solid"/>
+                <Option type="QString" name="joinstyle" value="bevel"/>
+              </Option>
+            </layer>
+          </symbol>
+        </symbols>
+      </renderer-v2>
+    </maplayer>
+
+    <maplayer type="vector" geometry="LineString" hasScaleBasedVisibilityFlag="0">
+      <datasource>table="public"."fixture_line"</datasource>
+      <layername>solid_line_control</layername>
+      <layerOpacity>1</layerOpacity>
+      <renderer-v2 type="singleSymbol" symbollevels="0" forceraster="0" enableorderby="0">
+        <symbols>
+          <symbol type="line" name="0" alpha="1" clip_to_extent="1" force_rhr="0">
+            <layer class="SimpleLine" pass="0" locked="0">
+              <Option type="Map">
+                <Option type="QString" name="line_color" value="35,35,35,255"/>
+                <Option type="QString" name="line_width" value="0.5"/>
+                <Option type="QString" name="line_width_unit" value="Pixel"/>
+                <Option type="QString" name="line_style" value="solid"/>
+                <Option type="QString" name="capstyle" value="square"/>
+                <Option type="QString" name="joinstyle" value="bevel"/>
+                <Option type="Bool" name="use_custom_dash" value="false"/>
+              </Option>
+            </layer>
+          </symbol>
+        </symbols>
+      </renderer-v2>
+    </maplayer>
+
+    <maplayer type="vector" geometry="Point" hasScaleBasedVisibilityFlag="0">
+      <datasource>table="public"."fixture_marker"</datasource>
+      <layername>circle_marker_control</layername>
+      <layerOpacity>1</layerOpacity>
+      <renderer-v2 type="singleSymbol" symbollevels="0" forceraster="0" enableorderby="0">
+        <symbols>
+          <symbol type="marker" name="0" alpha="1" clip_to_extent="1" force_rhr="0">
+            <layer class="SimpleMarker" pass="0" locked="0">
+              <Option type="Map">
+                <Option type="QString" name="name" value="circle"/>
+                <Option type="QString" name="color" value="180,60,60,255"/>
+                <Option type="QString" name="outline_color" value="35,35,35,255"/>
+                <Option type="QString" name="outline_width" value="0.2"/>
+                <Option type="QString" name="size" value="3"/>
+                <Option type="QString" name="size_unit" value="MM"/>
+                <Option type="QString" name="angle" value="0"/>
+              </Option>
+            </layer>
+          </symbol>
+        </symbols>
+      </renderer-v2>
+    </maplayer>
+
+    <!-- The pre-existing hatch rule: a Qt brush style, which the compiler
+         already routed to QGIS Server. Kept so the new rules cannot silently
+         replace it. -->
+    <maplayer type="vector" geometry="Polygon" hasScaleBasedVisibilityFlag="0">
+      <datasource>table="public"."fixture_brush"</datasource>
+      <layername>brush_hatch_control</layername>
+      <layerOpacity>1</layerOpacity>
+      <renderer-v2 type="singleSymbol" symbollevels="0" forceraster="0" enableorderby="0">
+        <symbols>
+          <symbol type="fill" name="0" alpha="1" clip_to_extent="1" force_rhr="0">
+            <layer class="SimpleFill" pass="0" locked="0">
+              <Option type="Map">
+                <Option type="QString" name="color" value="200,180,140,255"/>
+                <Option type="QString" name="style" value="cross"/>
+                <Option type="QString" name="outline_color" value="90,70,50,255"/>
+                <Option type="QString" name="outline_width" value="0.26"/>
+              </Option>
+            </layer>
+          </symbol>
+        </symbols>
+      </renderer-v2>
+    </maplayer>
+
+    <!-- ══ the claim: symbology MapLibre cannot express ═════════════════════ -->
+
+    <maplayer type="vector" geometry="Polygon" hasScaleBasedVisibilityFlag="0">
+      <datasource>table="public"."fixture_gradient"</datasource>
+      <layername>gradient_fill</layername>
+      <layerOpacity>1</layerOpacity>
+      <renderer-v2 type="singleSymbol" symbollevels="0" forceraster="0" enableorderby="0">
+        <symbols>
+          <symbol type="fill" name="0" alpha="1" clip_to_extent="1" force_rhr="0">
+            <layer class="GradientFill" pass="0" locked="0">
+              <Option type="Map">
+                <Option type="QString" name="color1" value="255,235,130,255"/>
+                <Option type="QString" name="color2" value="200,90,60,255"/>
+                <Option type="QString" name="gradient_type" value="radial"/>
+                <Option type="QString" name="spread" value="pad"/>
+                <Option type="QString" name="reference_point1" value="0.5,0.5"/>
+                <Option type="QString" name="reference_point2" value="1,1"/>
+                <Option type="QString" name="angle" value="45"/>
+                <Option type="QString" name="offset" value="0"/>
+                <Option type="QString" name="displacement" value="0"/>
+              </Option>
+            </layer>
+          </symbol>
+        </symbols>
+      </renderer-v2>
+    </maplayer>
+
+    <maplayer type="vector" geometry="Polygon" hasScaleBasedVisibilityFlag="0">
+      <datasource>table="public"."fixture_shapeburst"</datasource>
+      <layername>shapeburst_fill</layername>
+      <layerOpacity>1</layerOpacity>
+      <renderer-v2 type="singleSymbol" symbollevels="0" forceraster="0" enableorderby="0">
+        <symbols>
+          <symbol type="fill" name="0" alpha="1" clip_to_extent="1" force_rhr="0">
+            <layer class="ShapeburstFill" pass="0" locked="0">
+              <Option type="Map">
+                <Option type="QString" name="color1" value="250,240,200,255"/>
+                <Option type="QString" name="color2" value="190,120,40,255"/>
+                <Option type="QString" name="shapeburst_color1" value="0,0,0,255"/>
+                <Option type="QString" name="shapeburst_color2" value="0,0,0,0"/>
+                <Option type="QString" name="shapeburst_distance_from_center" value="0"/>
+              </Option>
+            </layer>
+          </symbol>
+        </symbols>
+      </renderer-v2>
+    </maplayer>
+
+    <maplayer type="vector" geometry="Polygon" hasScaleBasedVisibilityFlag="0">
+      <datasource>table="public"."fixture_linepattern"</datasource>
+      <layername>line_pattern_fill</layername>
+      <layerOpacity>1</layerOpacity>
+      <renderer-v2 type="singleSymbol" symbollevels="0" forceraster="0" enableorderby="0">
+        <symbols>
+          <symbol type="fill" name="0" alpha="1" clip_to_extent="1" force_rhr="0">
+            <layer class="LinePatternFill" pass="0" locked="0">
+              <Option type="Map">
+                <Option type="Map">
+                  <Option type="QString" name="enabled" value="1"/>
+                  <Option type="QString" name="distance_x" value="2"/>
+                  <Option type="QString" name="distance_y" value="2"/>
+                  <Option type="QString" name="distance" value="2"/>
+                  <Option type="QString" name="line_width" value="0.5"/>
+                  <Option type="QString" name="offset" value="0"/>
+                  <Option type="QString" name="angle" value="45"/>
+                  <Option type="QString" name="color" value="90,90,90,255"/>
+                  <Option type="QString" name="random_seed" value="0"/>
+                </Option>
+              </Option>
+            </layer>
+          </symbol>
+        </symbols>
+      </renderer-v2>
+    </maplayer>
+
+    <maplayer type="vector" geometry="Polygon" hasScaleBasedVisibilityFlag="0">
+      <datasource>table="public"."fixture_pointpattern"</datasource>
+      <layername>point_pattern_fill</layername>
+      <layerOpacity>1</layerOpacity>
+      <renderer-v2 type="singleSymbol" symbollevels="0" forceraster="0" enableorderby="0">
+        <symbols>
+          <symbol type="fill" name="0" alpha="1" clip_to_extent="1" force_rhr="0">
+            <layer class="PointPatternFill" pass="0" locked="0">
+              <Option type="Map">
+                <Option type="QString" name="distance_x" value="4"/>
+                <Option type="QString" name="distance_y" value="4"/>
+                <Option type="QString" name="displacement_x" value="1"/>
+                <Option type="QString" name="displacement_y" value="1"/>
+                <Option type="QString" name="color" value="120,120,120,255"/>
+              </Option>
+            </layer>
+          </symbol>
+        </symbols>
+      </renderer-v2>
+    </maplayer>
+
+    <maplayer type="vector" geometry="Polygon" hasScaleBasedVisibilityFlag="0">
+      <datasource>table="public"."fixture_svgfill"</datasource>
+      <layername>svg_fill</layername>
+      <layerOpacity>1</layerOpacity>
+      <renderer-v2 type="singleSymbol" symbollevels="0" forceraster="0" enableorderby="0">
+        <symbols>
+          <symbol type="fill" name="0" alpha="1" clip_to_extent="1" force_rhr="0">
+            <layer class="SVGFill" pass="0" locked="0">
+              <Option type="Map">
+                <Option type="QString" name="path" value="/usr/share/qgis/svg/patterns/zebra.svg"/>
+                <Option type="QString" name="size" value="4"/>
+                <Option type="QString" name="size_unit" value="MM"/>
+                <Option type="QString" name="angle" value="0"/>
+              </Option>
+            </layer>
+          </symbol>
+        </symbols>
+      </renderer-v2>
+    </maplayer>
+
+    <!-- A solid fill with a gradient stacked ON TOP: the gradient is what a
+         viewer sees, so the whole symbol must be rasterised, not just the
+         bottom layer. -->
+    <maplayer type="vector" geometry="Polygon" hasScaleBasedVisibilityFlag="0">
+      <datasource>table="public"."fixture_stacked"</datasource>
+      <layername>stacked_fill_with_gradient</layername>
+      <layerOpacity>1</layerOpacity>
+      <renderer-v2 type="singleSymbol" symbollevels="0" forceraster="0" enableorderby="0">
+        <symbols>
+          <symbol type="fill" name="0" alpha="1" clip_to_extent="1" force_rhr="0">
+            <layer class="SimpleFill" pass="0" locked="0">
+              <Option type="Map">
+                <Option type="QString" name="color" value="245,245,240,255"/>
+                <Option type="QString" name="style" value="solid"/>
+                <Option type="QString" name="outline_color" value="35,35,35,255"/>
+                <Option type="QString" name="outline_width" value="0.26"/>
+              </Option>
+            </layer>
+            <layer class="GradientFill" pass="1" locked="0">
+              <Option type="Map">
+                <Option type="QString" name="color1" value="255,255,255,120"/>
+                <Option type="QString" name="color2" value="60,90,140,255"/>
+                <Option type="QString" name="gradient_type" value="linear"/>
+              </Option>
+            </layer>
+          </symbol>
+        </symbols>
+      </renderer-v2>
+    </maplayer>
+
+    <maplayer type="vector" geometry="LineString" hasScaleBasedVisibilityFlag="0">
+      <datasource>table="public"."fixture_markerline"</datasource>
+      <layername>marker_line</layername>
+      <layerOpacity>1</layerOpacity>
+      <renderer-v2 type="singleSymbol" symbollevels="0" forceraster="0" enableorderby="0">
+        <symbols>
+          <symbol type="line" name="0" alpha="1" clip_to_extent="1" force_rhr="0">
+            <layer class="MarkerLine" pass="0" locked="0">
+              <Option type="Map">
+                <Option type="QString" name="interval" value="2"/>
+                <Option type="QString" name="offset" value="0"/>
+                <Option type="QString" name="placement" value="0"/>
+                <Option type="Map">
+                  <Option type="QString" name="name" value="circle"/>
+                  <Option type="QString" name="color" value="200,200,200,255"/>
+                  <Option type="QString" name="size" value="2"/>
+                </Option>
+              </Option>
+            </layer>
+          </symbol>
+        </symbols>
+      </renderer-v2>
+    </maplayer>
+
+    <maplayer type="vector" geometry="Point" hasScaleBasedVisibilityFlag="0">
+      <datasource>table="public"."fixture_fontmarker"</datasource>
+      <layername>font_marker</layername>
+      <layerOpacity>1</layerOpacity>
+      <renderer-v2 type="singleSymbol" symbollevels="0" forceraster="0" enableorderby="0">
+        <symbols>
+          <symbol type="marker" name="0" alpha="1" clip_to_extent="1" force_rhr="0">
+            <layer class="FontMarker" pass="0" locked="0">
+              <Option type="Map">
+                <Option type="QString" name="name" value="Arial"/>
+                <Option type="QString" name="color" value="35,35,35,255"/>
+                <Option type="QString" name="size" value="8"/>
+                <Option type="QString" name="size_unit" value="MM"/>
+                <Option type="QString" name="label" value=""/>
+              </Option>
+            </layer>
+          </symbol>
+        </symbols>
+      </renderer-v2>
+    </maplayer>
+
+  </projectlayers>
+</qgis>
