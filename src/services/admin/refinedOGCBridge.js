@@ -95,6 +95,10 @@ class RefinedOGCBridge {
     // Perfect style extractor
     this.styleExtractor = new PerfectQGISStyleExtractor()
 
+    // Why the most recent extraction failed, so getStyle() can explain a
+    // fallback instead of silently shipping the flat default.
+    this.lastStyleFailure = null
+
     console.log(`[Refined OGC] 🚀 Initialized Refined OGC Bridge`)
     console.log(`[Refined OGC] 🌐 Server: ${this.serverConfig.baseUrl}`)
     console.log(`[Refined OGC] 📁 Project: ${this.serverConfig.project}`)
@@ -358,6 +362,13 @@ class RefinedOGCBridge {
         const result = {
           success: true,
           source: 'Perfect QGIS Style Extractor',
+          // Provenance: which file the symbology was read from, and whether
+          // it is really the authored style or a substituted default. The
+          // paper's fidelity claims rest on this being inspectable.
+          styleSource: extractedStyle.metadata.styleSource,
+          qmlPath: extractedStyle.metadata.qmlPath,
+          fallback: Boolean(extractedStyle.metadata.fallback),
+          fallbackReason: extractedStyle.metadata.fallbackReason || null,
           rendererType: extractedStyle.qgisStyle.rendererType,
           attributeName: extractedStyle.qgisStyle.attributeName,
           symbols: extractedStyle.webStyle.symbols,
@@ -376,18 +387,26 @@ class RefinedOGCBridge {
           }
         }
 
-        console.log(`[Refined OGC] ✅ Style extracted: ${result.symbols.length} symbols`)
+        console.log(
+          `[Refined OGC] ✅ Style extracted for ${layerName}: ${result.symbols.length} symbols ` +
+          `from ${result.styleSource}${result.fallback ? ` (FALLBACK: ${result.fallbackReason})` : ''}`
+        )
         this.styleCache.set(cacheKey, result)
         return result
       }
     } catch (extractError) {
-      console.log(`[Refined OGC] ⚠️ Style extraction failed: ${extractError.message}`)
+      console.log(`[Refined OGC] ⚠️ Style extraction failed for ${layerName}: ${extractError.message}`)
+      this.lastStyleFailure = { layerName, message: extractError.message }
     }
 
     // Method 2: Default style fallback (always works)
     console.log(`[Refined OGC] 🎨 Using default style`)
-    
+
     const defaultResult = this.getDefaultStyle(layerName)
+    defaultResult.fallback = true
+    defaultResult.fallbackReason = this.lastStyleFailure?.layerName === layerName
+      ? `extraction_failed: ${this.lastStyleFailure.message}`
+      : 'no_style_source'
     this.styleCache.set(cacheKey, defaultResult)
     return defaultResult
   }
@@ -399,6 +418,7 @@ class RefinedOGCBridge {
     return {
       success: true,
       source: 'Default Style',
+      styleSource: 'default',
       rendererType: 'singleSymbol',
       symbols: [{
         id: 'default',

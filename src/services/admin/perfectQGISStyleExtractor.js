@@ -43,20 +43,16 @@ class PerfectQGISStyleExtractor {
     console.log(`[Perfect Style] 📁 Project: ${projectPath}`)
 
     try {
-      // Step 1+2: Locate the layer's style XML. A per-layer QML sidecar
-      // (qgis-projects/styles/<layer>.qml — the council's exported
-      // symbology) takes priority over the project file; QML roots contain
-      // <renderer-v2> and <labeling> directly, so downstream parsing is
-      // identical.
-      let layerXML
-      const qmlPath = path.join(path.dirname(projectPath), 'styles', `${layerName}.qml`)
-      if (fs.existsSync(qmlPath)) {
-        console.log(`[Perfect Style] 📄 Using QML sidecar: ${qmlPath}`)
-        layerXML = fs.readFileSync(qmlPath, 'utf-8')
-      } else {
-        const projectContent = this.loadProjectFile(projectPath)
-        layerXML = this.findLayerInProject(projectContent, layerName)
-      }
+      // Step 1+2: Locate the layer's style XML. Resolution order is
+      // explicit override -> QGIS_QML_DIR -> styles/<layer>.qml ->
+      // canonical-qml/<layer>.qml -> the layer block inside the project
+      // file. Both QML locations hold the council's exported symbology;
+      // canonical-qml/ is where the OSM/master-plan styles actually live,
+      // and QML roots contain <renderer-v2> and <labeling> directly, so
+      // downstream parsing is identical whichever one wins.
+      const located = this.resolveStyleSource(layerName, projectPath, options)
+      let layerXML = located.xml
+      console.log(`[Perfect Style] 📄 Style source: ${located.source} (${located.qmlPath})`)
       
       // Step 3: Extract renderer information
       const qgisStyle = this.extractRenderer(layerXML, layerName)
@@ -84,12 +80,20 @@ class PerfectQGISStyleExtractor {
         metadata: {
           extractedAt: new Date().toISOString(),
           projectPath,
+          styleSource: located.source,
+          qmlPath: located.qmlPath,
+          aliasOf: located.aliasOf || null,
           rendererType: qgisStyle.rendererType,
           symbolCount: webStyle.symbols.length,
           hasComplexPatterns: webStyle.hasComplexPatterns,
           hasHatchPatterns: webStyle.hasHatchPatterns,
           hasGradients: webStyle.hasGradients,
-          hasLabels: labeling.enabled
+          hasLabels: labeling.enabled,
+          // A renderer QGIS does not describe (no <renderer-v2>, or an
+          // unhandled type) lands on the flat default symbol. Say so loudly
+          // instead of passing it off as the council's authored style.
+          fallback: Boolean(qgisStyle.fallback),
+          fallbackReason: qgisStyle.fallbackReason || null
         }
       }
 
@@ -107,6 +111,104 @@ class PerfectQGISStyleExtractor {
       console.error(`[Perfect Style] ❌ Extraction failed: ${error.message}`)
       throw error
     }
+  }
+
+  /**
+   * Resolve which file actually carries a layer's symbology.
+   *
+   * The project file only holds the layers a planning officer loaded into
+   * QGIS Desktop (the pilot set: proposed_peri_urban_zones, roads, zimbabwe,
+   * the gweru_* layers). The OSM-derived and master-plan layers the portal
+   * also serves -- districts, wards, landuse, buildings, stands -- live only
+   * as exported QML sidecars, so looking in the project alone silently
+   * produced the flat default style for most of the map.
+   *
+   * The order matches findCandidates() in src/services/gis/qgisImport.js, so
+   * both paths agree on what "the" style of a layer is:
+   *
+   *   1. options.qmlPath             explicit, used by tests and importers
+   *   2. $QGIS_QML_DIR/<layer>.qml   deployment override
+   *   3. styles/<layer>.qml          sidecar QGIS Desktop loads over the project
+   *   4. the layer block in the .qgs QGIS Server actually serves
+   *   5. canonical-qml/<layer>.qml   generated output, last resort
+   *
+   * A portal layer id that no QGIS artefact uses (the registry prefixes some
+   * layers `vungu_`, QGIS never saw that prefix) is retried without it, and
+   * the substitution is reported as `aliasOf`.
+   *
+   * @returns {{xml: string, source: string, qmlPath: string, aliasOf?: string}}
+   */
+  resolveStyleSource(layerName, projectPath, options = {}) {
+    if (options.qmlPath) {
+      const explicit = path.resolve(options.qmlPath)
+      if (fs.existsSync(explicit)) {
+        return { xml: fs.readFileSync(explicit, 'utf-8'), source: 'qml-explicit', qmlPath: explicit }
+      }
+      throw new Error(`QML path not found: ${explicit}`)
+    }
+
+    const projectDir = path.dirname(projectPath)
+    const attempts = [layerName]
+    const unprefixed = layerName.replace(/^vungu_/, '')
+    if (unprefixed !== layerName) attempts.push(unprefixed)
+
+    let firstFailure = null
+    for (const name of attempts) {
+      try {
+        const found = this.locateStyleSource(name, projectPath, projectDir)
+        return name === layerName ? found : { ...found, aliasOf: layerName }
+      } catch (error) {
+        if (!firstFailure) firstFailure = error
+      }
+    }
+    throw firstFailure
+  }
+
+  locateStyleSource(layerName, projectPath, projectDir) {
+    const envDir = process.env.QGIS_QML_DIR
+    if (envDir) {
+      const hit = this.findQmlFile(envDir, layerName)
+      if (hit) return { xml: fs.readFileSync(hit, 'utf-8'), source: 'qml-env-dir', qmlPath: hit }
+    }
+
+    const sidecar = this.findQmlFile(path.join(projectDir, 'styles'), layerName)
+    if (sidecar) return { xml: fs.readFileSync(sidecar, 'utf-8'), source: 'qml-sidecar', qmlPath: sidecar }
+
+    // A layer the project does not contain is normal for the OSM/master-plan
+    // set; fall through to the generated sidecar rather than failing.
+    let projectMiss = null
+    try {
+      return {
+        xml: this.findLayerInProject(this.loadProjectFile(projectPath), layerName),
+        source: 'project-file',
+        qmlPath: projectPath
+      }
+    } catch (error) {
+      projectMiss = error
+    }
+
+    const generated = this.findQmlFile(path.join(projectDir, 'canonical-qml'), layerName)
+    if (generated) {
+      return { xml: fs.readFileSync(generated, 'utf-8'), source: 'canonical-qml', qmlPath: generated }
+    }
+
+    throw new Error(
+      `No QGIS style for layer "${layerName}": not in ${projectPath} (${projectMiss?.message}) ` +
+      `and no <layer>.qml in styles/ or canonical-qml/`
+    )
+  }
+
+  /**
+   * <dir>/<layerName>.qml, tolerating a case difference between the QGIS
+   * layer name and the exported file name.
+   */
+  findQmlFile(dir, layerName) {
+    const exact = path.join(dir, `${layerName}.qml`)
+    if (fs.existsSync(exact)) return exact
+    if (!fs.existsSync(dir)) return null
+    const wanted = `${layerName}.qml`.toLowerCase()
+    const hit = fs.readdirSync(dir).find((f) => f.toLowerCase() === wanted)
+    return hit ? path.join(dir, hit) : null
   }
 
   /**
@@ -298,7 +400,7 @@ class PerfectQGISStyleExtractor {
 
     if (!rendererMatch) {
       console.log(`[Perfect Style] ⚠️ No renderer found, using default style`)
-      return this.getDefaultStyle(layerName)
+      return this.getDefaultStyle(layerName, 'no_renderer_in_style_source')
     }
 
     const rendererAttrs = rendererMatch[1]
@@ -319,7 +421,7 @@ class PerfectQGISStyleExtractor {
         return this.parseRuleBasedRenderer(rendererContent, layerName)
       default:
         console.log(`[Perfect Style] ⚠️ Unknown renderer type: ${rendererType}`)
-        return this.getDefaultStyle(layerName)
+        return this.getDefaultStyle(layerName, `unsupported_renderer:${rendererType || 'none'}`)
     }
   }
 
@@ -973,6 +1075,7 @@ class PerfectQGISStyleExtractor {
     const isOutlineOnly = !hasSimpleFill && hasSimpleLine && symbol.type === 'fill'
 
     // Process symbol layers (bottom to top)
+    const lineLayers = []
     for (const layer of (symbol.layers || [])) {
       // Handle fill from any fill-type layer (SimpleFill, LinePatternFill, PointPatternFill, etc.)
       if (layer.properties.fill) {
@@ -981,10 +1084,12 @@ class PerfectQGISStyleExtractor {
       if (layer.properties.stroke) {
         // Store all line layers for complex multi-line outlines
         if (layer.class === 'SimpleLine') {
-          webSymbol.strokeLayers.push({
+          const strokeLayer = {
             ...layer.properties.stroke,
             offset: layer.properties.raw?.offset ? parseFloat(layer.properties.raw.offset) : 0
-          })
+          }
+          webSymbol.strokeLayers.push(strokeLayer)
+          lineLayers.push({ ...strokeLayer, pass: layer.pass })
         }
         // Use the most prominent line as the main stroke
         if (!webSymbol.stroke || layer.properties.stroke.width > (webSymbol.stroke.width || 0)) {
@@ -994,6 +1099,20 @@ class PerfectQGISStyleExtractor {
       if (layer.properties.marker) {
         webSymbol.marker = { ...webSymbol.marker, ...layer.properties.marker }
       }
+    }
+
+    // Line symbols stack casing under core (QGIS renders symbol layers bottom
+    // to top). "Widest wins" -- correct for a polygon outline -- picks the
+    // casing, so every OSM road category came out the same white. The
+    // topmost SimpleLine is what a viewer actually sees; everything below it
+    // is casing.
+    const isLineSymbol = symbol.type === 'line'
+    if (isLineSymbol && lineLayers.length > 1) {
+      const topmost = lineLayers.reduce((best, l) => (l.pass >= best.pass ? l : best))
+      webSymbol.stroke = { ...topmost }
+      webSymbol.casingLayers = lineLayers
+        .filter((l) => l !== topmost)
+        .sort((a, b) => a.pass - b.pass)
     }
 
     // Mark as outline-only (no fill)
@@ -1056,22 +1175,96 @@ class PerfectQGISStyleExtractor {
       if (isOutlineOnly && symbol.strokeLayers && symbol.strokeLayers.length > 1) {
         maplibreStyle.additionalLayers = this.generateMultiLineLayerStyles(symbol.strokeLayers, webStyle.layerName)
       }
+      // Line symbols with casing (e.g. OSM roads): one flat casing layer under
+      // the main line, mirroring QGIS's bottom-to-top symbol stack.
+      if (maplibreStyle.type === 'line' && symbol.casingLayers?.length) {
+        maplibreStyle.additionalLayers = [
+          {
+            id: 'casing',
+            type: 'line',
+            placement: 'below',
+            paint: this.casingPaint(symbol, 'line')
+          }
+        ]
+      }
     } else if (webStyle.rendererType === 'graduatedSymbol') {
       // Graduated ranges: numeric step expression, not a category match
       maplibreStyle.paint = this.generateGraduatedPaint(webStyle, maplibreStyle.type)
+      if (maplibreStyle.type === 'line') maplibreStyle.additionalLayers = this.casingLayerFor(webStyle, 'line')
     } else if (webStyle.rendererType === 'RuleRenderer') {
       // QGIS rule filters don't translate to MapLibre expressions reliably;
       // render the primary rule's symbol and let GetLegendGraphic carry the
       // full legend (the documented pixel-perfect fallback).
       const primary = webStyle.symbols.find(s => s.render) || webStyle.symbols[0]
       maplibreStyle.paint = this.generateSimplePaint(primary, maplibreStyle.type)
+      if (maplibreStyle.type === 'line' && primary?.casingLayers?.length) {
+        maplibreStyle.additionalLayers = [
+          { id: 'casing', type: 'line', placement: 'below', paint: this.casingPaint(primary, 'line') }
+        ]
+      }
       maplibreStyle.metadata['qgis:ruleCount'] = webStyle.symbols.length
     } else {
       // Data-driven style (categorized)
       maplibreStyle.paint = this.generateDataDrivenPaint(webStyle, maplibreStyle.type)
+      if (maplibreStyle.type === 'line') maplibreStyle.additionalLayers = this.casingLayerFor(webStyle, 'line')
     }
 
     return maplibreStyle
+  }
+
+  /**
+   * Paint for the flat casing layer of a single line symbol: the widest line
+   * below the core, which is what QGIS shows as the road outline.
+   */
+  casingPaint(symbol, layerType) {
+    const casing = (symbol.casingLayers || []).reduce(
+      (best, l) => ((l.width || 0) > (best?.width || 0) ? l : best),
+      null
+    )
+    const paint = {
+      'line-color': casing?.color || '#7f8c8d',
+      'line-width': casing?.width || 1,
+      'line-opacity': casing?.opacity ?? 1
+    }
+    if (casing?.style === 'dash') paint['line-dasharray'] = [5, 2]
+    else if (casing?.style === 'dot') paint['line-dasharray'] = [2, 4]
+    if (casing?.useCustomDash && casing?.customDash) {
+      paint['line-dasharray'] = casing.customDash.split(';').map(Number)
+    }
+    if (casing?.offset) paint['line-offset'] = casing.offset
+    if (layerType !== 'line') delete paint['line-offset']
+    return paint
+  }
+
+  /**
+   * Casing layer for a data-driven line style, with per-category colour and
+   * width expressions so every road class keeps its own casing.
+   * @returns {Array<object>} empty when no symbol carries a casing
+   */
+  casingLayerFor(webStyle, layerType) {
+    if (layerType !== 'line') return []
+    const attr = (webStyle.attributeName || 'type').toLowerCase()
+    const colorExpr = ['match', ['get', attr]]
+    const widthExpr = ['match', ['get', attr]]
+    let entries = 0
+    for (const symbol of webStyle.symbols) {
+      if (!symbol.render || !symbol.casingLayers?.length) continue
+      const casing = this.casingPaint(symbol, layerType)
+      colorExpr.push(symbol.category, casing['line-color'])
+      widthExpr.push(symbol.category, casing['line-width'])
+      entries++
+    }
+    if (!entries) return []
+    colorExpr.push('#7f8c8d')
+    widthExpr.push(1)
+    return [
+      {
+        id: 'casing',
+        type: 'line',
+        placement: 'below',
+        paint: { 'line-color': colorExpr, 'line-width': widthExpr, 'line-opacity': 0.9 }
+      }
+    ]
   }
 
   /**
@@ -1419,12 +1612,16 @@ class PerfectQGISStyleExtractor {
   }
 
   /**
-   * Get default style when none found
+   * Get default style when none found.
+   * `reason` is carried through to metadata.fallbackReason so a caller (or
+   * the fidelity report) can tell an authored style from a substituted one.
    */
-  getDefaultStyle(layerName) {
+  getDefaultStyle(layerName, reason = 'no_style_source') {
     return {
       rendererType: 'singleSymbol',
       layerName,
+      fallback: true,
+      fallbackReason: reason,
       symbols: [this.getDefaultSymbol()],
       categories: [{
         value: 'default',

@@ -1055,13 +1055,21 @@ async function ogcServicesRoutes(fastify, options) {
       
       const bridge = getBridge()
       const result = await bridge.getStyledLayer(layerName, {})
-      
+
+      // Provenance travels with the style: which QGIS file the symbology came
+      // from, and whether it is the authored style or a substituted default.
+      // `fallback: true` is the signal to fall back to the WMS legend.
+      const style = result.style || {}
       return {
         success: true,
         data: {
           layerId: layerName,
           style: result.maplibreStyle,
-          source: result.style?.source,
+          source: style.source,
+          styleSource: style.styleSource,
+          qmlPath: style.qmlPath,
+          fallback: Boolean(style.fallback),
+          fallbackReason: style.fallbackReason || null,
           legend: result.legend?.legend,
           tileUrl: result.tileUrl
         }

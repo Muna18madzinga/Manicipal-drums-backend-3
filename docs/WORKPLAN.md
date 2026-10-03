@@ -69,6 +69,30 @@ friction, D is next paper chapter).
 
 ---
 
+## Stream E — style-extraction fidelity — done 2026-10-03
+
+The paper's central claim (QGIS renderer definitions survive into MapLibre paint
+expressions) was not demonstrable: the extractor only looked in
+`<projectDir>/styles/`, which does not exist, so every layer outside the 11-layer
+pilot project silently returned the flat default symbol with `success: true`.
+
+- Resolution order implemented and aligned with `qgisImport.findCandidates()`:
+  explicit → `$QGIS_QML_DIR` → `styles/` → project `.qgs` → `canonical-qml/`,
+  with a `vungu_`-prefix retry reported as `aliasOf`.
+- No silent fallbacks: `styleSource` / `qmlPath` / `fallback` / `fallbackReason`
+  are carried through the bridge and returned by
+  `GET /api/ogc/maplibre-style/:layer`.
+- Line-symbol fidelity defect fixed (casing was winning over core; all 27 road
+  classes rendered one white colour). Casing is now a `placement: 'below'`
+  layer with per-category colour and width; frontend honours the placement.
+- Evidence: `npm run verify:styles` → `docs/STYLE-FIDELITY-REPORT.md`
+  (**40/40 layers, 0 fallbacks, every classified renderer varies**) and
+  `npx jest test/style-extractor.test.js` (13 tests).
+- Known gap: hatch and gradient fill translation is implemented but **unexercised**
+  — no QML in the corpus uses `LinePatternFill`/`GradientFill`.
+
+---
+
 # Status
 
 ## Stream A — done 2026-10-02

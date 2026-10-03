@@ -253,3 +253,51 @@ The seed script is for bulk migration, not day-to-day work.
   correct outcome of QGIS being authoritative for those layers, but it is a visible
   change; if the council wants the ramp back, add it in QGIS or publish a new version
   carrying an `opacityCurve`.
+
+---
+
+## Legacy extractor path: where a layer's QML is read from (2026-10-03)
+
+The `gis_style` registry above is the governance path. The OGC bridge still answers
+`/api/ogc/maplibre-style/:layer` from the QGIS artefacts themselves, via
+`src/services/admin/perfectQGISStyleExtractor.js`. That extractor used to look in a single
+place -- `<projectDir>/styles/<layer>.qml` -- which does not exist. Only the 11 layers
+loaded into the pilot `vungu-project.qgs` ever resolved; every other layer fell through to
+the flat default symbol (`#45B7D1`) while still reporting `success: true`. The web map
+therefore looked styled for layers that had never been read.
+
+Resolution order is now explicit, and matches `findCandidates()` in
+`src/services/gis/qgisImport.js` so both paths agree:
+
+| # | Source | Meaning |
+|---|---|---|
+| 1 | `options.qmlPath` | explicit, used by tests and importers |
+| 2 | `$QGIS_QML_DIR/<layer>.qml` | deployment override |
+| 3 | `<projectDir>/styles/<layer>.qml` | sidecar QGIS Desktop loads over the project |
+| 4 | `<projectDir>/vungu-project.qgs` | the layer block QGIS Server actually serves |
+| 5 | `<projectDir>/canonical-qml/<layer>.qml` | published/generated output, last resort |
+
+A portal layer id that QGIS never saw (`vungu_`-prefixed ids) is retried without the
+prefix and the substitution is reported as `metadata.aliasOf`. Nothing resolves to a
+default silently: every response now carries `styleSource`, `qmlPath`, `fallback` and
+`fallbackReason`, and `GET /api/ogc/maplibre-style/:layer` returns them alongside the
+paint so a client can decide to fall back to the WMS `GetLegendGraphic`.
+
+Second defect fixed in the same pass: line symbols stack a casing under a core, and the
+"widest line wins" rule (right for a polygon outline) picked the casing, so all 27 `roads`
+categories rendered the same white. The topmost `SimpleLine` layer is now the core and the
+rest are emitted as a `placement: 'below'` casing layer with per-category colour and width
+expressions.
+
+Check it with:
+
+```
+npm run verify:styles      # writes docs/STYLE-FIDELITY-REPORT.md + docs/style-fidelity.json
+npx jest test/style-extractor.test.js
+```
+
+The report fails the run if any layer falls back, and flags a classified renderer whose
+paint collapsed to a single colour. Current state: **40/40 layers extract, 0 fallbacks**.
+Hatch and gradient fill handling is implemented in the extractor but **unexercised** -- no
+QML in the current corpus uses `LinePatternFill` or `GradientFill`, so that part of the
+translation is untested against real input.
