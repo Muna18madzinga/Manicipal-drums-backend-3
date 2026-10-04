@@ -18,6 +18,7 @@ const { SmartQGISExtractor } = require('./src/services/admin/smartQGISExtractor'
 
 // Import OGC Services Routes (WMS/WFS/WMTS)
 const ogcServicesRoutes = require('./src/routes/ogcServices')
+const { createWFSTransactionRoutes } = require('./src/routes/wfsTransaction')
 
 // Import Auth Routes
 const { authRoutes } = require('./src/routes/auth')
@@ -353,6 +354,16 @@ async function build() {
   try { require('node:fs').mkdirSync(uploadsRoot, { recursive: true }) } catch { /* noop */ }
   await server.register(require('./src/routes/protected-uploads').protectedUploadRoutes)
 
+  // Static build artifacts (PMTiles / FlatGeobuf for the Stream D tier) are
+  // public reference data, not citizen records, so they are served directly.
+  const { STATIC_ROOT } = require('./src/services/staticTiles')
+  try { require('node:fs').mkdirSync(STATIC_ROOT, { recursive: true }) } catch { /* noop */ }
+  await server.register(require('@fastify/static'), {
+    root: STATIC_ROOT,
+    prefix: '/static/',
+    decorateReply: false,
+  })
+
   // (Removed) onRoute debug log — was extremely noisy at startup and
   // leaked the entire route surface to stdout. Use `server.printRoutes()`
   // (already called below) for a one-shot summary.
@@ -679,6 +690,7 @@ async function build() {
   // Register OGC Services Routes (WMS/WFS/WMTS)
   try {
     await server.register(ogcServicesRoutes, { prefix: '/api' })
+    await server.register(async (s) => { await createWFSTransactionRoutes(s) })
     console.log('✅ OGC Services routes registered')
   } catch (error) {
     console.error('❌ Failed to register OGC Services routes:', error.message)

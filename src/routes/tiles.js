@@ -1165,6 +1165,54 @@ async function tilesRoutes(fastify) {
     }
   })
 
+  // Static PMTiles archives (cloud-optimised, low-cost hosting of
+  // largely static reference layers). Files live in PMTILES_DIR or the
+  // default data/pmtiles folder; MapLibre loads them via the pmtiles://
+  // protocol (see src/services/pmtilesProtocol.ts in the frontend).
+  fastify.get('/tiles/pmtiles/:archive', async (request, reply) => {
+    const fs = require('fs')
+    const path = require('path')
+    const dir = process.env.PMTILES_DIR || path.join(__dirname, '..', '..', 'data', 'pmtiles')
+    const safe = String(request.params.archive).replace(/[^a-zA-Z0-9._-]/g, '')
+    const file = path.join(dir, safe)
+    if (!file.startsWith(dir) || !fs.existsSync(file)) {
+      return reply.code(404).send({ error: 'Archive not found' })
+    }
+    const st = fs.statSync(file)
+    return reply
+      .header('Content-Type', 'application/x-protobuf')
+      .header('Content-Length', st.size)
+      .header('Cache-Control', 'public, max-age=604800')
+      .send(fs.createReadStream(file))
+  })
+
+  // FlatGeobuf: cloud-optimised single-file vector format. For largely
+  // static reference/admin layers this is cheaper to serve and stream than
+  // GeoJSON/WFS for desktop synchronisation and offline caches.
+  fastify.get('/tiles/fgb/:layer', async (request, reply) => {
+    const layer = getLayer(request.params.layer)
+    if (!layer) {
+      return reply.code(404).send({ error: `Unknown layer: ${request.params.layer}` })
+    }
+    try {
+      const flatgeobuf = require('flatgeobuf')
+      const geojson = {
+        type: 'FeatureCollection',
+        features: (await fastify.pg.query(
+          `SELECT jsonb_build_object('type','Feature','geometry',ST_AsGeoJSON(ST_SetSRID(geom,4326))::jsonb,'properties',to_jsonb(t) - 'geom') AS f FROM "${layer.table}" AS t WHERE geom IS NOT NULL LIMIT 50000`
+        )).rows.map((r) => r.f),
+      }
+      const fgb = await flatgeobuf.geojson2fgb(geojson)
+      return reply
+        .header('Content-Type', 'application/flatgeobuf')
+        .header('Cache-Control', 'public, max-age=604800')
+        .send(Buffer.from(fgb))
+    } catch (err) {
+      request.log.warn({ err }, 'flatgeobuf export failed')
+      return reply.code(500).send({ error: 'FlatGeobuf export failed', detail: err.message })
+    }
+  })
+
   fastify.get('/tiles/topo/:layer', async (request, reply) => {
     const layer = getLayer(request.params.layer)
     if (!layer) {
