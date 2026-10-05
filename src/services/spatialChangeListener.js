@@ -14,11 +14,31 @@ const { Client } = require('pg')
 const { LAYERS } = require('../config/spatialLayers')
 const { invalidateTileLayer, emitMapEvent } = require('../routes/tiles')
 
-// table name -> tile-layer id. Most registry entries serve their own table;
-// `stands` serves through stands_tile_view, so map its BASE table too —
-// triggers live on base tables, never on views.
+// table name -> tile-layer id. Most registry entries serve their own table.
+//
+// Two layers serve through a VIEW (`spatialLayers.js`): `stands` through
+// `stands_tile_view`, the zones through `zones_master`. Triggers can only be
+// attached to base tables — migration 109 skips relkind != 'r' deliberately,
+// and a QGIS edit written through either view lands on the base table. So the
+// NOTIFY always names the BASE table, which has no entry in the map built from
+// LAYERS. Unmapped, it fell through to `payload.table` and the browser looked
+// for a source named `vungu-<base table>` that no registry entry creates, so
+// getSource() returned undefined and the refresh silently did nothing.
+//
+// Map both base tables explicitly. Keep this list in step with any registry
+// entry whose `table` is not a real table.
 const TABLE_TO_LAYER = new Map(LAYERS.map((l) => [l.table, l.id]))
-TABLE_TO_LAYER.set('stands', 'stands')
+TABLE_TO_LAYER.set('stands', 'stands') // stands_tile_view -> stands
+TABLE_TO_LAYER.set('proposed_peri_urban_zones', 'vungu_proposed_peri_urban_zones') // zones_master
+
+// Resolves the table named in a NOTIFY payload to the tile-layer id the browser
+// subscribes to. Mirrors the fallback in _onNotification exactly — exported so
+// the coverage report reads the SAME map the live path uses and cannot drift
+// from it. A second implementation of this lookup is how the original defect
+// stayed invisible.
+function resolveLayerIdForTable(table) {
+  return TABLE_TO_LAYER.get(table) || table
+}
 
 const RECONNECT_MIN_MS = 2000
 const RECONNECT_MAX_MS = 30000
@@ -87,7 +107,7 @@ class SpatialChangeListener {
     // Registry tables map to their tile-layer id; anything else (qgis_*
     // staging pushes, survey parcels…) is emitted under its own table name
     // so dynamic-layer consumers can react too.
-    const layerId = TABLE_TO_LAYER.get(payload.table) || payload.table
+    const layerId = resolveLayerIdForTable(payload.table)
     const entry = this.pending.get(layerId) || { ops: {}, table: payload.table }
     entry.ops[payload.op] = (entry.ops[payload.op] || 0) + 1
     this.pending.set(layerId, entry)
@@ -161,4 +181,9 @@ module.exports = {
   startSpatialChangeListener,
   stopSpatialChangeListener,
   getSpatialListenerStatus,
+  // Read-only views onto the notification -> layer mapping. The coverage report
+  // uses these instead of re-deriving them, so what it displays and what the
+  // live path does can never disagree.
+  resolveLayerIdForTable,
+  TABLE_TO_LAYER,
 }

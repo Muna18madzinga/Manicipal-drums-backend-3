@@ -289,7 +289,18 @@ palette styling.
 
 ## 9. Smoke checks
 
+Start with the coverage report rather than the tile catalog. It answers the
+question the other checks cannot — *for each layer, can a write reach a browser
+tab, and if not, which link is open* — and it reads only the catalogue, so it is
+safe against production:
+
 ```bash
+# admin / gis_officer only. summary.wiringProblems should be 0.
+curl -b vungu_at=$TOKEN http://localhost:3000/api/qgis/sync/coverage \
+  | node -pe 'const d=JSON.parse(require("fs").readFileSync(0)).data;
+               `${d.summary.syncing}/${d.summary.layers} live, `+
+               `${d.summary.wiringProblems} wiring problems`'
+
 curl http://localhost:3000/api/tiles/layers     # 24-layer catalog
 curl http://localhost:3000/api/ogc/health       # healthy | degraded
 curl http://localhost:3000/api/qgis/health      # realtimeSync.listening: true
@@ -301,6 +312,31 @@ for layer in $(curl -s http://localhost:3000/api/ogc/layers | node -pe "JSON.par
   curl -s "http://localhost:3000/api/ogc/styled-layer/$layer" | grep -o '"error":"[^"]*"' && echo "  ^ $layer"
 done
 ```
+
+The same report is a screen at `/admin/pipeline-sync` (admin, gis_officer),
+linked from the symbology registry. It renders the same three things this
+section checks — listener liveness, OGC mode, and per-layer chain coverage —
+plus a live tail of `/api/map/events`, so an officer can watch a QGIS save land
+without opening a terminal.
+
+### What the coverage report checks, and why each one is separate
+
+A break anywhere in the hand-off is silent, so each link is verified
+independently rather than inferred from a neighbouring one:
+
+| Field | Catches |
+|---|---|
+| `legs[].triggerAttached` | No trigger on the backing table — the 2026-10-05 zones defect. |
+| `legs[].triggerFires` | Trigger present but `DISABLE`d. Present in `pg_trigger`, broadcasts nothing, and is **invisible to a trigger count**. |
+| `legs[].resolvesToThisLayer` | Trigger fires under a layer id no browser source carries, so `getSource()` returns undefined and the refresh is a no-op. |
+| `legs[].sourceRegistered` | Resolved id is not a registry id at all. |
+| `unrouted` | A relation whose trigger fires into nothing. Harmless to a user; it is why an audit counting triggers once looked clean. |
+| `shadowed` | A relation that fires under a *real* layer id but is not the table that layer is served from. Its edits evict the right cache and change nothing — worse than a clean no-op, because it looks like it worked. |
+
+The `TABLE_TO_LAYER` lookup is imported from
+`src/services/spatialChangeListener.js`, not re-derived, so the report cannot
+disagree with the live notification path. A second implementation of that
+lookup is exactly how the original defect stayed invisible.
 
 ## 10. Verified 2026-07-22
 

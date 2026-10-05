@@ -163,12 +163,66 @@ async function createQGISRoutes(server) {
     if (!base) return reply.status(400).send({ success: false, error: 'Invalid layer name' })
 
     try {
-      const { rows: tables } = await server.pg.query(
+      // A WMS layername and its table name are not always the same thing:
+      // `gweru_beyond_periurban_zones` lives in `vungu_beyond_peri_urban_zones`,
+      // `proposed_peri_urban_zones` in `zones_master`. Exact name match first,
+      // then the style-registry mapping (`qgis_layer` -> `data_source` table).
+      let { rows: tables } = await server.pg.query(
         `SELECT table_name FROM information_schema.tables
          WHERE table_schema = 'public' AND table_name = ANY($1)
          ORDER BY (table_name = $2) DESC LIMIT 1`,
         [[base, `qgis_${base}`], base]
       )
+      if (!tables.length) {
+        const { rows: mapped } = await server.pg.query(
+          `SELECT data_source AS table_name FROM public.gis_published_style
+           WHERE qgis_layer = $1 LIMIT 1`,
+          [base]
+        )
+        if (mapped.length) {
+          const mappedTable = sanitizeIdentifier(mapped[0].table_name)
+          if (mappedTable) {
+            const { rows: verify } = await server.pg.query(
+              `SELECT table_name FROM information_schema.tables
+               WHERE table_schema = 'public' AND table_name = $1 LIMIT 1`,
+              [mappedTable]
+            )
+            tables = verify
+          }
+        }
+      }
+      if (!tables.length) {
+        // Try the QGIS project file itself: each <maplayer> element records its
+        // datasource, mapping a WMS layername to its actual table. This covers
+        // layers absent from public.gis_published_style (e.g. zimbabwe -> country).
+        try {
+          const fs = require('fs')
+          const path = require('path')
+          const candidates = [
+            process.env.QGIS_PROJECT_LOCAL,
+            path.join(__dirname, '..', '..', 'qgis-projects', path.basename(process.env.QGIS_PROJECT || 'vungu-project.qgs')),
+          ].filter(Boolean)
+          for (const candidate of candidates) {
+            if (!fs.existsSync(candidate)) continue
+            const { PerfectQGISStyleExtractor } = require('../services/admin/perfectQGISStyleExtractor')
+            const mapped = new PerfectQGISStyleExtractor().getTableName(candidate, base)
+            if (mapped) {
+              const safe = sanitizeIdentifier(mapped)
+              if (safe) {
+                const { rows: verify } = await server.pg.query(
+                  `SELECT table_name FROM information_schema.tables
+                   WHERE table_schema = 'public' AND table_name = $1 LIMIT 1`,
+                  [safe]
+                )
+                if (verify.length) tables = verify
+              }
+            }
+            if (tables.length) break
+          }
+        } catch (error) {
+          request.log.warn({ msg: 'project-file layer lookup failed', err: error.message })
+        }
+      }
       if (!tables.length) return reply.status(404).send({ success: false, error: 'Layer not found' })
       const table = tables[0].table_name
       // Least privilege (security audit 2026-09-29): a sync token downloads GIS layers only — the
@@ -224,6 +278,28 @@ async function createQGISRoutes(server) {
         realtimeSync: getSpatialListenerStatus(),
         timestamp: new Date().toISOString()
       }
+    }
+  })
+
+  // Per-layer live-sync coverage: for every registry layer, can a PostGIS write
+  // actually reach a browser tab? This is the diagnostic that was missing on
+  // 2026-10-05, when a QGIS save produced no browser update and no screen could
+  // say why. See src/services/syncCoverage.js for the chain it walks.
+  //
+  // Gated to the same two roles as the symbology registry (src/routes/gisStyles.js
+  // STYLE_ADMINS): the GIS officer authors the data, the admin owns the runtime,
+  // and `planner` consumes both without needing the wiring.
+  server.get('/api/qgis/sync/coverage', { preHandler: requireRole(server, ['admin', 'gis_officer']) }, async (request, reply) => {
+    try {
+      const { buildSyncCoverage } = require('../services/syncCoverage')
+      return { success: true, data: await buildSyncCoverage(server.pg) }
+    } catch (error) {
+      request.log.error({ err: error }, '[QGIS] sync coverage failed')
+      return reply.status(500).send({
+        success: false,
+        error: 'Could not read sync coverage',
+        details: error.message,
+      })
     }
   })
 
