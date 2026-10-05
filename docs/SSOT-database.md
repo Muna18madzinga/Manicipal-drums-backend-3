@@ -24,8 +24,8 @@ Legend: ✅ allowlisted migration · ⚠️ dump/seed-only (missing on fresh dep
 | **Served as** | `zones_master` view (✅ 112) — the map/tile + permits both read this |
 | **Readers** | `development-control-refactored.js:48,85,192,…`, `land-use-management-enhanced.js:248,285,333`, `map-search.js:135,233,296`, `inspectorSpatial.js`, `tiles.js` |
 | **Writers** | `land-use-management-enhanced.js:333` |
-| **Duplicates/Legacy** | `gweru_peri_urban_zone` (Gweru legacy, seed only); removed `vungu_proposed_peri_urban_zones_` map-copy (dropped 2026-07-23, dead refs in `081_fix_schema_gaps.sql` = not allowlisted) |
-| **Notes** | FK target for `development_matrix`, `gweru_rural_farms`, `zone_land_use_controls`, `stands.zone_id` (✅ 126) |
+| **Duplicates/Legacy** | `gweru_peri_urban_zone` (Gweru legacy, seed only, empty). The map-copy `vungu_proposed_peri_urban_zones` was claimed dropped 2026-07-23 but the 2026-10-02 recovery restored it from a dump; genuinely dropped 2026-10-05 by `134_zones_single_source.sql`. Dead refs remain in `081_fix_schema_gaps.sql` (= not allowlisted). *(Earlier revisions of this line spelled it with a trailing underscore, `...zones_`, which never existed.)* |
+| **Notes** | FK target for `development_matrix`, `gweru_rural_farms`, `zone_land_use_controls`, `stands.zone_id` (✅ 126). `updated_at` is trigger-maintained (`trg_touch_updated_at`) — the only table edited from QGIS Desktop, so no application statement runs on an edit. |
 
 ## 2. Stands
 
@@ -147,7 +147,9 @@ Legend: ✅ allowlisted migration · ⚠️ dump/seed-only (missing on fresh dep
 
 **Phantom/legacy risk:** `spatial_planning.permit_applications` (plural — no CREATE), `vungu_proposed_peri_urban_zones` (dropped, dead refs in 081), `zwe_boundaries.*` (old backup schema).
 
-**Divergent FK hazard:** `zone_land_use_controls` bound to both `proposed_peri_urban_zones(id)` (050) and `vungu_proposed_peri_urban_zones(id)` (081) — only one is real on a live DB.
+**Divergent FK hazard — RESOLVED 2026-10-05.** This entry predicted the defect correctly and the prediction was ignored for six weeks: `zone_land_use_controls` was bound to both `proposed_peri_urban_zones(id)` (from 050) and `vungu_proposed_peri_urban_zones(id)` (from the un-allowlisted 081), and only the second one was live. `zone_id` was therefore `uuid` while every consumer passed an `integer`, so both land-use-control endpoints returned 500. `134_zones_single_source.sql` retargeted the FK and dropped the copy. Keep this line in the doc: 081 is still not allowlisted, so a fresh deploy that somehow runs it re-creates the hazard.
+
+**Land-use rules have never existed.** `zone_land_use_controls` has 0 rows, and 0 rows in the 2026-05-15 dump too — so `DATA-DUMP-REPORT.md`'s "4" is stale and there is nothing to recover. `/planning-assistant/decide` now returns `unknown` for every input, which is honest but means the assistant has never been usable. Related: live `land_use_groups` holds 10 rows coded `R1,R2,C1,C2,SC,P,I1,I2,OS,AG`, while the May dump holds 12 coded `GROUP_A`…`GROUP_L` — the codes a client would send no longer exist. `permission_types` still has no CREATE anywhere.
 
 **Grep-proven absences:** `CREATE TABLE public.proposed_peri_urban_zones` = 0 hits; `CREATE TABLE permission_types` = 0 hits; `CREATE TABLE gweru_rural_farms` = 0 hits; `ALTER TABLE development_matrix` = 0 hits.
 

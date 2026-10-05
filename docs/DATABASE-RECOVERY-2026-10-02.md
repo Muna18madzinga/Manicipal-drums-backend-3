@@ -117,8 +117,7 @@ Fresh-DB migration run now completes end-to-end. Changes:
    (ogr2ogr imports, supervisor dump, GeoPackage imports) — `wards`,
    `districts`, `buildings`, `gweru_health_centres`, `gweru_peri_urban_zone`,
    `proposed_peri_urban_zones`, `vungu_proposed_peri_urban_zones`,
-   `development_matrix`, `land_use_groups`, `zone_land_use_controls`.
-3. `migrations/075_notifications_and_kyc.sql` + `076_production_hardening.sql`:
+   `development_matrix`, `land_use_groups`, `zone_land_use_controls`.3. `migrations/075_notifications_and_kyc.sql` + `076_production_hardening.sql`:
    plural `spatial_planning.permit_applications` references corrected to the
    canonical singular `permit_application`, and four user-FK columns fixed
    INTEGER→UUID.
@@ -175,3 +174,51 @@ Residual risk, unresolved:
 Backups left in the PostgreSQL data directory: `pg_hba.conf.bak-20261003`
 (before the container rules) and `pg_hba.conf.bak-trust-20261003` (before the
 temporary trust rules).
+
+---
+
+## Addendum 2026-10-05: step 2 above reintroduced a dropped table, and the FK with it
+
+Item 2 of this recovery added `vungu_proposed_peri_urban_zones` to
+`000_legacy_spatial_stubs.sql`, classifying it as a "legacy spatial object only
+ever populated externally". That classification was the error. It was not legacy
+at that point — `SSOT-spatial.md` had recorded it as **dropped on 2026-07-23**,
+which was true at the time.
+
+Worse, the stub did not stop at the table shape. `000_legacy_spatial_stubs.sql:441`
+adds:
+
+```sql
+ALTER TABLE ONLY public.zone_land_use_controls
+  ADD CONSTRAINT zone_land_use_controls_zone_id_fkey
+  FOREIGN KEY (zone_id) REFERENCES public.vungu_proposed_peri_urban_zones(id) ON DELETE CASCADE;
+```
+
+So the recovery faithfully reproduced the pre-2026-07-23 schema — including the
+FK that was supposed to have been dropped with the table. That FK bound
+`zone_land_use_controls.zone_id` to `uuid` while every consumer passes
+`proposed_peri_urban_zones.id`, which is `integer`. For the three weeks between
+the recovery and 2026-10-05, both land-use-control endpoints returned 500:
+
+- `POST /planning-assistant/decide` → `invalid input syntax for type uuid`
+- `POST /zones/:id/controls` → same, on insert
+- `GET /api/zones/:id/controls` → same, on read
+
+Fixed by `migrations/134_zones_single_source.sql`. Two lessons worth keeping:
+
+1. **A stub migration must not re-create what a later migration drops.** 134 runs
+   at the tail and converges the schema, so a fresh deploy is correct — but it
+   creates `vungu_proposed_peri_urban_zones` and then drops it again. The clean
+   fix is to delete the stub entry and its FK, which is follow-up work, not done
+   here because the stub also carries the *only* `CREATE` for `land_use_groups`
+   and `zone_land_use_controls` and removing it needs its own audit.
+2. **Classifying a table as "legacy" because nothing in the application reads it
+   is how a second implementation survives a refactor.** `SSOT-database.md:150`
+   predicted this exact FK divergence on 2026-10-02 — the same day — and the
+   prediction was not acted on. The table was invisible to code review because
+   grep found no readers: the only thing pointing at it was a constraint.
+
+What made it visible in the end was `GET /api/qgis/sync/coverage` reporting the
+relation as `shadowed`: it resolved to a valid layer id but was not the table
+behind `zones_master`, which is precisely the "edits report success and nothing
+appears" shape. Schema review cannot see that class of bug; a coverage report can.

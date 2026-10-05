@@ -52,15 +52,15 @@ async function landUseManagementRoutes(fastify, { auth }) {
 
       const result = await pool.query(
         `SELECT
-           lug.group_id, lug.group_code, lug.description, lug.group_category,
+           lug.id AS group_id, lug.group_code, lug.description, lug.group_category,
            lug.development_category, lug.use_scale, lug.notes, lug.is_active,
            lug.created_at,
            COUNT(zlc.id) as land_use_controls_count
          FROM land_use_groups lug
          LEFT JOIN zone_land_use_controls zlc
-           ON lug.group_id = zlc.land_use_group_id AND zlc.deleted_at IS NULL
+           ON lug.id = zlc.land_use_group_id AND zlc.deleted_at IS NULL
          WHERE ${whereSql}
-         GROUP BY lug.group_id, lug.group_code, lug.description, lug.group_category,
+         GROUP BY lug.id, lug.group_code, lug.description, lug.group_category,
                   lug.development_category, lug.use_scale, lug.notes, lug.is_active, lug.created_at
          ORDER BY lug.group_category, lug.group_code
          LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
@@ -550,7 +550,7 @@ async function landUseManagementRoutes(fastify, { auth }) {
           COUNT(zlc.id) as total_controls
         FROM proposed_peri_urban_zones puz
         LEFT JOIN zone_land_use_controls zlc ON puz.id = zlc.zone_id
-        LEFT JOIN land_use_groups lug ON zlc.land_use_group_id = lug.group_id
+        LEFT JOIN land_use_groups lug ON zlc.land_use_group_id = lug.id
         WHERE puz.id = $1
         GROUP BY puz.id, lug.group_code, lug.description, lug.group_category, lug.development_category, lug.use_scale, zlc.control_type
       `, [id]);

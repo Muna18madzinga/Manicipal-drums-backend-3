@@ -87,6 +87,9 @@ describe('migration plan', () => {
       '130_api_token_registry.sql',
       '132_gis_core_register.sql',
       '133_gms_editing.sql',
+      '134_zones_single_source.sql',
+      '135_zones_area_ha.sql',
+      '136_zones_id_sequence.sql',
     ])
 
     for (const filename of MIGRATIONS) {

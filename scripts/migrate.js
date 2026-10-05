@@ -120,6 +120,16 @@ const MIGRATIONS = [
   '132_gis_core_register.sql',
   // GMS editing, QA queue and feature history. Depends on 132 (gis_ops).
   '133_gms_editing.sql',
+  // Single-source the peri-urban zones table. Retargets the land-use-control
+  // FK off the superseded copy the 2026-10-02 recovery restored, drops that
+  // copy, and starts maintaining updated_at on a QGIS-authored table.
+  '134_zones_single_source.sql',
+  // area_ha as a STORED generated column: zones.js referenced a column that only
+  // existed on the superseded copy, so every route in the file returned 500.
+  '135_zones_area_ha.sql',
+  // A value source for proposed_peri_urban_zones.id, without which drawing a new
+  // zone in QGIS Desktop fails the NOT NULL constraint on insert.
+  '136_zones_id_sequence.sql',
 ]
 
 function createPool(env = process.env) {
