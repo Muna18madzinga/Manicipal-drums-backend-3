@@ -1,11 +1,26 @@
 from qgis.PyQt.QtWidgets import QAction, QDockWidget, QWidget, QVBoxLayout, QLabel, QPushButton, QLineEdit, QTextEdit, QComboBox, QHBoxLayout, QCheckBox
 from qgis.PyQt.QtCore import Qt, QUrl, QTimer, pyqtSignal, QObject
 from qgis.PyQt.QtGui import QColor
-from qgis.core import QgsVectorLayer, QgsProject, QgsFeature, QgsGeometry, QgsPalLayerSettings, QgsVectorLayerSimpleLabeling
+from qgis.PyQt.QtXml import QDomDocument
+from qgis.core import QgsVectorLayer, QgsProject, QgsFeature, QgsGeometry, QgsPalLayerSettings, QgsVectorLayerSimpleLabeling, QgsReadWriteContext, QgsRenderContext
+import hashlib
 import json
 import requests
 import threading
 import time
+
+def _enum(owner, enum_name, member):
+    """Resolve a Qt enum member on both Qt 5 and Qt 6.
+
+    Qt 6 (QGIS 4) only exposes enums scoped, e.g. Qt.DockWidgetArea.RightDockWidgetArea;
+    Qt 5 (QGIS 3) exposes them flat, e.g. Qt.RightDockWidgetArea. The flat form
+    raised AttributeError while building the dock on QGIS 4.
+    """
+    scoped = getattr(owner, enum_name, None)
+    if scoped is not None and hasattr(scoped, member):
+        return getattr(scoped, member)
+    return getattr(owner, member)
+
 
 class StyleMonitor(QObject):
     """Monitor QGIS layer style changes and trigger auto-uploads"""
@@ -54,6 +69,17 @@ class StyleMonitor(QObject):
                 'labeling': None
             }
             
+            # Fingerprint the whole renderer. Only single-symbol renderers have a
+            # symbol(); categorised, graduated and rule-based ones used to have no
+            # fingerprint at all, so editing a class colour never triggered an upload.
+            try:
+                doc = QDomDocument()
+                doc.appendChild(layer.renderer().save(doc, QgsReadWriteContext()))
+                style_info['renderer_xml'] = hashlib.md5(doc.toString().encode('utf-8')).hexdigest()
+                style_info['opacity'] = layer.opacity()
+            except Exception:
+                pass
+
             # Extract symbol information
             if hasattr(layer.renderer(), 'symbol'):
                 symbol = layer.renderer().symbol()
@@ -123,7 +149,7 @@ class VunguIntegrationDock(QDockWidget):
     def setup_ui(self):
         print("DEBUG: Setting up VunguIntegrationDock UI")
         self.setWindowTitle("Vungu Integration")
-        self.setAllowedAreas(Qt.RightDockWidgetArea | Qt.LeftDockWidgetArea)
+        self.setAllowedAreas(_enum(Qt, 'DockWidgetArea', 'RightDockWidgetArea') | _enum(Qt, 'DockWidgetArea', 'LeftDockWidgetArea'))
         
         # Create main widget
         widget = QWidget()
@@ -157,7 +183,7 @@ class VunguIntegrationDock(QDockWidget):
         
         self.api_token = QLineEdit()
         self.api_token.setPlaceholderText("Enter API Token")
-        self.api_token.setEchoMode(QLineEdit.Password)
+        self.api_token.setEchoMode(_enum(QLineEdit, 'EchoMode', 'Password'))
         layout.addWidget(QLabel("API Token:"))
         layout.addWidget(self.api_token)
         
@@ -206,7 +232,8 @@ class VunguIntegrationDock(QDockWidget):
         
     def toggle_auto_upload(self, state):
         """Toggle auto-upload monitoring"""
-        if state == Qt.Checked:
+        # isChecked(): the int 'state' compares unequal to the Qt 6 CheckState enum.
+        if self.auto_upload_checkbox.isChecked():
             self.auto_upload_status.setText("Auto-upload: Enabled")
             self.auto_upload_status.setStyleSheet("color: #27ae60; font-size: 12px;")
             self.style_monitor.start_monitoring()
@@ -327,8 +354,8 @@ class VunguIntegrationDock(QDockWidget):
             return {}
     
     def extract_qgis_style(self, layer):
-        """Extract QGIS styling information (wrapper for existing method)"""
-        return self.extract_layer_styling(layer)
+        """Style payload for a layer — the same one a manual sync sends."""
+        return self._build_style_info(layer)
         
     def refresh_layers(self):
         try:
@@ -708,35 +735,9 @@ class VunguIntegrationDock(QDockWidget):
             feature_count = layer.featureCount()
             geometry_type = layer.geometryType()
             
-            # Get renderer and extract styling
-            renderer = layer.renderer()
-            style_info = {}
-            
             self.status.append(f"🎨 Extracting styling for geometry type: {geometry_type}")
-            
-            # Handle different renderer types
-            if hasattr(renderer, 'type'):
-                renderer_type = renderer.type()
-                self.status.append(f"🎨 Renderer type: {renderer_type}")
-                self.status.append(f"🎨 Renderer class: {type(renderer).__name__}")
-                
-                # Check for categorized renderer by class name as fallback
-                if renderer_type == 'categorizedSymbol' or 'categorized' in type(renderer).__name__.lower():
-                    # Handle categorized styling
-                    self.status.append(f"🎨 Processing categorized renderer")
-                    style_info = self._extract_categorized_styling(layer, renderer, geometry_type)
-                elif renderer_type == 'singleSymbol':
-                    # Handle single symbol styling
-                    self.status.append(f"🎨 Processing single symbol renderer")
-                    style_info = self._extract_single_styling(layer, renderer, geometry_type)
-                else:
-                    # Fallback to basic styling
-                    self.status.append(f"🎨 Using basic styling for renderer type: {renderer_type}")
-                    style_info = self._extract_basic_styling(layer, geometry_type)
-            else:
-                # Fallback
-                style_info = self._extract_basic_styling(layer, geometry_type)
-            
+            style_info = self._build_style_info(layer)
+
             # Add layer metadata
             style_info['_layerName'] = layer.name()
             style_info['_featureCount'] = feature_count
@@ -799,12 +800,103 @@ class VunguIntegrationDock(QDockWidget):
                 "features": []
             }
     
+    def _build_style_info(self, layer):
+        """Describe a layer's renderer: single, categorized, graduated, rule-based.
+
+        Anything else (heatmap, merged features, ...) is reported as 'basic'
+        from the first symbol it exposes, never from a hard-coded point.
+        """
+        geometry_type = layer.geometryType()
+        renderer = layer.renderer()
+        if renderer is None or not hasattr(renderer, 'type'):
+            return self._extract_basic_styling(layer, geometry_type)
+        renderer_type = renderer.type()
+        self.status.append(f"🎨 Renderer type: {renderer_type} ({type(renderer).__name__})")
+        if renderer_type == 'categorizedSymbol':
+            return self._extract_categorized_styling(layer, renderer, geometry_type)
+        if renderer_type == 'graduatedSymbol':
+            return self._extract_graduated_styling(layer, renderer, geometry_type)
+        if renderer_type == 'RuleRenderer':
+            return self._extract_rule_styling(layer, renderer, geometry_type)
+        if renderer_type == 'singleSymbol':
+            return self._extract_single_styling(layer, renderer, geometry_type)
+        self.status.append(f"🎨 Using basic styling for renderer type: {renderer_type}")
+        return self._extract_basic_styling(layer, geometry_type)
+
+    def _default_class_style(self, entries):
+        """The first class's style, which consumers use as the layer default."""
+        if not entries:
+            return {}
+        skip = ('value', 'label', 'lower', 'upper', 'filter', 'isElse', 'minScale', 'maxScale', 'active')
+        return {k: v for k, v in entries[0].items() if k not in skip}
+
+    def _extract_graduated_styling(self, layer, renderer, geometry_type):
+        """Graduated: one entry per class range, with the numeric bounds."""
+        try:
+            ranges = []
+            for r in renderer.ranges():
+                ranges.append({
+                    "lower": r.lowerValue(),
+                    "upper": r.upperValue(),
+                    "label": r.label(),
+                    **self._extract_symbol_style(r.symbol(), geometry_type, layer)
+                })
+            self.status.append(f"🎨 Found {len(ranges)} graduated classes on '{renderer.classAttribute()}'")
+            return {
+                "_rendererType": "graduated",
+                "_attribute": renderer.classAttribute(),
+                "_ranges": ranges,
+                "_style": self._default_class_style(ranges)
+            }
+        except Exception as e:
+            self.status.append(f"⚠️ Error extracting graduated styling: {e}")
+            return self._extract_basic_styling(layer, geometry_type)
+
+    def _extract_rule_styling(self, layer, renderer, geometry_type):
+        """Rule-based: one entry per rule that carries a symbol, nested filters
+        combined with AND, plus the scale range and ELSE flag."""
+        try:
+            rules = []
+
+            def walk(rule, parent_filter):
+                expr = rule.filterExpression() or ''
+                if parent_filter and expr:
+                    combined = f"({parent_filter}) AND ({expr})"
+                else:
+                    combined = parent_filter or expr
+                symbol = rule.symbol()
+                if symbol is not None:
+                    rules.append({
+                        "label": rule.label(),
+                        "filter": combined,
+                        "isElse": bool(rule.isElse()),
+                        "minScale": rule.minimumScale(),
+                        "maxScale": rule.maximumScale(),
+                        "active": bool(rule.active()),
+                        **self._extract_symbol_style(symbol, geometry_type, layer)
+                    })
+                for child in rule.children():
+                    walk(child, combined)
+
+            for child in renderer.rootRule().children():
+                walk(child, '')
+            self.status.append(f"🎨 Found {len(rules)} rules")
+            return {
+                "_rendererType": "rule",
+                "_rules": rules,
+                "_style": self._default_class_style(rules)
+            }
+        except Exception as e:
+            self.status.append(f"⚠️ Error extracting rule-based styling: {e}")
+            return self._extract_basic_styling(layer, geometry_type)
+
     def _extract_categorized_styling(self, layer, renderer, geometry_type):
         """Extract categorized styling with intelligent geometry type detection"""
         try:
             categories = []
             style_info = {
                 "_rendererType": "categorized",
+                "_attribute": renderer.classAttribute() if hasattr(renderer, 'classAttribute') else None,
                 "_categories": []
             }
             
@@ -862,17 +954,28 @@ class VunguIntegrationDock(QDockWidget):
             return self._extract_basic_styling(layer, geometry_type)
     
     def _extract_basic_styling(self, layer, geometry_type):
-        """Extract basic styling as fallback"""
+        """Fallback: the first symbol the renderer exposes, else a neutral
+        default for the layer's own geometry type (not a grey point)."""
         try:
-            symbol = layer.renderer().symbol()
-            style_info = {
-                "_rendererType": "basic",
-                "_style": self._extract_symbol_style(symbol, geometry_type, layer)
-            }
-            return style_info
+            renderer = layer.renderer()
+            symbol = renderer.symbol() if hasattr(renderer, 'symbol') else None
+            if symbol is None and hasattr(renderer, 'symbols'):
+                symbols = renderer.symbols(QgsRenderContext())
+                symbol = symbols[0] if symbols else None
+            if symbol is not None:
+                return {
+                    "_rendererType": "basic",
+                    "_style": self._extract_symbol_style(symbol, geometry_type, layer)
+                }
         except Exception as e:
             self.status.append(f"⚠️ Error extracting basic styling: {e}")
-            return {"_style": {"type": "point", "color": "#666666"}}
+        defaults = {
+            0: {"type": "point", "radius": 6, "color": "#666666"},
+            1: {"type": "line", "color": "#3498db", "width": 3},
+            2: {"type": "polygon", "fillColor": "#27ae60", "fillOpacity": 0.6,
+                "strokeColor": "#2c3e50", "strokeWidth": 1},
+        }
+        return {"_rendererType": "basic", "_style": defaults.get(int(geometry_type), defaults[0])}
     
     def _extract_symbol_style(self, symbol, geometry_type, layer=None):
         """Extract symbol style with intelligent geometry type handling"""
@@ -1154,7 +1257,7 @@ class VunguIntegration:
             # Create and add dock widget
             self.dock = VunguIntegrationDock(self.iface)
             print("DEBUG: Dock widget created")
-            self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dock)
+            self.iface.addDockWidget(_enum(Qt, 'DockWidgetArea', 'RightDockWidgetArea'), self.dock)
             print("DEBUG: Dock widget added to interface")
             
             print("DEBUG: initGui completed successfully")

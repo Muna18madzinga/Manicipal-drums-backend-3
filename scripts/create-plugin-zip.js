@@ -33,7 +33,9 @@ async function createPluginZip() {
     
     // Add the entire vungu-integration directory as 'vungu-integration' root
     console.log('Adding plugin directory to archive...');
-    archive.directory(pluginPath, 'vungu-integration');
+    // (skip Python bytecode caches: they are machine-specific build artefacts)
+    archive.directory(pluginPath, 'vungu-integration', (entry) =>
+      /(^|[\\/])__pycache__([\\/]|$)|\.pyc$/.test(entry.name) ? false : entry);
     
     // Finalize the archive
     archive.finalize();
