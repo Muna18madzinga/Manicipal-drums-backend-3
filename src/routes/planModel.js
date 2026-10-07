@@ -6,7 +6,8 @@
  *   GET /api/plan-profiles     the reusable profiles (rural, urban) and their template plans
  *   GET /api/plans             plan instruments; filter with ?authority=<code>,
  *                              ?profile=<code>, ?template=true|false
- *   GET /api/plans/:id/diff    how a plan adopted from a template differs from it
+ *   GET /api/plans/:id/diff    how a plan differs from the template it was adopted from, or
+ *                              (?against=previous | <plan id>) from its previous version or another plan
  *   GET /api/plans/:a/compare/:b  two plans side by side by reference class: where they
  *                              overlap and which classes only one of them covers
  *   GET /api/plans/:id/crosswalk  each zone type and land use of a plan with the reference
@@ -109,14 +110,40 @@ async function planModelRoutes(fastify) {
     const { id } = request.params
     if (!UUID_RE.test(id)) return reply.code(400).send({ success: false, error: 'plan id must be a uuid' })
     try {
-      const { rows: plan } = await fastify.pg.query(
-        'SELECT id, title, derived_from_id FROM plan_instrument WHERE id = $1', [id])
-      if (!plan.length) return reply.code(404).send({ success: false, error: 'Unknown plan' })
-      if (!plan[0].derived_from_id) {
-        return { success: true, count: 0, data: { plan_id: id, title: plan[0].title, template_id: null, changes: [], note: 'This plan was not adopted from a template.' } }
+      const against = (request.query || {}).against
+      if (against !== undefined && against !== 'previous' && against !== 'template' && !UUID_RE.test(against)) {
+        return reply.code(400).send({ success: false, error: 'against must be previous, template or a plan id' })
       }
-      const { rows } = await fastify.pg.query('SELECT * FROM plan_diff($1)', [id])
-      return { success: true, count: rows.length, data: { plan_id: id, title: plan[0].title, template_id: plan[0].derived_from_id, changes: rows } }
+      const { rows: plan } = await fastify.pg.query(
+        'SELECT id, title, derived_from_id, supersedes_id FROM plan_instrument WHERE id = $1', [id])
+      if (!plan.length) return reply.code(404).send({ success: false, error: 'Unknown plan' })
+      const p = plan[0]
+
+      // What to compare with: the template by default, else the previous version.
+      let baseId = null
+      let kind = null
+      if (against === undefined || against === 'template') { baseId = p.derived_from_id; kind = 'template' }
+      if (against === 'previous' || (against === undefined && !baseId)) { baseId = p.supersedes_id; kind = 'previous' }
+      if (against && UUID_RE.test(against)) {
+        const { rows: other } = await fastify.pg.query('SELECT id FROM plan_instrument WHERE id = $1', [against])
+        if (!other.length) return reply.code(404).send({ success: false, error: 'Unknown plan to compare with' })
+        baseId = against
+        kind = 'plan'
+      }
+      if (!baseId) {
+        return { success: true, count: 0, data: { plan_id: id, title: p.title, template_id: p.derived_from_id, against_id: null, changes: [], note: 'This plan was not adopted from a template and has no previous version.' } }
+      }
+      const { rows } = kind === 'template'
+        ? await fastify.pg.query('SELECT * FROM plan_diff($1)', [id])
+        : await fastify.pg.query('SELECT * FROM plan_decision_diff($1, $2)', [baseId, id])
+      // Same field names whichever the comparison: from_/to_ always, template_/plan_ kept for older readers.
+      const changes = rows.map((r) => ({
+        zone_type_code: r.zone_type_code, land_use_code: r.land_use_code,
+        from_decision: r.from_decision ?? r.template_decision, to_decision: r.to_decision ?? r.plan_decision,
+        template_decision: r.template_decision ?? r.from_decision, plan_decision: r.plan_decision ?? r.to_decision,
+        change: r.change,
+      }))
+      return { success: true, count: changes.length, data: { plan_id: id, title: p.title, template_id: p.derived_from_id, against_id: baseId, against: kind, changes } }
     } catch (err) {
       request.log.error({ err }, 'plan diff failed')
       return reply.code(500).send({ success: false, error: 'Failed to compute the plan diff' })

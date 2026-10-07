@@ -31,7 +31,8 @@ const fs = require('fs')
 const path = require('path')
 require('dotenv').config({ path: path.join(__dirname, '..', '.env'), quiet: true })
 const { Pool } = require('pg')
-const { parseCsv, planImport, buildTemplate } = require('../src/utils/zoningMatrixImport')
+const { parseCsv, buildTemplate } = require('../src/utils/zoningMatrixImport')
+const { loadPlanContext, analyse, applyCells } = require('../src/services/planMatrixImport')
 
 function arg(name) {
   const i = process.argv.indexOf(`--${name}`)
@@ -92,12 +93,8 @@ async function main() {
     }
 
     const plan = await resolvePlan(pool, planArg)
-    const { rows: zoneTypes } = await pool.query(
-      'SELECT id, code, name AS label, display_no AS display_order FROM plan_zone_type WHERE plan_instrument_id = $1', [plan.id])
-    const { rows: groups } = await pool.query(
-      'SELECT id, group_code, description, display_order, is_active FROM land_use_groups WHERE plan_instrument_id = $1', [plan.id])
-    const { rows: zones } = await pool.query(
-      'SELECT id, zone FROM proposed_peri_urban_zones WHERE plan_instrument_id = $1 ORDER BY id', [plan.id])
+    const ctx = await loadPlanContext(pool, plan.id)
+    const { zoneTypes, groups, zones } = ctx
 
     console.log(`Plan: ${plan.title} ${plan.is_template ? '(template)' : `(${plan.authority_name})`}`)
     if (planArg === null) console.log('  (no --plan given: using the rural profile template)')
@@ -113,10 +110,7 @@ async function main() {
       return
     }
 
-    const { rows: existing } = await pool.query(
-      `SELECT zone_id, zone_type, plan_zone_type_id, land_use_group_id, control_type, conditions, notes, authority, deleted_at
-         FROM zone_land_use_controls WHERE plan_instrument_id = $1`, [plan.id])
-    const plan_ = planImport({ rows: parseCsv(fs.readFileSync(file, 'utf8')), zones, zoneTypes, groups, existing })
+    const plan_ = analyse(ctx, fs.readFileSync(file, 'utf8'))
     const s = plan_.summary
 
     console.log(`\nZoning matrix import — ${apply ? (rollback ? 'APPLY then ROLL BACK (test)' : 'APPLY') : 'dry run (nothing is written)'}`)
@@ -145,22 +139,7 @@ async function main() {
     const client = await pool.connect()
     try {
       await client.query('BEGIN')
-      for (const c of plan_.cells.filter((x) => x.action !== 'unchanged')) {
-        // A cell targets a plan zone type, a legacy global zone-type code, or a zone polygon.
-        const target = c.plan_zone_type_id
-          ? { col: 'plan_zone_type_id', val: c.plan_zone_type_id, conflict: '(plan_zone_type_id, land_use_group_id) WHERE plan_zone_type_id IS NOT NULL' }
-          : c.zone_type
-            ? { col: 'zone_type', val: c.zone_type, conflict: '(zone_type, land_use_group_id) WHERE zone_type IS NOT NULL' }
-            : { col: 'zone_id', val: c.zone_id, conflict: '(zone_id, land_use_group_id)' }
-        await client.query(
-          `INSERT INTO zone_land_use_controls (${target.col}, land_use_group_id, control_type, authority, conditions, notes)
-           VALUES ($1, $2, $3, $4, $5, $6)
-           ON CONFLICT ${target.conflict} DO UPDATE SET
-             control_type = EXCLUDED.control_type, authority = EXCLUDED.authority,
-             conditions = EXCLUDED.conditions, notes = EXCLUDED.notes,
-             updated_at = NOW(), deleted_at = NULL, deleted_by = NULL`,
-          [target.val, c.land_use_group_id, c.control_type, c.authority, c.conditions, c.notes])
-      }
+      await applyCells(client, plan_.cells)
       if (rollback) {
         const { rows: [n] } = await client.query('SELECT COUNT(*)::int AS n FROM zone_land_use_controls WHERE plan_instrument_id = $1 AND deleted_at IS NULL', [plan.id])
         await client.query('ROLLBACK')

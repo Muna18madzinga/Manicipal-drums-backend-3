@@ -386,6 +386,68 @@ async function main() {
 
     const zr4 = await mkVZone('Elsewhere')
     check((await rename(zr4.id, 'Typo Zone')) === zr1Type, 'renaming a polygon to an existing zone name moves it to that zone type')
+
+    // ---- Phase 3: the workbench's rules (sign-off, status chain, freeze, versions) ----
+    console.log('== workbench: sign-off, status chain, freeze and versions (Phase 3)')
+    const status = async (id) => (await client.query('SELECT status FROM plan_instrument WHERE id = $1', [id])).rows[0].status
+    const setStatus = (id, to, ref, from) => client.query('SELECT set_plan_status($1, $2, NULL, $3, $4, $5)', [id, to, 'verify', ref || null, from || null])
+
+    await expectError(client, 'a plan cannot skip public notice', "SELECT set_plan_status($1, 'approved', NULL, 'verify')", [adopted], /cannot go from draft to approved/)
+    await expectError(client, 'a template has no status to change', "SELECT set_plan_status($1, 'public_notice', NULL, 'verify')", [template.id], /template/)
+    await setStatus(adopted, 'public_notice')
+    await expectError(client, 'approval needs a sign-off', "SELECT set_plan_status($1, 'approved', NULL, 'verify')", [adopted], /current sign-off/)
+    await client.query("SELECT sign_off_plan($1, NULL, 'Verification Planner', 'planner', 'checked')", [adopted])
+    check((await client.query('SELECT plan_signoff_is_current($1) AS ok', [adopted])).rows[0].ok === true, 'a sign-off is current while the plan is unchanged')
+    await client.query("UPDATE zone_land_use_controls SET control_type = 'permitted' WHERE id = $1", [cell.id])
+    check((await client.query('SELECT plan_signoff_is_current($1) AS ok', [adopted])).rows[0].ok === false, 'any edit after sign-off makes the sign-off stale')
+    await expectError(client, 'a stale sign-off cannot approve', "SELECT set_plan_status($1, 'approved', NULL, 'verify')", [adopted], /current sign-off/)
+    await expectError(client, 'a sign-off needs the signer\'s name', "SELECT sign_off_plan($1, NULL, '', 'planner')", [adopted], /name/)
+    await client.query("SELECT sign_off_plan($1, NULL, 'Verification Planner', 'planner', 'rechecked')", [adopted])
+    await setStatus(adopted, 'approved')
+    check((await status(adopted)) === 'approved', 'with a current sign-off the plan can be approved')
+
+    await expectError(client, 'an approved plan\'s decisions cannot be edited', "UPDATE zone_land_use_controls SET control_type = 'prohibited' WHERE id = $1", [cell.id], /approved and cannot be edited/)
+    await expectError(client, 'an approved plan\'s land uses cannot be added to', "INSERT INTO land_use_groups (group_code, description, plan_instrument_id, is_active) VALUES ('ZZ2', 'x', $1, TRUE)", [adopted], /approved and cannot be edited/)
+    await expectError(client, 'an approved plan\'s standards cannot be added to', "INSERT INTO plan_zone_standard (plan_zone_type_id, kind_code, max_value) VALUES ($1, 'max_storeys', 2)", [communal], /approved and cannot be edited/)
+    await expectError(client, 'gazetting needs a gazette reference', "SELECT set_plan_status($1, 'gazetted', NULL, 'verify')", [adopted], /gazette reference/)
+    await expectError(client, 'gazetting needs an effective date', "SELECT set_plan_status($1, 'gazetted', NULL, 'verify', 'SI 1 of 2026', NULL)", [adopted], /effective date/)
+    await setStatus(adopted, 'gazetted', 'SI 1 of 2026', '2026-01-01')
+    const gz = (await client.query('SELECT status, gazette_ref, effective_from FROM plan_instrument WHERE id = $1', [adopted])).rows[0]
+    check(gz.status === 'gazetted' && gz.gazette_ref === 'SI 1 of 2026' && gz.effective_from !== null, 'gazetting records the reference and effective date')
+
+    // a change is a new version
+    const v2 = (await client.query('SELECT new_plan_version($1, NULL, $2) AS id', [adopted, 'verify'])).rows[0].id
+    const v2row = (await client.query('SELECT version, status, supersedes_id FROM plan_instrument WHERE id = $1', [v2])).rows[0]
+    check(v2row.version === 2 && v2row.status === 'draft' && v2row.supersedes_id === adopted, 'a new version is the next draft and supersedes the old one')
+    const counts = async (id) => (await client.query('SELECT zone_types, land_uses, decisions FROM plan_instrument_summary WHERE id = $1', [id])).rows[0]
+    const c1 = await counts(adopted)
+    const c2 = await counts(v2)
+    check(c1.decisions === c2.decisions && c1.land_uses === c2.land_uses && c1.zone_types === c2.zone_types, 'the new version is a complete copy')
+    await expectError(client, 'only one open newer version at a time', 'SELECT new_plan_version($1, NULL, $2)', [adopted, 'verify'], /newer version of this plan already exists/)
+    check((await client.query('SELECT COUNT(*)::int n FROM plan_decision_diff($1, $2)', [adopted, v2])).rows[0].n === 0, 'a fresh version has no difference from the one before')
+    await client.query("UPDATE zone_land_use_controls SET control_type = 'prohibited' WHERE plan_instrument_id = $1 AND derived_from_id = $2", [v2, cell.id])
+    const vd = (await client.query('SELECT * FROM plan_decision_diff($1, $2)', [adopted, v2])).rows
+    check(vd.length === 1 && vd[0].change === 'changed' && vd[0].to_decision === 'prohibited', 'the diff against the previous version shows exactly the change')
+    check((await client.query('SELECT COUNT(*)::int n FROM plan_diff($1)', [v2])).rows[0].n >= 0, 'plan_diff (against the template) still works')
+
+    // putting the new version in force moves the zone polygons and supersedes the old one
+    const onOld = (await client.query('SELECT COUNT(*)::int n FROM proposed_peri_urban_zones WHERE plan_instrument_id = $1', [adopted])).rows[0].n
+    await setStatus(v2, 'public_notice')
+    await client.query("SELECT sign_off_plan($1, NULL, 'Verification Planner', 'planner')", [v2])
+    await setStatus(v2, 'approved')
+    await setStatus(v2, 'gazetted', 'SI 2 of 2026', '2026-06-01')
+    const movedTo = (await client.query('SELECT COUNT(*)::int n FROM proposed_peri_urban_zones WHERE plan_instrument_id = $1', [v2])).rows[0].n
+    check(onOld > 0 && movedTo > 0 && (await status(adopted)) === 'superseded', 'gazetting the new version supersedes the old and moves its zone polygons to it')
+    const sup = (await client.query("SELECT detail FROM plan_event WHERE plan_instrument_id = $1 AND event_type = 'superseded'", [adopted])).rows[0]
+    check(sup && sup.detail.polygons_moved === movedTo, 'the move is recorded as an event on the old plan')
+    const ends = (await client.query('SELECT effective_to FROM plan_instrument WHERE id = $1', [adopted])).rows[0]
+    check(ends.effective_to !== null, 'the superseded plan ends the day before the new one takes effect')
+
+    const ev = (await client.query("SELECT event_type FROM plan_event WHERE plan_instrument_id = $1 ORDER BY at", [adopted])).rows.map((r) => r.event_type)
+    check(ev.includes('signed_off') && ev.filter((e) => e === 'status_changed').length >= 3 && ev.includes('new_version_started') && ev.includes('superseded'),
+      'every step is in the plan\'s event history')
+    await expectError(client, 'events cannot be rewritten', "UPDATE plan_event SET event_type = 'x' WHERE plan_instrument_id = $1", [adopted], /append-only/)
+    await expectError(client, 'sign-offs cannot be rewritten', "UPDATE plan_signoff SET comment = 'x' WHERE plan_instrument_id = $1", [adopted], /append-only/)
     await client.query('ROLLBACK')
   } catch (err) {
     await client.query('ROLLBACK')

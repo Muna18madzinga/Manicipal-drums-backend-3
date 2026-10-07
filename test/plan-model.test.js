@@ -139,6 +139,24 @@ describe('plan model endpoints', () => {
   })
 
   describe('GET /plans/:id/diff', () => {
+    test('a bad against value is a 400', async () => {
+      const { call, server } = await setup(async () => ({ rows: [] }))
+      const { reply } = await call('/plans/:id/diff', { against: "x'; --" }, { id: '4c98ad9f-d0bd-4360-864b-af54cef9d08f' })
+      expect(reply.statusCode).toBe(400)
+      expect(server.pg.query).not.toHaveBeenCalled()
+    })
+
+    test('against=previous compares with the version it supersedes', async () => {
+      const prev = 'eed92770-213c-4542-b006-b954521e16d7'
+      const { call, server } = await setup(async (sql) => (/plan_decision_diff/.test(sql)
+        ? { rows: [{ zone_type_code: 'Z', land_use_code: 'A', from_decision: 'permitted', to_decision: 'prohibited', change: 'changed' }] }
+        : { rows: [{ id: '4c98ad9f-d0bd-4360-864b-af54cef9d08f', title: 'P', derived_from_id: null, supersedes_id: prev }] }))
+      const { out } = await call('/plans/:id/diff', { against: 'previous' }, { id: '4c98ad9f-d0bd-4360-864b-af54cef9d08f' })
+      expect(out.data.against).toBe('previous')
+      expect(out.data.changes[0].to_decision).toBe('prohibited')
+      expect(server.pg.query).toHaveBeenLastCalledWith('SELECT * FROM plan_decision_diff($1, $2)', [prev, '4c98ad9f-d0bd-4360-864b-af54cef9d08f'])
+    })
+
     const ID = '4c98ad9f-d0bd-4360-864b-af54cef9d08f'
 
     test('a malformed id is a 400 and never reaches the database', async () => {
@@ -169,7 +187,7 @@ describe('plan model endpoints', () => {
         : { rows: [{ id: ID, title: 'Adopted', derived_from_id: 'eed92770-213c-4542-b006-b954521e16d7' }] }))
       const { out } = await call('/plans/:id/diff', {}, { id: ID })
       expect(out.count).toBe(1)
-      expect(out.data.changes).toEqual(changes)
+      expect(out.data.changes).toEqual([{ ...changes[0], from_decision: 'prohibited', to_decision: 'permitted' }])
       expect(server.pg.query).toHaveBeenLastCalledWith('SELECT * FROM plan_diff($1)', [ID])
     })
   })

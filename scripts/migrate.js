@@ -153,6 +153,10 @@ const MIGRATIONS = [
   '147_vungu_plan_land_uses.sql',
   // 148: renaming a zone polygon keeps its zone type in step; repairs Vungu's Cemetry typo.
   '148_zone_rename_keeps_zone_type.sql',
+  // 149: drops the unused legacy table public.gweru_peri_urban_zone (dumped first).
+  '149_drop_gweru_peri_urban_zone.sql',
+  // 150: plan workbench support: events, sign-off, status chain, freeze, versions, decision diff.
+  '150_plan_workbench.sql',
 ]
 
 function createPool(env = process.env) {
