@@ -67,6 +67,9 @@ CREATE TABLE IF NOT EXISTS spatial_planning.permit_rule_snapshot (
   taken_at           timestamptz NOT NULL DEFAULT NOW()
 );
 
+-- clock_timestamp(), not NOW(): rows written in one transaction must still sort in the order they were taken.
+ALTER TABLE spatial_planning.permit_rule_snapshot ALTER COLUMN taken_at SET DEFAULT clock_timestamp();
+
 CREATE INDEX IF NOT EXISTS idx_permit_rule_snapshot_permit ON spatial_planning.permit_rule_snapshot (permit_id, taken_at);
 
 CREATE OR REPLACE FUNCTION spatial_planning.permit_rule_snapshot_append_only() RETURNS trigger AS $$
