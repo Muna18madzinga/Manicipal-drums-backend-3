@@ -133,6 +133,9 @@ const MIGRATIONS = [
   // 138: district development control matrix. Zone-type keyed controls, the
   // coded land-use vocabulary, and the zone_effective_controls view.
   '138_district_development_matrix.sql',
+  // 139: plan-model foundation. Authority kinds and combination membership, plan
+  // profiles and instruments, zone types per plan, existing data attached.
+  '139_plan_model_foundation.sql',
 ]
 
 function createPool(env = process.env) {
