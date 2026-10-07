@@ -10,6 +10,7 @@
 // open for the public map.
 
 const { requireAuth, requireRole } = require('../middleware/jwtAuth')
+const { ZONE_USES_SQL, RULES_COUNT_SQL, PERMISSION_CODE, CONTROL_TYPE, groupUses } = require('../utils/zoneUses')
 
 // Council staff who may read the PII application register / dashboard.
 const STAFF_ROLES = [
@@ -92,26 +93,19 @@ async function developmentControlRoutes(fastify) {
     }
     
     // Get matrix for this zone
-    const matrixQuery = `
-      SELECT 
-        g.group_code,
-        g.description AS group_description,
-        g.group_category,
-        p.permission_code,
-        p.description AS permission_description,
-        p.color AS permission_color,
-        p.icon AS permission_icon,
-        dm.conditions,
-        dm.max_units,
-        dm.max_height_meters,
-        dm.min_lot_size_sqm
-      FROM development_matrix dm
-      JOIN land_use_groups g ON dm.group_id = g.group_id
-      JOIN permission_types p ON dm.permission_code = p.permission_code
-      WHERE dm.zone_id = $1 AND dm.is_active = TRUE AND g.is_active = TRUE
-      ORDER BY g.group_code
-    `
-    const { rows: matrixRows } = await fastify.pg.query(matrixQuery, [zoneId])
+    const { rows: controlRows } = await fastify.pg.query(ZONE_USES_SQL, [zoneId])
+    // Same shape as before (permission_code P / SC / X), now from zone_land_use_controls.
+    const matrixRows = controlRows.map(r => ({
+      group_code: r.group_code,
+      group_description: r.group_description,
+      group_category: r.group_category,
+      permission_code: PERMISSION_CODE[r.control_type],
+      permission_description: r.control_type,
+      conditions: r.conditions,
+      max_units: null,
+      max_height_meters: null,
+      min_lot_size_sqm: null
+    }))
     
     return { 
       success: true, 
@@ -157,7 +151,7 @@ async function developmentControlRoutes(fastify) {
   // GET /api/development-control/groups
   fastify.get('/groups', async (request, reply) => {
     const { rows } = await fastify.pg.query(`
-      SELECT group_id, group_code, description, group_category, notes
+      SELECT id AS group_id, group_code, description, group_category, notes
       FROM land_use_groups
       WHERE is_active = TRUE
       ORDER BY group_code
@@ -172,49 +166,49 @@ async function developmentControlRoutes(fastify) {
   // GET /api/development-control/matrix
   fastify.get('/matrix', async (request, reply) => {
     const { zone_id, group_id, permission_code } = request.query
-    
+
     let query = `
-      SELECT 
-        dm.matrix_id,
+      SELECT
+        c.id AS matrix_id,
         z.id AS zone_id,
         z.zone_code,
         z.zone AS zone_name,
         g.group_code,
         g.description AS group_description,
-        p.permission_code,
-        p.description AS permission_description,
-        p.color AS permission_color,
-        dm.conditions,
-        dm.max_units,
-        dm.max_height_meters,
-        dm.min_lot_size_sqm
-      FROM development_matrix dm
-      JOIN proposed_peri_urban_zones z ON dm.zone_id = z.id
-      JOIN land_use_groups g ON dm.group_id = g.group_id
-      JOIN permission_types p ON dm.permission_code = p.permission_code
-      WHERE dm.is_active = TRUE
+        c.control_type,
+        c.conditions,
+        c.notes
+      FROM zone_land_use_controls c
+      JOIN proposed_peri_urban_zones z ON c.zone_id = z.id
+      JOIN land_use_groups g ON c.land_use_group_id = g.id
+      WHERE c.deleted_at IS NULL
     `
     const params = []
-    
+
     if (zone_id) {
       params.push(zone_id)
-      query += ` AND dm.zone_id = $${params.length}`
+      query += ` AND c.zone_id = $${params.length}`
     }
-    
+
     if (group_id) {
       params.push(group_id)
-      query += ` AND dm.group_id = $${params.length}`
+      query += ` AND c.land_use_group_id = $${params.length}`
     }
-    
+
     if (permission_code) {
-      params.push(permission_code)
-      query += ` AND dm.permission_code = $${params.length}`
+      const type = CONTROL_TYPE[permission_code] || permission_code
+      params.push(type)
+      query += ` AND c.control_type = $${params.length}`
     }
-    
+
     query += ` ORDER BY z.display_order, g.group_code`
-    
+
     const { rows } = await fastify.pg.query(query, params)
-    return { success: true, count: rows.length, data: rows }
+    return {
+      success: true,
+      count: rows.length,
+      data: rows.map(r => ({ ...r, permission_code: PERMISSION_CODE[r.control_type] }))
+    }
   })
 
   // POST /api/development-control/matrix
@@ -238,39 +232,33 @@ async function developmentControlRoutes(fastify) {
       }
     }
   }, async (request, reply) => {
-    const { zone_id, group_code, permission_code, conditions, max_units, max_height_meters, min_lot_size_sqm } = request.body
-    
-    // Get group_id from code
+    // max_units / max_height_meters / min_lot_size_sqm are accepted for
+    // compatibility but the canonical table does not store them.
+    const { zone_id, group_code, permission_code, conditions } = request.body
+
     const { rows: groupRows } = await fastify.pg.query(
-      'SELECT group_id FROM land_use_groups WHERE group_code = $1',
+      'SELECT id FROM land_use_groups WHERE group_code = $1 AND is_active = TRUE',
       [group_code]
     )
-    
+
     if (groupRows.length === 0) {
       return reply.status(400).send({ success: false, error: 'Invalid group code' })
     }
-    
-    const group_id = groupRows[0].group_id
-    
-    const query = `
-      INSERT INTO development_matrix (zone_id, group_id, permission_code, conditions, max_units, max_height_meters, min_lot_size_sqm)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      ON CONFLICT (zone_id, group_id) 
-      DO UPDATE SET 
-        permission_code = EXCLUDED.permission_code,
-        conditions = EXCLUDED.conditions,
-        max_units = EXCLUDED.max_units,
-        max_height_meters = EXCLUDED.max_height_meters,
-        min_lot_size_sqm = EXCLUDED.min_lot_size_sqm,
-        is_active = TRUE
-      RETURNING matrix_id
-    `
-    
-    const { rows } = await fastify.pg.query(query, [
-      zone_id, group_id, permission_code, conditions, max_units, max_height_meters, min_lot_size_sqm
-    ])
-    
-    return { success: true, data: { matrix_id: rows[0].matrix_id } }
+
+    const { rows } = await fastify.pg.query(`
+      INSERT INTO zone_land_use_controls (zone_id, land_use_group_id, control_type, conditions)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (zone_id, land_use_group_id)
+      DO UPDATE SET
+        control_type = EXCLUDED.control_type,
+        conditions   = EXCLUDED.conditions,
+        updated_at   = NOW(),
+        deleted_at   = NULL,
+        deleted_by   = NULL
+      RETURNING id
+    `, [zone_id, groupRows[0].id, CONTROL_TYPE[permission_code], conditions ?? null])
+
+    return { success: true, data: { matrix_id: rows[0].id } }
   })
 
   // ============================================
@@ -362,11 +350,7 @@ async function developmentControlRoutes(fastify) {
             z.zone AS zone_name
           FROM proposed_peri_urban_zones z
           WHERE z.zone = $1
-          ORDER BY (
-            SELECT COUNT(*) 
-            FROM development_matrix dm 
-            WHERE dm.zone_id = z.id AND dm.is_active = TRUE
-          ) DESC
+          ORDER BY ${RULES_COUNT_SQL} DESC
           LIMIT 1
         `
         const { rows: zoneRows } = await fastify.pg.query(zoneQuery, [zone_name])
@@ -446,8 +430,7 @@ async function developmentControlRoutes(fastify) {
          FROM proposed_peri_urban_zones z
          WHERE z.is_active = TRUE
            AND ST_Contains(z.geom, ST_SetSRID(ST_MakePoint($1, $2), 4326))
-         ORDER BY (SELECT COUNT(*) FROM development_matrix dm
-                   WHERE dm.zone_id = z.id AND dm.is_active = TRUE) DESC
+         ORDER BY ${RULES_COUNT_SQL} DESC
          LIMIT 1`,
         [lng, lat]
       )
@@ -462,63 +445,11 @@ async function developmentControlRoutes(fastify) {
     }
   })
 
-  // Development matrix rules for one zone, grouped P / X / SC.
+  // Zoning rules for one zone polygon, grouped permitted / prohibited / special
+  // consent. Reads zone_land_use_controls (see utils/zoneUses.js).
   async function usesForZone(zoneId) {
-      const matrixQuery = `
-        SELECT 
-          g.group_code,
-          g.description AS group_description,
-          g.group_category,
-          p.permission_code,
-          p.description AS permission_description,
-          p.color AS permission_color,
-          dm.conditions,
-          dm.max_units,
-          dm.max_height_meters,
-          dm.min_lot_size_sqm
-        FROM development_matrix dm
-        JOIN land_use_groups g ON dm.group_id = g.group_id
-        JOIN permission_types p ON dm.permission_code = p.permission_code
-        WHERE dm.zone_id = $1 AND dm.is_active = TRUE
-        ORDER BY g.group_category, g.group_code
-      `
-      
-      const { rows: matrixRows } = await fastify.pg.query(matrixQuery, [zoneId])
-
-      // Group by permission type
-      const permitted = []
-      const prohibited = []
-      const consentRequired = []
-      
-      matrixRows.forEach(row => {
-        const useInfo = {
-          group_code: row.group_code,
-          description: row.group_description,
-          category: row.group_category,
-          conditions: row.conditions,
-          max_units: row.max_units,
-          max_height_meters: row.max_height_meters,
-          min_lot_size_sqm: row.min_lot_size_sqm
-        }
-        
-        switch (row.permission_code) {
-          case 'P':
-            permitted.push(useInfo)
-            break
-          case 'X':
-            prohibited.push(useInfo)
-            break
-          case 'SC':
-            consentRequired.push(useInfo)
-            break
-        }
-      })
-      
-      return {
-        permitted_uses: permitted,
-        prohibited_uses: prohibited,
-        consent_required_uses: consentRequired
-      }
+    const { rows } = await fastify.pg.query(ZONE_USES_SQL, [zoneId])
+    return groupUses(rows)
   }
 
   // POST /api/development-control/update-compliance
