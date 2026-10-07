@@ -1263,8 +1263,40 @@ async function tilesRoutes(fastify) {
   })
 }
 
+// Per-layer "edition" of the rendered WMS tiles. It goes into every WMS tile's
+// ETag, so a browser that cached a tile before a data edit or a symbology
+// change no longer gets a 304 for it: the old tag stops matching and the tile
+// is re-rendered. (The ETag used to be derived from the layer name and the
+// date alone, so it never changed within a day.)
+let _globalTileEpoch = 0
+const _layerTileEpoch = new Map()
+
+function bumpTileEpoch(layerId) {
+  _layerTileEpoch.set(layerId, (_layerTileEpoch.get(layerId) || 0) + 1)
+}
+
+/** Edition token for a layer's WMS tiles; changes whenever they are invalidated. */
+function tileEpoch(layerId) {
+  return `${_globalTileEpoch}.${_layerTileEpoch.get(layerId) || 0}`
+}
+
+/**
+ * The QGIS project's symbology changed (the .qgs was saved). Every rendered
+ * WMS tile is now out of date: drop the server-side raster cache, move every
+ * ETag on, and tell connected maps so they re-request what they are showing.
+ * Basemap vector tiles are not touched — their paint comes from the portal's
+ * own palette, not from QGIS.
+ */
+function emitStyleChange(reason = 'qgis-project') {
+  _globalTileEpoch++
+  wmsCache.clear()
+  emitMapEvent({ type: 'style', layer: '*', reason })
+}
+
 /** Invalidate all cached tiles for a layer — call after data mutations. */
 function invalidateTileLayer(layerId) {
+  bumpTileEpoch(layerId)
+  if (layerId.startsWith('vungu_')) bumpTileEpoch(layerId.slice(6))
   wmsCache.invalidateLayer(layerId)
   // QGIS publishes some master-plan tables under the de-prefixed name
   // (vungu_proposed_peri_urban_zones -> proposed_peri_urban_zones), so the
@@ -1273,4 +1305,4 @@ function invalidateTileLayer(layerId) {
   return cache.invalidateLayer(layerId)
 }
 
-module.exports = { tilesRoutes, invalidateTileLayer, emitMapEvent, wmsCache }
+module.exports = { tilesRoutes, invalidateTileLayer, emitMapEvent, emitStyleChange, tileEpoch, wmsCache }

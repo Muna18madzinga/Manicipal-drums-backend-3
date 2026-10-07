@@ -202,6 +202,14 @@ class QGISProjectWatcher {
     
     // Always broadcast cache clear for general refresh
     broadcaster.broadcastCacheClear(`QGIS project ${eventType}: ${filename}`)
+
+    // The map's own channel: drop the rendered WMS tiles, move their ETags on
+    // and tell open maps to repaint. Loaded lazily — tiles.js is a route module.
+    try {
+      require('../../routes/tiles').emitStyleChange(`QGIS project ${eventType}`)
+    } catch (error) {
+      console.error('[Project Watcher] ❌ Failed to announce style change to maps:', error.message)
+    }
   }
 
   /**

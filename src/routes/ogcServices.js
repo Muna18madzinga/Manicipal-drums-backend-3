@@ -4,10 +4,11 @@
  */
 
 const path = require('path')
+const crypto = require('crypto')
 const { topology } = require('topojson-server')
 const { RefinedOGCBridge } = require('../services/admin/refinedOGCBridge')
 const { startProjectWatcher, getWatcherStatus } = require('../services/admin/qgisProjectWatcher')
-const { wmsCache } = require('./tiles')
+const { wmsCache, tileEpoch } = require('./tiles')
 const { requireRole } = require('../middleware/jwtAuth')
 const { isPrivateTable, isPersonalColumn, publicLayerTables } = require('../utils/publicLayers')
 
@@ -18,9 +19,12 @@ const { isPrivateTable, isPersonalColumn, publicLayerTables } = require('../util
 // under real multi-user load.
 const wmsInFlight = new Map()
 
-function wmsEtag(key) {
-  const day = new Date().toISOString().slice(0, 10)
-  return `"${Buffer.from(`${key}:${day}`).toString('base64').slice(0, 16)}"`
+// Unique per tile and per edition of its layer (see tileEpoch in tiles.js), so
+// a data edit or a symbology change always produces a tag the browser has not
+// seen — a revalidation then gets the fresh tile instead of a 304.
+function wmsEtag(key, layerName) {
+  const digest = crypto.createHash('sha1').update(`${key}:${tileEpoch(layerName)}`).digest('base64url')
+  return `"${digest.slice(0, 22)}"`
 }
 
 // Local path of the QGIS project file used for style extraction and
@@ -710,7 +714,7 @@ async function ogcServicesRoutes(fastify, options) {
         options.format || 'image/png', options.styles || '',
         options.transparent !== false,
       ].join('/')
-      const etag = wmsEtag(key)
+      const etag = wmsEtag(key, layerName)
 
       if (request.headers['if-none-match'] === etag) {
         return reply.code(304).send()
