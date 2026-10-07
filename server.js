@@ -32,6 +32,7 @@ const { planningAssistantRoutes } = require('./src/routes/planning-assistant')
 const plannerRoutes = require('./src/routes/planner')
 const { zonesRoutes } = require('./src/routes/zones')
 const { planModelRoutes } = require('./src/routes/planModel')
+const { parcelZoningRoutes } = require('./src/routes/parcelZoning')
 
 // Turn B: inspection bookings + photos + status notifications.
 // These plug into the existing development_applications table.
@@ -562,6 +563,7 @@ async function build() {
     await server.register(standsRoutes,            { prefix: '/api' })
     await server.register(zonesRoutes,             { prefix: '/api' })
     await server.register(planModelRoutes,         { prefix: '/api' })
+    await server.register(parcelZoningRoutes,      { prefix: '/api' })
     await server.register(planningAssistantRoutes, { prefix: '/api' })
     await server.register(planningSuggestRoutes,   { prefix: '/api' })
     await server.register(plannerRoutes,           { prefix: '/api' })

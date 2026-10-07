@@ -143,6 +143,10 @@ const MIGRATIONS = [
   '141_reference_classification_and_urban_starter.sql',
   // 142: default template per profile, rural starter palette, plan_compare() and import_plan_items().
   '142_rural_starter_palette_and_palette_tools.sql',
+  // 143-145: decision pathways and zone standards; parcel zoning; application rule snapshots.
+  '143_decision_pathways_and_zone_standards.sql',
+  '144_parcel_zoning.sql',
+  '145_application_rule_snapshots.sql',
 ]
 
 function createPool(env = process.env) {

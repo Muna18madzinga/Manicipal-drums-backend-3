@@ -208,6 +208,88 @@ async function main() {
     const typeTotal = async (plan) => (await client.query(ZONE_TYPES_SQL, [plan])).rows.reduce((n, r) => n + r.permitted + r.special_consent + r.prohibited, 0)
     check((await typeTotal(adopted)) === (await typeTotal(template.id)), "the zone-type reader counts a plan's own decisions (the copy equals the template)")
 
+    // ---- Phase 2, slice 2: pathways, standards, parcel zoning, snapshots ----
+    console.log('== pathways, standards, parcel zoning and application snapshots (Phase 2, slice 2)')
+    const s263 = (await client.query("SELECT * FROM decision_pathway WHERE code = 's26_3_special_consent'")).rows[0]
+    check(s263 && s263.requires_public_notice === true && s263.notice_at_applicant_cost === true && s263.adjacent_owners_notified === true,
+      "the s26(3) pathway records the two confirmed facts: public notice at the applicant's expense, adjacent owners notified")
+    check(s263 && s263.objection_days === null && s263.decision_body === null && s263.evidence_status === 'secondary_source',
+      'the unknown facts (objection period, decision body) are blank, not guessed')
+    check((await client.query("SELECT 1 FROM decision_pathway WHERE decision = 'permitted'")).rows.length === 0, 'no pathway is invented for "permitted" uses')
+    await expectError(client, 'only one default pathway per decision',
+      "INSERT INTO decision_pathway (code, name, decision, is_default_for_decision) VALUES ('dup_default', 'Dup', 'special_consent', TRUE)", [], /duplicate key|unique/)
+
+    check((await client.query('SELECT COUNT(*)::int n FROM standard_kind')).rows[0].n >= 10, 'the standards vocabulary exists')
+    check((await client.query('SELECT COUNT(*)::int n FROM plan_zone_standard s JOIN plan_zone_type t ON t.id = s.plan_zone_type_id WHERE t.plan_instrument_id = $1', [template.id])).rows[0].n === 0,
+      'the template carries NO standard values (the unverified numbers were not migrated)')
+    const communal = (await client.query("SELECT id FROM plan_zone_type WHERE plan_instrument_id = $1 AND code = 'Communal Farming Zone'", [adopted])).rows[0].id
+    await expectError(client, 'a standard must have a limit, and min cannot exceed max',
+      "INSERT INTO plan_zone_standard (plan_zone_type_id, kind_code, min_value, max_value) VALUES ($1, 'max_height', 10, 5)", [communal], /check constraint/)
+    await expectError(client, "a standard cannot name another plan's land use",
+      "INSERT INTO plan_zone_standard (plan_zone_type_id, kind_code, land_use_group_id, max_value) VALUES ($1, 'max_height', $2, 9)", [communal, templateUse], /different plan/)
+    await client.query("INSERT INTO plan_zone_standard (plan_zone_type_id, kind_code, max_value, source_ref) VALUES ($1, 'max_height', 9, 'verification')", [communal])
+
+    // adopting copies standards
+    const tCommunal = (await client.query("SELECT id FROM plan_zone_type WHERE plan_instrument_id = $1 AND code = 'Communal Farming Zone'", [template.id])).rows[0].id
+    await client.query("INSERT INTO plan_zone_standard (plan_zone_type_id, kind_code, min_value) VALUES ($1, 'min_stand_area', 12345)", [tCommunal])
+    const second = (await client.query("SELECT adopt_plan_template($1, $2, 'Second verification adoption', 'local') AS id", [template.id, adopter])).rows[0].id
+    const copiedStd = (await client.query('SELECT s.min_value FROM plan_zone_standard s JOIN plan_zone_type t ON t.id = s.plan_zone_type_id WHERE t.plan_instrument_id = $1', [second])).rows
+    check(copiedStd.length === 1 && Number(copiedStd[0].min_value) === 12345, 'adopting copies the standards')
+
+    // a decision that needs special consent, on the adopted plan's Communal Farming zone
+    await client.query("UPDATE zone_land_use_controls SET control_type = 'special_consent' WHERE id = $1", [cell.id])
+
+    // parcels: two adjacent zone squares and stands in different places (far from real data)
+    const square = (x0, x1) => `ST_Multi(ST_GeomFromText('POLYGON((${x0} 10, ${x1} 10, ${x1} 10.01, ${x0} 10.01, ${x0} 10))', 4326))`
+    const mkZone = async (name, typeId, x0, x1) => (await client.query(
+      `INSERT INTO proposed_peri_urban_zones (zone, plan_instrument_id, plan_zone_type_id, geom) VALUES ($1, $2, $3, ${square(x0, x1)}) RETURNING id`, [name, adopted, typeId])).rows[0].id
+    const zoneA = await mkZone('Verification zone A', communal, 10, 10.01)
+    const zoneB = await mkZone('Verification zone B', adoptedType, 10.01, 10.02)
+    const mkStand = async (no, x0, x1) => (await client.query(
+      `INSERT INTO stands (stand_number, ward, area_sqm, geom) VALUES ($1, 'W0', 500, ST_GeomFromText('POLYGON((${x0} 10.002, ${x1} 10.002, ${x1} 10.004, ${x0} 10.004, ${x0} 10.002))', 4326)) RETURNING id`, [no])).rows[0].id
+    const standIn = await mkStand('VERIFY-IN', 10.001, 10.002)
+    const standSplit = await mkStand('VERIFY-SPLIT', 10.008, 10.0125)   // about 44% in A, 56% in B
+    const standFar = await mkStand('VERIFY-FAR', 20, 20.001)
+
+    const zoning = async (id) => (await client.query('SELECT * FROM compute_parcel_zoning($1, $2)', ['stands', id])).rows
+    const zin = await zoning(standIn)
+    check(zin.length === 1 && zin[0].zone_id === zoneA && Number(zin[0].share_pct) > 99 && zin[0].is_governing === true, 'a stand inside one zone: 100% in it, and it governs')
+    const zsplit = await zoning(standSplit)
+    const gov = zsplit.filter((r) => r.is_governing)
+    check(zsplit.length === 2 && gov.length === 1 && gov[0].zone_id === zoneB && Math.abs(zsplit.reduce((n, r) => n + Number(r.share_pct), 0) - 100) < 0.1,
+      'a stand across two zones: both returned, shares add up to 100%, the larger share governs')
+    check((await zoning(standFar)).length === 0, 'a stand inside no zone is unzoned (no rows), not assumed zoned')
+    await expectError(client, 'an unknown parcel layer is refused', "SELECT parcel_geometry('bogus', '1')", [], /unknown parcel layer/)
+
+    await client.query("SELECT set_manual_parcel_zoning('stands', $1, $2, 'verification')", [standSplit, zoneA])
+    await client.query("SELECT refresh_parcel_zoning('stands', $1)", [standSplit])
+    const forSplit = (await client.query("SELECT zone_id, method FROM parcel_zoning_for('stands', $1) WHERE is_governing", [standSplit])).rows
+    check(forSplit.length === 1 && forSplit[0].zone_id === zoneA && forSplit[0].method === 'manual', "a person's manual assignment wins over the intersection, and a refresh keeps it")
+
+    // snapshots
+    const snap = async (stand, use) => (await client.query("SELECT rule_snapshot('stands', $1, $2) AS j", [stand, use])).rows[0].j
+    const sIn = await snap(standIn, 'A')
+    const r0 = sIn.results[0]
+    check(r0 && r0.plan.id === adopted && r0.decision === 'special_consent' && r0.decision_source === 'zone_type', 'the snapshot finds the plan, the zone type and its decision for the land use')
+    check(r0 && r0.pathway && r0.pathway.code === 's26_3_special_consent' && r0.pathway_source === 'default' && r0.pathway.objection_days === null,
+      'a special-consent decision gets the s26(3) pathway by default, with the unknown objection period left null')
+    check(r0 && r0.standards.length === 1 && r0.standards[0].kind === 'max_height', "the snapshot includes the zone type's standards")
+    const sNone = await snap(standIn, 'QQ')
+    check(sNone.results[0].decision === null && sNone.results[0].land_use === null, 'a land use the plan does not have is "not decided", never allowed')
+    check((await snap(standFar, 'A')).unzoned === true, 'the snapshot of an unzoned stand says so')
+
+    await client.query("INSERT INTO decision_pathway (code, name, decision) VALUES ('verify_own_pathway', 'Own pathway', 'special_consent')")
+    await client.query('UPDATE zone_land_use_controls SET pathway_code = $1 WHERE id = $2', ['verify_own_pathway', cell.id])
+    const sOwn = (await snap(standIn, 'A')).results[0]
+    check(sOwn.pathway.code === 'verify_own_pathway' && sOwn.pathway_source === 'decision', 'a pathway named on the decision overrides the default')
+
+    // stored, and immune to later plan changes
+    await client.query("INSERT INTO development_applications (id, user_id, selection_data, eligibility_data, form_data, fees_data, status, plan_instrument_id, rules_snapshot, snapshot_at) VALUES ('DEV-VERIFY', 'x', '{}', '{}', '{}', '{}', 'submitted', $1, $2::jsonb, NOW())", [adopted, JSON.stringify(sIn)])
+    await client.query("UPDATE zone_land_use_controls SET control_type = 'prohibited' WHERE id = $1", [cell.id])
+    const stored = (await client.query("SELECT rules_snapshot FROM development_applications WHERE id = 'DEV-VERIFY'")).rows[0].rules_snapshot
+    check(stored.results[0].decision === 'special_consent' && (await snap(standIn, 'A')).results[0].decision === 'prohibited',
+      'changing the plan afterwards changes new snapshots but not the one an application stored')
+    await expectError(client, 'a stored snapshot cannot be rewritten', "UPDATE development_applications SET rules_snapshot = '{}'::jsonb WHERE id = 'DEV-VERIFY'", [], /cannot be changed/)
     await client.query('ROLLBACK')
   } catch (err) {
     await client.query('ROLLBACK')
