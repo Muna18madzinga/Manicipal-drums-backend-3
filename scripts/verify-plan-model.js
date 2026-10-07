@@ -74,6 +74,14 @@ async function main() {
   check((await q(`SELECT 1 FROM land_use_groups g JOIN plan_instrument i ON i.id = g.plan_instrument_id AND i.is_template
                     WHERE NOT EXISTS (SELECT 1 FROM land_use_group_class k WHERE k.land_use_group_id = g.id)`)).length === 0, 'every land use in both templates is mapped to a reference class')
 
+  console.log("== Vungu's plan has a land-use vocabulary but no invented decisions")
+  const vu = (await one(`SELECT (SELECT COUNT(*)::int FROM land_use_groups g WHERE g.plan_instrument_id = $1 AND g.is_active) AS uses,
+                              (SELECT COUNT(*)::int FROM land_use_groups g WHERE g.plan_instrument_id = $1 AND g.derived_from_id IS NULL) AS no_provenance,
+                              (SELECT COUNT(*)::int FROM zone_land_use_controls c WHERE c.plan_instrument_id = $1 AND c.deleted_at IS NULL AND c.derived_from_id IS NOT NULL) AS decisions`, [vplan.id]))
+  check(vu.uses === template.land_uses, `Vungu's plan has the council use-class vocabulary (${vu.uses} land uses, the same as the sample template)`)
+  check(vu.no_provenance === 0, 'every one of Vungu\'s land uses records where it came from')
+  check(vu.decisions === 0, "no decision in Vungu's plan was copied from a template: its permitted / special consent / prohibited rules are the council's to state, not inferred")
+
   console.log('== seeds and attachment (relationships, not fixed counts)')
   check(template && template.zone_types === 11, `the rural template has the 11 district zone types (${template && template.zone_types})`)
   check(template && template.land_uses === 32, `the rural template has the 32 coded land uses (${template && template.land_uses})`)
@@ -171,7 +179,9 @@ async function main() {
       'plan_diff reports exactly the one changed cell')
 
     // land-use codes are per plan
-    check((await client.query("SELECT COUNT(*)::int n FROM land_use_groups WHERE group_code = 'A' AND is_active")).rows[0].n === 2, "two plans can both have a land use 'A'")
+    check((await client.query("SELECT COUNT(DISTINCT plan_instrument_id)::int n FROM land_use_groups WHERE group_code = 'A' AND is_active")).rows[0].n >= 2
+       && (await client.query("SELECT 1 FROM land_use_groups WHERE group_code = 'A' AND is_active GROUP BY plan_instrument_id HAVING COUNT(*) > 1")).rows.length === 0,
+      "several plans can each have a land use 'A', and no plan has it twice")
     await expectError(client, 'a plan cannot have the same land-use code twice',
       "INSERT INTO land_use_groups (group_code, description, plan_instrument_id) VALUES ('A', 'Duplicate', $1)", [adopted], /duplicate key|unique/)
     await client.query("INSERT INTO land_use_groups (group_code, description, plan_instrument_id, is_active) VALUES ('ZZ', 'Plan-only use', $1, TRUE)", [adopted])
@@ -343,6 +353,39 @@ async function main() {
     check((await lodge(permitTwo)) === 'matched' && (await permitRow(permitTwo)).plan_instrument_id === null
       && (await snaps(permitTwo))[0].snapshot.results.filter((r) => r.governing).length === 2,
       'a parcel covered by two plans keeps both in the snapshot and records no single plan')
+
+    // Vungu's own plan: the use exists, the decision does not (and is never invented)
+    await client.query(`INSERT INTO proposed_peri_urban_zones (zone, geom) VALUES ('Verification Vungu zone', ${square(30, 30.01)})`)
+    await client.query(`INSERT INTO stands (stand_number, ward, area_sqm, geom) VALUES ('VERIFY-VUNGU', 'W0', 500, ST_GeomFromText('POLYGON((30.002 10.002, 30.003 10.002, 30.003 10.004, 30.002 10.004, 30.002 10.002))', 4326))`)
+    const vStand = (await client.query("SELECT id FROM stands WHERE stand_number = 'VERIFY-VUNGU'")).rows[0].id
+    const vSnap = (await snap(vStand, 'A')).results[0]
+    check(vSnap && vSnap.plan.id === vplan.id && vSnap.land_use && vSnap.land_use.code === 'A' && vSnap.decision === null,
+      "in Vungu's plan the land use is found and the decision is 'not decided', never invented")
+
+    // renaming a zone polygon (e.g. fixing a typo in QGIS) keeps its zone type in step
+    const mkVZone = async (name) => (await client.query(
+      `INSERT INTO proposed_peri_urban_zones (zone, geom) VALUES ($1, ${square(40, 40.01)}) RETURNING id, plan_zone_type_id`, [name])).rows[0]
+    const rename = async (id, name) => (await client.query('UPDATE proposed_peri_urban_zones SET zone = $2 WHERE id = $1 RETURNING plan_zone_type_id', [id, name])).rows[0].plan_zone_type_id
+    const typeCode = async (id) => ((await client.query('SELECT code FROM plan_zone_type WHERE id = $1', [id])).rows[0] || {}).code
+
+    const zr1 = await mkVZone('Typo Zonee')
+    const zr1Type = await rename(zr1.id, 'Typo Zone')
+    check(zr1Type === zr1.plan_zone_type_id && (await typeCode(zr1Type)) === 'Typo Zone', 'fixing a typo in a zone name renames its zone type in place when nothing else depends on it')
+
+    const zr2 = await mkVZone('Ruled Zonee')
+    await client.query("INSERT INTO zone_land_use_controls (plan_zone_type_id, land_use_group_id, control_type) SELECT $1, id, 'permitted' FROM land_use_groups WHERE plan_instrument_id = $2 AND group_code = 'A'", [zr2.plan_zone_type_id, vplan.id])
+    const zr2Type = await rename(zr2.id, 'Ruled Zone')
+    check(zr2Type !== zr2.plan_zone_type_id && (await typeCode(zr2Type)) === 'Ruled Zone' && (await typeCode(zr2.plan_zone_type_id)) === 'Ruled Zonee',
+      'a zone type that already has decisions is not renamed: the polygon gets a new type and the old one keeps its rules for a person to resolve')
+
+    const zr3a = await mkVZone('Shared Zonee')
+    const zr3b = await mkVZone('Shared Zonee')
+    const zr3Type = await rename(zr3a.id, 'Shared Zone')
+    check(zr3Type !== zr3a.plan_zone_type_id && (await typeCode(zr3b.plan_zone_type_id)) === 'Shared Zonee',
+      'renaming one of two polygons that share a zone type does not rename the type under the other')
+
+    const zr4 = await mkVZone('Elsewhere')
+    check((await rename(zr4.id, 'Typo Zone')) === zr1Type, 'renaming a polygon to an existing zone name moves it to that zone type')
     await client.query('ROLLBACK')
   } catch (err) {
     await client.query('ROLLBACK')

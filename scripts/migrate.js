@@ -149,6 +149,10 @@ const MIGRATIONS = [
   '145_application_rule_snapshots.sql',
   // 146: permit parcel link, append-only rule snapshots; retires the snapshot columns on development_applications.
   '146_permit_parcel_and_rule_snapshots.sql',
+  // 147: Vungu's plan gets the council use-class vocabulary (no decisions) and proposed class mappings.
+  '147_vungu_plan_land_uses.sql',
+  // 148: renaming a zone polygon keeps its zone type in step; repairs Vungu's Cemetry typo.
+  '148_zone_rename_keeps_zone_type.sql',
 ]
 
 function createPool(env = process.env) {

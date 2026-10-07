@@ -99,6 +99,8 @@ describe('migration plan', () => {
       '144_parcel_zoning.sql',
       '145_application_rule_snapshots.sql',
       '146_permit_parcel_and_rule_snapshots.sql',
+      '147_vungu_plan_land_uses.sql',
+      '148_zone_rename_keeps_zone_type.sql',
     ])
 
     for (const filename of MIGRATIONS) {
