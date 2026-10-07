@@ -283,13 +283,66 @@ async function main() {
     const sOwn = (await snap(standIn, 'A')).results[0]
     check(sOwn.pathway.code === 'verify_own_pathway' && sOwn.pathway_source === 'decision', 'a pathway named on the decision overrides the default')
 
-    // stored, and immune to later plan changes
-    await client.query("INSERT INTO development_applications (id, user_id, selection_data, eligibility_data, form_data, fees_data, status, plan_instrument_id, rules_snapshot, snapshot_at) VALUES ('DEV-VERIFY', 'x', '{}', '{}', '{}', '{}', 'submitted', $1, $2::jsonb, NOW())", [adopted, JSON.stringify(sIn)])
+    // permits: the parcel is linked at lodgement, and the rules are an append-only history
+    const mkPermit = async (stand, ward, lng, lat) => (await client.query(
+      `INSERT INTO spatial_planning.permit_application (applicant_name, development_type, stand_number, suburb_ward, location)
+       VALUES ('Verify Applicant', 'new_building', $1, $2, ${lng === undefined ? 'NULL' : 'ST_SetSRID(ST_MakePoint($3, $4), 4326)'}) RETURNING id`,
+      lng === undefined ? [stand, ward] : [stand, ward, lng, lat])).rows[0].id
+    const lodge = async (id) => (await client.query('SELECT spatial_planning.lodge_permit_zoning($1) AS m', [id])).rows[0].m
+    const permitRow = async (id) => (await client.query('SELECT authority_id, parcel_layer, parcel_id, parcel_match, plan_instrument_id FROM spatial_planning.permit_application WHERE id = $1', [id])).rows[0]
+    const snaps = async (id) => (await client.query('SELECT kind, land_use_code, snapshot FROM spatial_planning.permit_rule_snapshot WHERE permit_id = $1 ORDER BY taken_at, id', [id])).rows
+
+    const permitIn = await mkPermit('VERIFY-IN', null)
+    check((await lodge(permitIn)) === 'matched', 'lodgement matches a stand number to its parcel')
+    const pIn = await permitRow(permitIn)
+    check(pIn.parcel_layer === 'stands' && pIn.parcel_id === standIn && pIn.plan_instrument_id === adopted && pIn.authority_id !== null,
+      'the permit records its parcel, the plan found to govern it, and an authority')
+    const sn0 = await snaps(permitIn)
+    check(sn0.length === 1 && sn0[0].kind === 'lodgement' && sn0[0].land_use_code === null && sn0[0].snapshot.results[0].decision === null,
+      'the lodgement snapshot records the zoning but no decision (the citizen form names no land use)')
+    await lodge(permitIn)
+    check((await snaps(permitIn)).length === 1, 'lodging twice does not add a second lodgement snapshot')
+
+    const permitNone = await mkPermit('NOPE-999', null)
+    check((await lodge(permitNone)) === 'unmatched' && (await permitRow(permitNone)).parcel_layer === null && (await snaps(permitNone)).length === 0,
+      'a stand number that matches nothing is recorded as unmatched, not rejected or guessed')
+
+    const dupStand = (await client.query(`INSERT INTO stands (stand_number, ward, area_sqm, geom) VALUES ('VERIFY-IN', 'W1', 500, ST_GeomFromText('POLYGON((10.003 10.002, 10.004 10.002, 10.004 10.004, 10.003 10.004, 10.003 10.002))', 4326)) RETURNING id`)).rows[0].id
+    const permitAmb = await mkPermit('VERIFY-IN', null)
+    check((await lodge(permitAmb)) === 'ambiguous' && (await permitRow(permitAmb)).parcel_layer === null, 'a stand number matching two stands is ambiguous: none is chosen')
+    const permitWard = await mkPermit('VERIFY-IN', 'W1')
+    check((await lodge(permitWard)) === 'matched' && (await permitRow(permitWard)).parcel_id === dupStand, 'the ward narrows two candidates to one')
+
+    const permitLoc = await mkPermit(null, null, 20.0005, 10.003)
+    check((await lodge(permitLoc)) === 'by_location', 'with no stand number, exactly one stand under the location is found by location')
+
+    // assessment: the planner picks the land use; history is kept, never rewritten
+    await expectError(client, 'an assessment needs a parcel first', "SELECT spatial_planning.take_permit_assessment_snapshot($1, 'A', NULL)", [permitNone], /has no parcel/)
+    const a1 = await client.query("SELECT spatial_planning.take_permit_assessment_snapshot($1, 'A', NULL) AS s", [permitIn])
+    check(a1.rows[0].s.results.length === 1 && a1.rows[0].s.results[0].decision === 'special_consent', 'the assessment snapshot gives the decision under the plan recorded at lodgement')
     await client.query("UPDATE zone_land_use_controls SET control_type = 'prohibited' WHERE id = $1", [cell.id])
-    const stored = (await client.query("SELECT rules_snapshot FROM development_applications WHERE id = 'DEV-VERIFY'")).rows[0].rules_snapshot
-    check(stored.results[0].decision === 'special_consent' && (await snap(standIn, 'A')).results[0].decision === 'prohibited',
-      'changing the plan afterwards changes new snapshots but not the one an application stored')
-    await expectError(client, 'a stored snapshot cannot be rewritten', "UPDATE development_applications SET rules_snapshot = '{}'::jsonb WHERE id = 'DEV-VERIFY'", [], /cannot be changed/)
+    await client.query("SELECT spatial_planning.take_permit_assessment_snapshot($1, 'A', NULL)", [permitIn])
+    const hist = (await snaps(permitIn)).filter((r) => r.kind === 'assessment')
+    check(hist.length === 2 && hist[0].snapshot.results[0].decision === 'special_consent' && hist[1].snapshot.results[0].decision === 'prohibited',
+      'a later change to the plan gives a new snapshot; the earlier one is kept as it was')
+    await expectError(client, 'a stored snapshot cannot be rewritten', "UPDATE spatial_planning.permit_rule_snapshot SET snapshot = '{}'::jsonb WHERE permit_id = $1", [permitIn], /append-only/)
+
+    await client.query("SELECT spatial_planning.set_permit_parcel($1, 'stands', $2, NULL)", [permitNone, standIn])
+    const fixed = await permitRow(permitNone)
+    check(fixed.parcel_match === 'manual' && fixed.parcel_id === standIn && (await snaps(permitNone)).some((r) => r.kind === 'parcel_corrected'),
+      'staff can set the parcel on an unmatched permit, recorded as a manual correction')
+    await expectError(client, 'staff cannot set a parcel that does not exist', "SELECT spatial_planning.set_permit_parcel($1, 'stands', '00000000-0000-0000-0000-000000000000', NULL)", [permitNone], /no parcel/)
+
+    // two plans cover one parcel: neither is picked
+    const copyPlan = (await client.query("SELECT id FROM plan_instrument WHERE id = $1", [second])).rows[0].id
+    const copyType = (await client.query("SELECT id FROM plan_zone_type WHERE plan_instrument_id = $1 AND code = 'Communal Farming Zone'", [copyPlan])).rows[0].id
+    await client.query(`INSERT INTO proposed_peri_urban_zones (zone, plan_instrument_id, plan_zone_type_id, geom) VALUES ('Verification overlap', $1, $2, ${square(10, 10.01)})`, [copyPlan, copyType])
+    const permitTwo = await mkPermit('VERIFY-FAR-IN', null, 10.0015, 10.003)
+    await client.query('UPDATE spatial_planning.permit_application SET stand_number = $2 WHERE id = $1', [permitTwo, 'VERIFY-IN'])
+    await client.query('DELETE FROM stands WHERE id = $1', [dupStand])
+    check((await lodge(permitTwo)) === 'matched' && (await permitRow(permitTwo)).plan_instrument_id === null
+      && (await snaps(permitTwo))[0].snapshot.results.filter((r) => r.governing).length === 2,
+      'a parcel covered by two plans keeps both in the snapshot and records no single plan')
     await client.query('ROLLBACK')
   } catch (err) {
     await client.query('ROLLBACK')

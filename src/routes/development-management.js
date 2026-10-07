@@ -8,6 +8,9 @@
  *   POST   /permit-applications
  *   GET    /permit-applications
  *   GET    /permit-applications/:id
+ *   GET    /permit-applications/:id/rule-snapshots   (the rules the permit was judged under)
+ *   PUT    /permit-applications/:id/parcel           (staff set or correct the parcel)
+ *   POST   /permit-applications/:id/rule-snapshot    (planner picks the land use; server computes)
  *   PATCH  /permit-applications/:id/status
  *   POST   /permit-applications/:id/consultations
  *   GET    /permit-applications/:id/consultations
@@ -51,6 +54,7 @@ const notifier = require('../services/notifier')
 const { canTransition, allowedTransitions } = require('../config/permitWorkflow')
 const { scanBuffer } = require('../services/malwareScan')
 const { validateFileSignature } = require('../utils/fileSignature')
+const { parseParcelRef, parseUseCode } = require('../utils/ruleSnapshot')
 
 /**
  * Statutory transition gate, shared by every status write. Returns null when
@@ -392,6 +396,19 @@ async function developmentManagementRoutes(fastify) {
         row = upd.rows[0] || row
       }
 
+      // Link the parcel and record the zoning at lodgement (migration 146). The server
+      // works this out from the stand number or location; it never fails the lodgement:
+      // a stand that matches nothing, or several things, is recorded as such.
+      try {
+        await pg.query('SELECT spatial_planning.lodge_permit_zoning($1)', [row.id])
+        const { rows: linked } = await pg.query(
+          'SELECT authority_id, parcel_layer, parcel_id, parcel_match, plan_instrument_id FROM spatial_planning.permit_application WHERE id = $1',
+          [row.id])
+        if (linked[0]) row = { ...row, ...linked[0] }
+      } catch (err) {
+        request.log.error({ err }, 'permit lodgement zoning failed')
+      }
+
       // Acknowledge receipt by email. Fire-and-forget: composing the
       // (optionally AI-fine-tuned) message must never delay or fail the
       // submission response. The email worker picks the row up from the
@@ -504,6 +521,72 @@ async function developmentManagementRoutes(fastify) {
       return reply.send({ success: true, data: rows[0] })
     } catch (err) {
       request.log.error({ err }, 'get permit-application failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    }
+  })
+
+  // ── Rule snapshots (migration 146) ───────────────────────────────
+  // The rules a permit is judged under, computed on the server from the parcel's position.
+  // Append-only history: the latest 'assessment' is the current one.
+  const SNAPSHOT_STAFF = ['planner', 'planning_clerk', 'eo', 'admin']
+
+  fastify.get('/permit-applications/:id/rule-snapshots', {
+    preHandler: requireRole(fastify, PERMIT_READERS),
+  }, async (request, reply) => {
+    if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
+    try {
+      const { rows: permit } = await pg.query(
+        'SELECT id, created_by, parcel_layer, parcel_id, parcel_match, plan_instrument_id FROM spatial_planning.permit_application WHERE id = $1',
+        [request.params.id])
+      if (!permit[0]) return reply.code(404).send({ success: false, error: 'not_found' })
+      if (!STAFF_ROLES.includes(request.user.role) && permit[0].created_by !== request.user.id) {
+        return reply.code(404).send({ success: false, error: 'not_found' })
+      }
+      const { rows } = await pg.query(
+        `SELECT id, kind, land_use_code, plan_instrument_id, snapshot, taken_by, taken_at
+           FROM spatial_planning.permit_rule_snapshot WHERE permit_id = $1 ORDER BY taken_at, id`,
+        [request.params.id])
+      const { id, created_by, ...parcel } = permit[0]
+      return reply.send({ success: true, data: { parcel, snapshots: rows } })
+    } catch (err) {
+      request.log.error({ err }, 'list rule snapshots failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    }
+  })
+
+  fastify.put('/permit-applications/:id/parcel', {
+    preHandler: requireRole(fastify, SNAPSHOT_STAFF),
+  }, async (request, reply) => {
+    if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
+    const b = request.body || {}
+    const ref = parseParcelRef(b.layer, b.id)
+    if (!ref) return reply.code(400).send({ success: false, error: 'bad_parcel' })
+    try {
+      const { rows } = await pg.query('SELECT spatial_planning.set_permit_parcel($1, $2, $3, $4) AS snapshot',
+        [request.params.id, ref.layer, ref.id, request.user.id])
+      return reply.send({ success: true, data: rows[0].snapshot })
+    } catch (err) {
+      if (/unknown permit/.test(err.message)) return reply.code(404).send({ success: false, error: 'not_found' })
+      if (/no parcel/.test(err.message)) return reply.code(404).send({ success: false, error: 'unknown_parcel' })
+      request.log.error({ err }, 'set permit parcel failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    }
+  })
+
+  fastify.post('/permit-applications/:id/rule-snapshot', {
+    preHandler: requireRole(fastify, SNAPSHOT_STAFF),
+  }, async (request, reply) => {
+    if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
+    const use = parseUseCode((request.body || {}).land_use_code)
+    if (!use) return reply.code(400).send({ success: false, error: 'bad_land_use_code' })
+    try {
+      const { rows } = await pg.query('SELECT spatial_planning.take_permit_assessment_snapshot($1, $2, $3) AS snapshot',
+        [request.params.id, use, request.user.id])
+      return reply.code(201).send({ success: true, data: rows[0].snapshot })
+    } catch (err) {
+      if (/unknown permit/.test(err.message)) return reply.code(404).send({ success: false, error: 'not_found' })
+      if (/has no parcel/.test(err.message)) return reply.code(409).send({ success: false, error: 'no_parcel' })
+      request.log.error({ err }, 'take rule snapshot failed')
       return reply.code(500).send({ success: false, error: 'internal' })
     }
   })

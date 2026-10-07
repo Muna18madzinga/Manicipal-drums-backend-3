@@ -147,6 +147,8 @@ const MIGRATIONS = [
   '143_decision_pathways_and_zone_standards.sql',
   '144_parcel_zoning.sql',
   '145_application_rule_snapshots.sql',
+  // 146: permit parcel link, append-only rule snapshots; retires the snapshot columns on development_applications.
+  '146_permit_parcel_and_rule_snapshots.sql',
 ]
 
 function createPool(env = process.env) {

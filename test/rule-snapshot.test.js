@@ -2,9 +2,7 @@ jest.mock('../src/middleware/jwtAuth', () => ({ requireAuth: () => async () => {
 
 const { parseParcelRef, parseUseCode, singlePlanId, takeSnapshot } = require('../src/utils/ruleSnapshot')
 const { parcelZoningRoutes } = require('../src/routes/parcelZoning')
-const developmentApplicationRoutes = require('../src/routes/development-applications')
-
-const reg = (mod) => (mod.developmentApplicationRoutes || mod)
+const { developmentManagementRoutes } = require('../src/routes/development-management')
 
 function makeServer(queryImpl) {
   const routes = {}
@@ -96,37 +94,5 @@ describe('GET /parcel-zoning/:layer/:id', () => {
     const { reply } = await call(KEY, { params: { layer: 'stands', id: '1' } })
     expect(reply.statusCode).toBe(500)
     expect(JSON.stringify(reply.body)).not.toMatch(/10\.0\.0\.5/)
-  })
-})
-
-describe('POST /development-applications stores a server-computed snapshot', () => {
-  const body = (selection) => ({ selection, eligibility: { eligible: true, claimedDecision: 'permitted' }, formData: {} })
-  const setup = async (impl) => { const s = makeServer(impl); await reg(developmentApplicationRoutes)(s.server, {}); return s }
-  const KEY = 'POST /development-applications'
-
-  test('a selection that names a parcel but a bad land use is a 400, nothing is inserted', async () => {
-    const { call, server } = await setup(async () => ({ rows: [] }))
-    const { reply } = await call(KEY, { body: body({ parcel: { layer: 'stands', id: '1' }, landUseCode: "A'; --" }) })
-    expect(reply.statusCode).toBe(400)
-    expect(server.pg.query).not.toHaveBeenCalled()
-  })
-
-  test('the snapshot comes from the database, not from the eligibility the client sent', async () => {
-    const snapshot = { results: [{ governing: true, plan: { id: 'plan-1' }, decision: 'prohibited' }] }
-    const { call, server } = await setup(async (sql) => (/rule_snapshot/.test(sql) ? { rows: [{ snapshot }] } : { rows: [{ id: 'DEV-1' }] }))
-    const { reply } = await call(KEY, { body: body({ parcel: { layer: 'stands', id: '1' }, landUseCode: 'A' }) })
-    expect(reply.statusCode).toBe(201)
-    const insert = server.pg.query.mock.calls.find(([sql]) => /INSERT INTO development_applications/.test(sql))
-    const values = insert[1]
-    expect(values[8]).toBe('plan-1') // plan_instrument_id
-    expect(JSON.parse(values[9]).results[0].decision).toBe('prohibited') // rules_snapshot, not the claimed 'permitted'
-  })
-
-  test('an application with no parcel selection is stored without a snapshot, as before', async () => {
-    const { call, server } = await setup(async () => ({ rows: [{ id: 'DEV-1' }] }))
-    const { reply } = await call(KEY, { body: body({ zone: 'Residential' }) })
-    expect(reply.statusCode).toBe(201)
-    const insert = server.pg.query.mock.calls.find(([sql]) => /INSERT INTO development_applications/.test(sql))
-    expect(insert[1].slice(8)).toEqual([null, null, null])
   })
 })

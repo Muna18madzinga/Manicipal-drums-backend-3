@@ -1,3 +1,7 @@
+// RETIRED: no frontend caller. The canonical intake is POST /permit-applications
+// (routes/development-management.js, spatial_planning.permit_application); rule snapshots
+// live there (migration 146). Kept only until the table and these routes are removed.
+//
 // Development Application API Routes (JavaScript/CommonJS)
 // Handles all development application related endpoints.
 //
@@ -8,7 +12,6 @@
 // internals are never leaked to the client.
 
 const { requireAuth, requireRole } = require('../middleware/jwtAuth')
-const { parseParcelRef, parseUseCode, takeSnapshot } = require('../utils/ruleSnapshot')
 
 // Council staff who may read every application and change status.
 const STAFF_ROLES = [
@@ -51,29 +54,11 @@ async function developmentApplicationRoutes(fastify, options) {
       const { selection, eligibility, formData, documents, fees } = request.body
       const applicationId = `DEV-${Date.now().toString().slice(-6)}`
 
-      // The rules the application is judged under are worked out here, from the parcel's
-      // position, and stored with it. The client names the parcel and the land use only; the
-      // eligibility it sends is kept as submitted but is not what the rules are taken from.
-      let snapshot = null
-      let planId = null
-      const wantsSnapshot = selection && (selection.parcel !== undefined || selection.landUseCode !== undefined)
-      if (wantsSnapshot) {
-        const ref = selection.parcel ? parseParcelRef(selection.parcel.layer, selection.parcel.id) : null
-        const use = parseUseCode(selection.landUseCode)
-        if (!ref || !use) {
-          return reply.status(400).send({ success: false, message: 'selection.parcel {layer, id} and selection.landUseCode must both be valid' })
-        }
-        const taken = await takeSnapshot(fastify.pg, ref, use)
-        snapshot = taken.snapshot
-        planId = taken.planId
-      }
-
       const insertQuery = `
         INSERT INTO development_applications (
           id, user_id, selection_data, eligibility_data, form_data,
-          fees_data, status, submitted_at, created_at, updated_at,
-          plan_instrument_id, rules_snapshot, snapshot_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW(), $9, $10, $11)
+          fees_data, status, submitted_at, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
         RETURNING *
       `
       const values = [
@@ -84,10 +69,7 @@ async function developmentApplicationRoutes(fastify, options) {
         JSON.stringify(formData),
         JSON.stringify(fees || {}),
         'submitted',
-        new Date().toISOString(),
-        planId,
-        snapshot ? JSON.stringify(snapshot) : null,
-        snapshot ? new Date().toISOString() : null
+        new Date().toISOString()
       ]
 
       const { rows } = await fastify.pg.query(insertQuery, values)
