@@ -121,6 +121,19 @@ async function dynamicLayerRoutes(fastify) {
       
       const rows = (await fastify.pg.query(query)).rows.filter(l => !isPrivateTable(l.table_name))
 
+      // GET /layer/:tableName needs a primary key, so views and key-less tables
+      // can never load. Say so here (one query) so the client need not probe
+      // each layer just to find out.
+      const { rows: keyed } = await fastify.pg.query(
+        `SELECT c.relname
+           FROM pg_index i
+           JOIN pg_class c ON c.oid = i.indrelid
+           JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE i.indisprimary AND n.nspname = 'public' AND c.relname = ANY($1)`,
+        [rows.map(l => l.table_name)]
+      )
+      const hasPrimaryKey = new Set(keyed.map(r => r.relname))
+
       // Probe once per request (cached ~60s). When QGIS integration is off or
       // unreachable, skip extraction entirely — no per-layer retry storm.
       const useQgis = await qgisAvailable()
@@ -135,6 +148,7 @@ async function dynamicLayerRoutes(fastify) {
             name: layer.display_name,
             type: layer.geometry_type,
             description: layer.description,
+            loadable: hasPrimaryKey.has(layer.table_name),
             style: finalStyle
           }
         }
@@ -197,6 +211,7 @@ async function dynamicLayerRoutes(fastify) {
           name: layer.display_name,
           type: layer.geometry_type,
           description: layer.description,
+          loadable: hasPrimaryKey.has(layer.table_name),
           style: finalStyle
         }
       }))
