@@ -85,6 +85,7 @@ describe('migration plan', () => {
       '128_planning_clerk_registers.sql',
       '129_password_reset.sql',
       '130_api_token_registry.sql',
+      '131_page_view.sql',
       '132_gis_core_register.sql',
       '133_gms_editing.sql',
       '134_zones_single_source.sql',
@@ -103,6 +104,7 @@ describe('migration plan', () => {
       '148_zone_rename_keeps_zone_type.sql',
       '149_drop_gweru_peri_urban_zone.sql',
       '150_plan_workbench.sql',
+      '151_analytics_settings.sql',
     ])
 
     for (const filename of MIGRATIONS) {

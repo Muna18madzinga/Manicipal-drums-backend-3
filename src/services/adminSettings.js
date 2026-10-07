@@ -35,6 +35,8 @@ const DEFAULTS = Object.freeze({
   'security.session_max_hours': 12,
   'security.mfa_required_roles': [],
   'audit.retention_days': 365,
+  'analytics.enabled': true,
+  'analytics.retention_days': 395,
   'system.maintenance_mode': false,
   'system.maintenance_message': 'Vungu RDC planning portal is under maintenance. Please try again shortly.',
   'notifications.email_enabled': true,

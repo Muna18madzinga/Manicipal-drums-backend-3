@@ -3,6 +3,7 @@
 // The council IT Administrator's console API.
 //
 //   GET    /admin/overview                everything the landing page counts
+//   GET    /admin/usage                   portal page views (?days=7|30|90), from the first-party analytics
 //   GET    /admin/audit                   the trail, filtered + paginated (and prunes to retention, daily)
 //   GET    /admin/audit/export            the same query as CSV
 //   GET    /admin/audit/events            the distinct event types, for filters
@@ -46,6 +47,7 @@ const { requireAdmin } = require('../middleware/jwtAuth')
 const { invalidate, getSetting } = require('../services/adminSettings')
 const permissions = require('../config/permissions')
 const { activeTransportName } = require('../workers/emailWorker')
+const { usageReport, parseWindow } = require('../services/usageAnalytics')
 
 // ── Primitives ──────────────────────────────────────────────────────────
 
@@ -91,6 +93,17 @@ async function adminConsoleRoutes(fastify) {
   // fetching eight lists and counting them in the browser would move rows
   // across a rural Zimbabwean link only to throw away everything but the
   // length — the same reasoning as /eho/summary.
+  // Portal usage. Only visitors who accepted analytics are in this table, so the numbers are a
+  // floor, not a census; the screen says so. Route patterns only: no record ids, no addresses.
+  fastify.get('/admin/usage', admin, async (request, reply) => {
+    try {
+      return reply.send({ success: true, data: await usageReport(fastify.pg, parseWindow((request.query || {}).days)) })
+    } catch (err) {
+      request.log.error({ err }, 'usage report failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    }
+  })
+
   fastify.get('/admin/overview', admin, async (_request, reply) => {
     try {
       const { rows } = await fastify.pg.query(`

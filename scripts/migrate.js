@@ -115,6 +115,9 @@ const MIGRATIONS = [
   // Revocable QGIS/API tokens: /auth/generate-api-token records each jti and
   // the sync routes refuse any token without a live row. FK on users only.
   '130_api_token_registry.sql',
+  // First-party usage analytics table (page_view). It was written with 130-133 but left out of
+  // this list, so it was never applied and POST /api/analytics/pageview had nothing to write to.
+  '131_page_view.sql',
   // GIS Management System core register + ERP integration. Depends on
   // public.users (001) and public.admin_audit_event (127).
   '132_gis_core_register.sql',
@@ -157,6 +160,8 @@ const MIGRATIONS = [
   '149_drop_gweru_peri_urban_zone.sql',
   // 150: plan workbench support: events, sign-off, status chain, freeze, versions, decision diff.
   '150_plan_workbench.sql',
+  // 151: council settings for the usage analytics (kill switch, retention).
+  '151_analytics_settings.sql',
 ]
 
 function createPool(env = process.env) {
