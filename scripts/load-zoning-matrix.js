@@ -49,8 +49,7 @@ async function resolvePlan(pool, value) {
   let rows
   if (value === null || value === true) {
     rows = (await pool.query(`${base} JOIN plan_profile p ON p.id = i.profile_id
-                              WHERE i.is_template AND p.code = 'rural' AND i.plan_type = 'district_master'
-                              ORDER BY i.created_at LIMIT 1`)).rows
+                              WHERE i.is_default_template AND p.code = 'rural' LIMIT 1`)).rows
   } else if (UUID.test(value)) {
     rows = (await pool.query(`${base} WHERE i.id = $1`, [value])).rows
   } else {

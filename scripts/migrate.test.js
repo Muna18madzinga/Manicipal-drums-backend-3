@@ -93,6 +93,8 @@ describe('migration plan', () => {
       '138_district_development_matrix.sql',
       '139_plan_model_foundation.sql',
       '140_plan_scoped_matrix.sql',
+      '141_reference_classification_and_urban_starter.sql',
+      '142_rural_starter_palette_and_palette_tools.sql',
     ])
 
     for (const filename of MIGRATIONS) {

@@ -7,6 +7,10 @@
  *   GET /api/plans             plan instruments; filter with ?authority=<code>,
  *                              ?profile=<code>, ?template=true|false
  *   GET /api/plans/:id/diff    how a plan adopted from a template differs from it
+ *   GET /api/plans/:a/compare/:b  two plans side by side by reference class: where they
+ *                              overlap and which classes only one of them covers
+ *   GET /api/plans/:id/crosswalk  each zone type and land use of a plan with the reference
+ *                              (INSPIRE HILUCS) classes it is mapped to
  *
  * Public, like the zone and matrix endpoints: authorities and the plans they
  * operate under are published planning information. Contact details are not
@@ -41,8 +45,25 @@ const PROFILES_SQL = `
            WHERE i.profile_id = (SELECT id FROM plan_profile WHERE code = p.code) AND NOT i.is_template)::int
            AS plans_using_profile
     FROM plan_profile p
-    LEFT JOIN plan_instrument_summary t ON t.profile_code = p.code AND t.is_template
+    LEFT JOIN plan_instrument_summary t ON t.profile_code = p.code AND t.is_default_template
    ORDER BY p.kind`
+
+// Local codes stay local; this is how they relate to a shared reference classification.
+// Rows are 'proposed' until someone confirms them.
+const CROSSWALK_SQL = `
+  SELECT 'zone_type' AS kind, t.code, t.name AS label, k.scheme, k.code AS class_code,
+         c.label AS class_label, k.relation, k.status
+    FROM plan_zone_type t
+    LEFT JOIN plan_zone_type_class k ON k.plan_zone_type_id = t.id
+    LEFT JOIN reference_classification c ON c.scheme = k.scheme AND c.code = k.code
+   WHERE t.plan_instrument_id = $1
+  UNION ALL
+  SELECT 'land_use', g.group_code, g.description, k.scheme, k.code, c.label, k.relation, k.status
+    FROM land_use_groups g
+    LEFT JOIN land_use_group_class k ON k.land_use_group_id = g.id
+    LEFT JOIN reference_classification c ON c.scheme = k.scheme AND c.code = k.code
+   WHERE g.plan_instrument_id = $1 AND g.is_active
+   ORDER BY 1, 2, 5`
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -102,6 +123,35 @@ async function planModelRoutes(fastify) {
     }
   })
 
+  fastify.get('/plans/:id/crosswalk', async (request, reply) => {
+    const { id } = request.params
+    if (!UUID_RE.test(id)) return reply.code(400).send({ success: false, error: 'plan id must be a uuid' })
+    try {
+      const { rows: plan } = await fastify.pg.query('SELECT id, title FROM plan_instrument WHERE id = $1', [id])
+      if (!plan.length) return reply.code(404).send({ success: false, error: 'Unknown plan' })
+      const { rows } = await fastify.pg.query(CROSSWALK_SQL, [id])
+      return { success: true, count: rows.length, data: { plan_id: id, title: plan[0].title, rows } }
+    } catch (err) {
+      request.log.error({ err }, 'plan crosswalk failed')
+      return reply.code(500).send({ success: false, error: 'Failed to read the plan crosswalk' })
+    }
+  })
+
+  fastify.get('/plans/:a/compare/:b', async (request, reply) => {
+    const { a, b } = request.params
+    if (!UUID_RE.test(a) || !UUID_RE.test(b)) return reply.code(400).send({ success: false, error: 'plan ids must be uuids' })
+    try {
+      const { rows: found } = await fastify.pg.query('SELECT id, title FROM plan_instrument WHERE id = ANY($1::uuid[])', [[a, b]])
+      if (found.length < (a === b ? 1 : 2)) return reply.code(404).send({ success: false, error: 'Unknown plan' })
+      const { rows } = await fastify.pg.query('SELECT * FROM plan_compare($1, $2)', [a, b])
+      const title = (id) => found.find((f) => f.id === id).title
+      return { success: true, count: rows.length, data: { a: { id: a, title: title(a) }, b: { id: b, title: title(b) }, classes: rows } }
+    } catch (err) {
+      request.log.error({ err }, 'plan compare failed')
+      return reply.code(500).send({ success: false, error: 'Failed to compare the plans' })
+    }
+  })
+
   fastify.get('/plans', async (request, reply) => {
     try {
       const { sql, params } = plansQuery(request.query || {})
@@ -114,4 +164,4 @@ async function planModelRoutes(fastify) {
   })
 }
 
-module.exports = { planModelRoutes, plansQuery, AUTHORITIES_SQL, PROFILES_SQL }
+module.exports = { planModelRoutes, plansQuery, AUTHORITIES_SQL, PROFILES_SQL, CROSSWALK_SQL }

@@ -116,7 +116,7 @@ async function main() {
       check(JSON.stringify(diff) === JSON.stringify([{ land_use_code: 'A', change: 'changed' }, { land_use_code: 'ZZ', change: 'added' }]),
         `plan_diff sees exactly the two edits (${diff.map((d) => d.land_use_code + ':' + d.change).join(', ')})`)
 
-      const counts = (await db.query(`SELECT i.is_template, i.zone_types, i.land_uses, i.decisions FROM plan_instrument_summary i WHERE i.is_template OR i.id = $1 ORDER BY i.is_template DESC`, [planId])).rows
+      const counts = (await db.query(`SELECT i.is_template, i.zone_types, i.land_uses, i.decisions FROM plan_instrument_summary i WHERE (i.is_default_template AND i.profile_code = 'rural') OR i.id = $1 ORDER BY i.is_template DESC`, [planId])).rows
       check(counts[0].decisions === 337 && counts[1].decisions === 338 && counts[1].land_uses === 33,
         `template unchanged (337 decisions); the new plan has its own (${counts[1].decisions} decisions, ${counts[1].land_uses} land uses)`)
     } finally {

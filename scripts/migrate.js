@@ -139,6 +139,10 @@ const MIGRATIONS = [
   // 140: a plan owns its land uses and decisions. Land-use codes unique per plan,
   // decisions on a plan's own zone types, adopt_plan_template() and plan_diff().
   '140_plan_scoped_matrix.sql',
+  // 141: reference classification (HILUCS L1-2), crosswalk, urban starter palette; adopt copies the crosswalk.
+  '141_reference_classification_and_urban_starter.sql',
+  // 142: default template per profile, rural starter palette, plan_compare() and import_plan_items().
+  '142_rural_starter_palette_and_palette_tools.sql',
 ]
 
 function createPool(env = process.env) {

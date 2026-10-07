@@ -10,7 +10,8 @@
  * template is never changed, and later edits to the template do not reach the copy.
  * GET /api/plans/<id>/diff shows how the copy differs from its template.
  *
- *   --template   id or part of the title of the template (default: the rural profile template)
+ *   --template   id or part of the title of the template
+ *   --profile    rural | urban: that profile's default template (default: rural)
  *   --plan-type  district_master | local | layout | scheme   (default: local)
  *   --status     unknown | draft | public_notice | approved | gazetted   (default: draft)
  *   --rollback   run it and undo it, to check it would succeed
@@ -19,8 +20,8 @@ const path = require('path')
 require('dotenv').config({ path: path.join(__dirname, '..', '.env'), quiet: true })
 const { Pool } = require('pg')
 
-const KNOWN = new Set(['--authority', '--title', '--template', '--plan-type', '--status', '--rollback'])
-const USAGE = 'Usage: --authority <CODE> --title <text> [--template <id|title>] [--plan-type district_master|local|layout|scheme] [--status draft] [--rollback]'
+const KNOWN = new Set(['--authority', '--title', '--template', '--profile', '--plan-type', '--status', '--rollback'])
+const USAGE = 'Usage: --authority <CODE> --title <text> [--template <id|title> | --profile rural|urban] [--plan-type district_master|local|layout|scheme] [--status draft] [--rollback]'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const arg = (n) => { const i = process.argv.indexOf(`--${n}`); return i === -1 ? null : process.argv[i + 1] }
 
@@ -42,8 +43,8 @@ async function main() {
       ? await client.query('SELECT id, title FROM plan_instrument WHERE id = $1 AND is_template', [t])
       : await client.query(
         `SELECT i.id, i.title FROM plan_instrument i JOIN plan_profile p ON p.id = i.profile_id
-          WHERE i.is_template AND ${t ? 'i.title ILIKE $1' : "p.code = 'rural' AND i.plan_type = 'district_master'"}
-          ORDER BY i.created_at`, t ? [`%${t}%`] : [])
+          WHERE i.is_template AND ${t ? 'i.title ILIKE $1' : 'i.is_default_template AND p.code = $1'}
+          ORDER BY i.created_at`, t ? [`%${t}%`] : [arg('profile') || 'rural'])
     if (tmpl.length !== 1) throw new Error(tmpl.length ? `"${t}" matches ${tmpl.length} templates; use an id` : 'No such template')
 
     await client.query('BEGIN')

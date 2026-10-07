@@ -38,12 +38,12 @@ const ZONE_USES_SQL = `
 const RULES_COUNT_SQL = `(SELECT COUNT(*) FROM zone_effective_controls c
                           WHERE c.zone_id = z.id AND c.deleted_at IS NULL)`
 
-/** The plan used when a request names none: the rural profile template (transitional). */
+/** The plan used when a request names none: the rural profile's default template (transitional). */
 const DEFAULT_PLAN_SQL = `
   SELECT i.id
     FROM plan_instrument i JOIN plan_profile p ON p.id = i.profile_id
-   WHERE i.is_template AND p.code = 'rural' AND i.plan_type = 'district_master'
-   ORDER BY i.created_at LIMIT 1`
+   WHERE i.is_default_template AND p.code = 'rural'
+   LIMIT 1`
 
 /** One zone type of one plan. $1 = plan id, $2 = zone type code. */
 const PLAN_ZONE_TYPE_SQL = `

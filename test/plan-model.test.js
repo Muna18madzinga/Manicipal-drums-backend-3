@@ -82,6 +82,62 @@ describe('plan model endpoints', () => {
     expect(JSON.stringify(reply.body)).not.toMatch(/10\.0\.0\.5/) // the connection detail is not leaked
   })
 
+  describe('GET /plans/:id/crosswalk', () => {
+    const ID = '4c98ad9f-d0bd-4360-864b-af54cef9d08f'
+
+    test('a malformed id is a 400 and never reaches the database', async () => {
+      const { call, server } = await setup(async () => ({ rows: [] }))
+      const { reply } = await call('/plans/:id/crosswalk', {}, { id: "1; DROP TABLE plan_instrument" })
+      expect(reply.statusCode).toBe(400)
+      expect(server.pg.query).not.toHaveBeenCalled()
+    })
+
+    test('an unknown plan is a 404', async () => {
+      const { call } = await setup(async () => ({ rows: [] }))
+      const { reply } = await call('/plans/:id/crosswalk', {}, { id: ID })
+      expect(reply.statusCode).toBe(404)
+    })
+
+    test('returns the rows with the plan id bound as a parameter', async () => {
+      const rows = [{ kind: 'zone_type', code: 'Game Park Zone', class_code: '6_1_AgriculturalNatureManagementAreas', relation: 'within', status: 'proposed' }]
+      const { call, server } = await setup(async (sql) => (/reference_classification/.test(sql) ? { rows } : { rows: [{ id: ID, title: 'Plan' }] }))
+      const { out } = await call('/plans/:id/crosswalk', {}, { id: ID })
+      expect(out.count).toBe(1)
+      expect(out.data.rows).toEqual(rows)
+      expect(server.pg.query).toHaveBeenLastCalledWith(expect.stringContaining('plan_zone_type_class'), [ID])
+    })
+  })
+
+  describe('GET /plans/:a/compare/:b', () => {
+    const A = '4c98ad9f-d0bd-4360-864b-af54cef9d08f'
+    const B = 'eed92770-213c-4542-b006-b954521e16d7'
+
+    test('a malformed id is a 400 and never reaches the database', async () => {
+      const { call, server } = await setup(async () => ({ rows: [] }))
+      const { reply } = await call('/plans/:a/compare/:b', {}, { a: A, b: "x'; --" })
+      expect(reply.statusCode).toBe(400)
+      expect(server.pg.query).not.toHaveBeenCalled()
+    })
+
+    test('an unknown plan is a 404', async () => {
+      const { call } = await setup(async () => ({ rows: [{ id: A, title: 'Only one' }] }))
+      const { reply } = await call('/plans/:a/compare/:b', {}, { a: A, b: B })
+      expect(reply.statusCode).toBe(404)
+    })
+
+    test('returns both titles and the class rows, ids bound as parameters', async () => {
+      const classes = [{ class_code: '1_3_MiningAndQuarrying', presence: 'only_b' }]
+      const { call, server } = await setup(async (sql) => (/plan_compare/.test(sql)
+        ? { rows: classes }
+        : { rows: [{ id: A, title: 'Sample' }, { id: B, title: 'Starter' }] }))
+      const { out } = await call('/plans/:a/compare/:b', {}, { a: A, b: B })
+      expect(out.data.a.title).toBe('Sample')
+      expect(out.data.b.title).toBe('Starter')
+      expect(out.data.classes).toEqual(classes)
+      expect(server.pg.query).toHaveBeenLastCalledWith('SELECT * FROM plan_compare($1, $2)', [A, B])
+    })
+  })
+
   describe('GET /plans/:id/diff', () => {
     const ID = '4c98ad9f-d0bd-4360-864b-af54cef9d08f'
 
