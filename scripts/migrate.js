@@ -130,6 +130,9 @@ const MIGRATIONS = [
   // A value source for proposed_peri_urban_zones.id, without which drawing a new
   // zone in QGIS Desktop fails the NOT NULL constraint on insert.
   '136_zones_id_sequence.sql',
+  // 138: district development control matrix. Zone-type keyed controls, the
+  // coded land-use vocabulary, and the zone_effective_controls view.
+  '138_district_development_matrix.sql',
 ]
 
 function createPool(env = process.env) {

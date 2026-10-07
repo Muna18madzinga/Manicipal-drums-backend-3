@@ -100,10 +100,10 @@ async function zonesRoutes(fastify) {
         `SELECT zlc.id, zlc.control_type, zlc.authority, zlc.conditions AS notes,
                 lug.group_code, lug.description AS use_description,
                 lug.development_category, lug.use_scale
-         FROM zone_land_use_controls zlc
+         FROM zone_effective_controls zlc
          JOIN land_use_groups lug ON lug.id = zlc.land_use_group_id
          WHERE zlc.zone_id = $1 AND zlc.deleted_at IS NULL
-         ORDER BY zlc.control_type, lug.group_code`,
+         ORDER BY zlc.control_type, lug.display_order, lug.group_code`,
         [id],
       )
 
@@ -233,7 +233,7 @@ async function zonesRoutes(fastify) {
         `SELECT zlc.id, zlc.control_type, zlc.authority, zlc.conditions AS notes,
                 lug.id AS group_id, lug.group_code, lug.description,
                 lug.development_category, lug.use_scale
-         FROM zone_land_use_controls zlc
+         FROM zone_effective_controls zlc
          JOIN land_use_groups lug ON lug.id = zlc.land_use_group_id
          WHERE zlc.zone_id = $1 AND zlc.deleted_at IS NULL
          ORDER BY
@@ -243,7 +243,7 @@ async function zonesRoutes(fastify) {
              WHEN 'prohibited'      THEN 3
              ELSE 4
            END,
-           lug.group_code`,
+           lug.display_order, lug.group_code`,
         [id],
       )
       return reply.send({ success: true, data: rows })

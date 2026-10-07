@@ -436,14 +436,14 @@ async function zoningFor(pg, siteHex, isArea) {
     id: z.id, zone: z.zone, zoneCode: z.zone_code, coveragePct: round(z.coverage_pct, 1),
   }))
   let controls = []
-  if (zones[0] && (await hasTable(pg, 'zone_land_use_controls'))) {
+  if (zones[0] && (await hasTable(pg, 'zone_effective_controls'))) {
     const c = await pg.query(
       `SELECT c.control_type, c.authority, c.conditions,
               g.group_code, g.description AS land_use, g.group_category
-         FROM zone_land_use_controls c
-         LEFT JOIN land_use_groups g ON g.group_id = c.land_use_group_id
+         FROM zone_effective_controls c
+         LEFT JOIN land_use_groups g ON g.id = c.land_use_group_id
         WHERE c.zone_id = $1 AND c.deleted_at IS NULL
-        ORDER BY c.control_type, g.group_code
+        ORDER BY c.control_type, g.display_order, g.group_code
         LIMIT 100`,
       [zones[0].id],
     )

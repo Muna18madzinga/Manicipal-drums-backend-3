@@ -1,18 +1,40 @@
 /**
  * Reads the zoning permission matrix.
  *
- * The single source of truth is `zone_land_use_controls` (zone polygon x
- * land-use group -> permitted | special_consent | prohibited), with the group
- * vocabulary in `land_use_groups`. The older `development_matrix` table is no
- * longer read: its columns (zone_id, group_id, is_active, permission_types)
- * do not exist in the live schema, so every query against it failed.
+ * The single source of truth is `zone_land_use_controls`: a decision
+ * (permitted | special_consent | prohibited) for a land use in either
+ *   - a zone type  (the district development control matrix: eleven land-use
+ *     zones against ~32 coded land uses), or
+ *   - a zone polygon (a local plan's own table).
+ * The land-use vocabulary is `land_use_groups` (A, A1, ... Z, in matrix order).
+ * A blank cell in the council's matrix is simply no row: readers see "unknown".
+ *
+ * "What applies to this polygon" is the view `zone_effective_controls`: its own
+ * rows plus those of its zone type, the polygon's own rule winning. The older
+ * `development_matrix` table is not read: its columns do not exist in the live
+ * schema, so every query against it failed.
  *
  * Bulk limits (max units, height, minimum lot size) are not modelled by the
  * canonical table; they are returned as null so existing clients keep working.
  */
 
-/** Controls for one zone polygon, joined to the group vocabulary. $1 = zone id. */
+/** Effective controls for one zone polygon, in matrix order. $1 = polygon id. */
 const ZONE_USES_SQL = `
+  SELECT g.group_code,
+         g.description AS group_description,
+         g.group_category,
+         c.control_type,
+         c.conditions,
+         c.notes
+    FROM zone_effective_controls c
+    JOIN land_use_groups g ON g.id = c.land_use_group_id
+   WHERE c.zone_id = $1
+     AND c.deleted_at IS NULL
+     AND g.is_active = TRUE
+   ORDER BY g.display_order, g.group_code`
+
+/** Controls for one zone TYPE (district matrix column), in matrix order. $1 = zone type code. */
+const ZONE_TYPE_USES_SQL = `
   SELECT g.group_code,
          g.description AS group_description,
          g.group_category,
@@ -21,16 +43,43 @@ const ZONE_USES_SQL = `
          c.notes
     FROM zone_land_use_controls c
     JOIN land_use_groups g ON g.id = c.land_use_group_id
-   WHERE c.zone_id = $1
+   WHERE c.zone_type = $1
      AND c.deleted_at IS NULL
      AND g.is_active = TRUE
-   ORDER BY g.group_category, g.group_code`
+   ORDER BY g.display_order, g.group_code`
 
 /** How many live rules a zone polygon has; used to prefer the best-described of overlapping zones. */
-const RULES_COUNT_SQL = `(SELECT COUNT(*) FROM zone_land_use_controls c
+const RULES_COUNT_SQL = `(SELECT COUNT(*) FROM zone_effective_controls c
                           WHERE c.zone_id = z.id AND c.deleted_at IS NULL)`
 
-/** The short codes the legacy API and the planner screen use. */
+/** The district matrix's zone types with how many decisions each has. */
+const ZONE_TYPES_SQL = `
+  SELECT t.code, t.label, t.category, t.display_order,
+         COUNT(*) FILTER (WHERE c.control_type = 'permitted')       ::int AS permitted,
+         COUNT(*) FILTER (WHERE c.control_type = 'special_consent') ::int AS special_consent,
+         COUNT(*) FILTER (WHERE c.control_type = 'prohibited')      ::int AS prohibited
+    FROM ref_zone_types t
+    LEFT JOIN zone_land_use_controls c
+           ON c.zone_type = t.code AND c.deleted_at IS NULL
+   WHERE t.display_order IS NOT NULL
+   GROUP BY t.code, t.label, t.category, t.display_order
+   ORDER BY t.display_order`
+
+/** Every active land use, in matrix order. */
+const LAND_USES_SQL = `
+  SELECT group_code, description, group_category, display_order, notes
+    FROM land_use_groups
+   WHERE is_active = TRUE
+   ORDER BY display_order, group_code`
+
+/** Every live zone-type decision (the whole district matrix). */
+const ZONE_TYPE_CELLS_SQL = `
+  SELECT c.zone_type, g.group_code, c.control_type, c.conditions
+    FROM zone_land_use_controls c
+    JOIN land_use_groups g ON g.id = c.land_use_group_id
+   WHERE c.zone_type IS NOT NULL AND c.deleted_at IS NULL AND g.is_active = TRUE`
+
+/** The short codes the legacy API, the planner screen and the council's matrix use. */
 const PERMISSION_CODE = { permitted: 'P', special_consent: 'SC', prohibited: 'X' }
 const CONTROL_TYPE = { P: 'permitted', SC: 'special_consent', X: 'prohibited' }
 
@@ -45,7 +94,7 @@ const useInfo = (row) => ({
   min_lot_size_sqm: null,
 })
 
-/** Split ZONE_USES_SQL rows into the three lists the clients expect. */
+/** Split zone-uses rows into the three lists the clients expect. */
 function groupUses(rows) {
   const out = { permitted_uses: [], prohibited_uses: [], consent_required_uses: [] }
   for (const row of rows) {
@@ -56,4 +105,35 @@ function groupUses(rows) {
   return out
 }
 
-module.exports = { ZONE_USES_SQL, RULES_COUNT_SQL, PERMISSION_CODE, CONTROL_TYPE, groupUses }
+/**
+ * The district matrix as the council prints it: land uses down, zone types
+ * across, P / X / SC in each cell and null where nothing is decided.
+ */
+function buildGrid({ zoneTypes, landUses, cells }) {
+  const decided = new Map(cells.map((c) => [`${c.zone_type}|${c.group_code}`, c]))
+  return {
+    zone_types: zoneTypes.map((z) => ({ code: z.code, label: z.label, order: z.display_order })),
+    land_uses: landUses.map((u) => ({
+      code: u.group_code,
+      description: u.description,
+      category: u.group_category,
+      cells: zoneTypes.map((z) => {
+        const c = decided.get(`${z.code}|${u.group_code}`)
+        return c ? { permission_code: PERMISSION_CODE[c.control_type], control_type: c.control_type, conditions: c.conditions } : null
+      }),
+    })),
+  }
+}
+
+module.exports = {
+  ZONE_USES_SQL,
+  ZONE_TYPE_USES_SQL,
+  ZONE_TYPES_SQL,
+  LAND_USES_SQL,
+  ZONE_TYPE_CELLS_SQL,
+  RULES_COUNT_SQL,
+  PERMISSION_CODE,
+  CONTROL_TYPE,
+  groupUses,
+  buildGrid,
+}

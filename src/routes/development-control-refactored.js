@@ -10,7 +10,10 @@
 // open for the public map.
 
 const { requireAuth, requireRole } = require('../middleware/jwtAuth')
-const { ZONE_USES_SQL, RULES_COUNT_SQL, PERMISSION_CODE, CONTROL_TYPE, groupUses } = require('../utils/zoneUses')
+const {
+  ZONE_USES_SQL, ZONE_TYPE_USES_SQL, ZONE_TYPES_SQL, LAND_USES_SQL, ZONE_TYPE_CELLS_SQL,
+  RULES_COUNT_SQL, PERMISSION_CODE, CONTROL_TYPE, groupUses, buildGrid,
+} = require('../utils/zoneUses')
 
 // Council staff who may read the PII application register / dashboard.
 const STAFF_ROLES = [
@@ -208,6 +211,40 @@ async function developmentControlRoutes(fastify) {
       success: true,
       count: rows.length,
       data: rows.map(r => ({ ...r, permission_code: PERMISSION_CODE[r.control_type] }))
+    }
+  })
+
+  // ── District development control matrix (zone type x coded land use) ──────
+  // The council's printed matrix: eleven land-use zones across, ~32 coded land
+  // uses down, P / X / SC in each cell, blank where nothing is decided. Public,
+  // like permitted-uses: it is published planning policy.
+
+  // GET /api/development-control/zone-types
+  fastify.get('/zone-types', async () => {
+    const { rows } = await fastify.pg.query(ZONE_TYPES_SQL)
+    return { success: true, count: rows.length, data: rows }
+  })
+
+  // GET /api/development-control/zone-types/:code/uses
+  fastify.get('/zone-types/:code/uses', async (request, reply) => {
+    const { code } = request.params
+    const { rows: found } = await fastify.pg.query(
+      'SELECT code, label FROM ref_zone_types WHERE code = $1', [code])
+    if (!found.length) return reply.code(404).send({ success: false, error: 'Unknown zone type' })
+    const { rows } = await fastify.pg.query(ZONE_TYPE_USES_SQL, [code])
+    return { success: true, data: { zone_type: found[0], ...groupUses(rows) } }
+  })
+
+  // GET /api/development-control/matrix/grid
+  fastify.get('/matrix/grid', async () => {
+    const [zoneTypes, landUses, cells] = await Promise.all([
+      fastify.pg.query(ZONE_TYPES_SQL),
+      fastify.pg.query(LAND_USES_SQL),
+      fastify.pg.query(ZONE_TYPE_CELLS_SQL),
+    ])
+    return {
+      success: true,
+      data: buildGrid({ zoneTypes: zoneTypes.rows, landUses: landUses.rows, cells: cells.rows }),
     }
   })
 

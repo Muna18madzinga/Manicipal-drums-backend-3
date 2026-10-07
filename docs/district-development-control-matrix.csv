@@ -1,0 +1,353 @@
+zone,group_code,control_type,conditions,notes,authority
+Communal Farming Zone,A,P,,,Sample development control matrix
+Communal Farming Zone,A1,P,,,Sample development control matrix
+Communal Farming Zone,A2,P,,,Sample development control matrix
+Communal Farming Zone,A3,P,,,Sample development control matrix
+Communal Farming Zone,B,P,,,Sample development control matrix
+Communal Farming Zone,B1,P,,,Sample development control matrix
+Communal Farming Zone,B2,P,,,Sample development control matrix
+Communal Farming Zone,C,SC,,,Sample development control matrix
+Communal Farming Zone,D,P,,,Sample development control matrix
+Communal Farming Zone,D1,SC,,,Sample development control matrix
+Communal Farming Zone,E,P,,,Sample development control matrix
+Communal Farming Zone,E1,P,,,Sample development control matrix
+Communal Farming Zone,E2,P,,,Sample development control matrix
+Communal Farming Zone,F,P,,,Sample development control matrix
+Communal Farming Zone,G,P,,,Sample development control matrix
+Communal Farming Zone,H,P,,,Sample development control matrix
+Communal Farming Zone,I,P,,,Sample development control matrix
+Communal Farming Zone,J,P,,,Sample development control matrix
+Communal Farming Zone,J1,P,,,Sample development control matrix
+Communal Farming Zone,K,P,,,Sample development control matrix
+Communal Farming Zone,L1,P,,,Sample development control matrix
+Communal Farming Zone,M,P,,,Sample development control matrix
+Communal Farming Zone,P,P,,,Sample development control matrix
+Communal Farming Zone,Q,P,,,Sample development control matrix
+Communal Farming Zone,R,P,,,Sample development control matrix
+Communal Farming Zone,S,P,,,Sample development control matrix
+Communal Farming Zone,T,P,,,Sample development control matrix
+Communal Farming Zone,U,,,,Sample development control matrix
+Communal Farming Zone,V,P,,,Sample development control matrix
+Communal Farming Zone,X,P,,,Sample development control matrix
+Communal Farming Zone,Z,P,,,Sample development control matrix
+Communal Farming Zone,UF,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,A,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,A1,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,A2,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,A3,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,B,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,B1,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,B2,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,C,SC,,,Sample development control matrix
+High Intensive Commercial Farming Zone,D,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,D1,SC,,,Sample development control matrix
+High Intensive Commercial Farming Zone,E,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,E1,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,E2,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,F,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,G,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,H,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,I,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,J,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,J1,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,K,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,L1,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,M,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,P,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,Q,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,R,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,S,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,T,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,U,,,,Sample development control matrix
+High Intensive Commercial Farming Zone,V,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,X,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,Z,P,,,Sample development control matrix
+High Intensive Commercial Farming Zone,UF,P,,,Sample development control matrix
+Estates Zone (Large Farms),A,P,,,Sample development control matrix
+Estates Zone (Large Farms),A1,X,,,Sample development control matrix
+Estates Zone (Large Farms),A2,P,,,Sample development control matrix
+Estates Zone (Large Farms),A3,SC,,,Sample development control matrix
+Estates Zone (Large Farms),B,P,,,Sample development control matrix
+Estates Zone (Large Farms),B1,SC,,,Sample development control matrix
+Estates Zone (Large Farms),B2,P,,,Sample development control matrix
+Estates Zone (Large Farms),C,SC,,,Sample development control matrix
+Estates Zone (Large Farms),D,P,,,Sample development control matrix
+Estates Zone (Large Farms),D1,SC,,,Sample development control matrix
+Estates Zone (Large Farms),E,P,,,Sample development control matrix
+Estates Zone (Large Farms),E1,P,,,Sample development control matrix
+Estates Zone (Large Farms),E2,P,,,Sample development control matrix
+Estates Zone (Large Farms),F,P,,,Sample development control matrix
+Estates Zone (Large Farms),G,P,,,Sample development control matrix
+Estates Zone (Large Farms),H,P,,,Sample development control matrix
+Estates Zone (Large Farms),I,P,,,Sample development control matrix
+Estates Zone (Large Farms),J,P,,,Sample development control matrix
+Estates Zone (Large Farms),J1,P,,,Sample development control matrix
+Estates Zone (Large Farms),K,P,,,Sample development control matrix
+Estates Zone (Large Farms),L1,P,,,Sample development control matrix
+Estates Zone (Large Farms),M,P,,,Sample development control matrix
+Estates Zone (Large Farms),P,P,,,Sample development control matrix
+Estates Zone (Large Farms),Q,P,,,Sample development control matrix
+Estates Zone (Large Farms),R,P,,,Sample development control matrix
+Estates Zone (Large Farms),S,P,,,Sample development control matrix
+Estates Zone (Large Farms),T,P,,,Sample development control matrix
+Estates Zone (Large Farms),U,,,,Sample development control matrix
+Estates Zone (Large Farms),V,SC,,,Sample development control matrix
+Estates Zone (Large Farms),X,P,,,Sample development control matrix
+Estates Zone (Large Farms),Z,P,,,Sample development control matrix
+Estates Zone (Large Farms),UF,P,,,Sample development control matrix
+Irrigation Scheme Zone,A,X,,,Sample development control matrix
+Irrigation Scheme Zone,A1,X,,,Sample development control matrix
+Irrigation Scheme Zone,A2,X,,,Sample development control matrix
+Irrigation Scheme Zone,A3,X,,,Sample development control matrix
+Irrigation Scheme Zone,B,X,,,Sample development control matrix
+Irrigation Scheme Zone,B1,X,,,Sample development control matrix
+Irrigation Scheme Zone,B2,X,,,Sample development control matrix
+Irrigation Scheme Zone,C,X,,,Sample development control matrix
+Irrigation Scheme Zone,D,SC,,,Sample development control matrix
+Irrigation Scheme Zone,D1,SC,,,Sample development control matrix
+Irrigation Scheme Zone,E,SC,,,Sample development control matrix
+Irrigation Scheme Zone,E1,SC,,,Sample development control matrix
+Irrigation Scheme Zone,E2,SC,,,Sample development control matrix
+Irrigation Scheme Zone,F,P,,,Sample development control matrix
+Irrigation Scheme Zone,G,P,,,Sample development control matrix
+Irrigation Scheme Zone,H,P,,,Sample development control matrix
+Irrigation Scheme Zone,I,P,,,Sample development control matrix
+Irrigation Scheme Zone,J,P,,,Sample development control matrix
+Irrigation Scheme Zone,J1,P,,,Sample development control matrix
+Irrigation Scheme Zone,K,P,,,Sample development control matrix
+Irrigation Scheme Zone,L1,P,,,Sample development control matrix
+Irrigation Scheme Zone,M,P,,,Sample development control matrix
+Irrigation Scheme Zone,P,P,,,Sample development control matrix
+Irrigation Scheme Zone,Q,P,,,Sample development control matrix
+Irrigation Scheme Zone,R,P,,,Sample development control matrix
+Irrigation Scheme Zone,S,P,,,Sample development control matrix
+Irrigation Scheme Zone,T,P,,,Sample development control matrix
+Irrigation Scheme Zone,U,,,,Sample development control matrix
+Irrigation Scheme Zone,V,X,,,Sample development control matrix
+Irrigation Scheme Zone,X,P,,,Sample development control matrix
+Irrigation Scheme Zone,Z,P,,,Sample development control matrix
+Irrigation Scheme Zone,UF,P,,,Sample development control matrix
+Smallholder Estates Zone,A,P,,,Sample development control matrix
+Smallholder Estates Zone,A1,SC,,,Sample development control matrix
+Smallholder Estates Zone,A2,SC,,,Sample development control matrix
+Smallholder Estates Zone,A3,SC,,,Sample development control matrix
+Smallholder Estates Zone,B,P,,,Sample development control matrix
+Smallholder Estates Zone,B1,SC,,,Sample development control matrix
+Smallholder Estates Zone,B2,P,,,Sample development control matrix
+Smallholder Estates Zone,C,SC,,,Sample development control matrix
+Smallholder Estates Zone,D,P,,,Sample development control matrix
+Smallholder Estates Zone,D1,SC,,,Sample development control matrix
+Smallholder Estates Zone,E,P,,,Sample development control matrix
+Smallholder Estates Zone,E1,P,,,Sample development control matrix
+Smallholder Estates Zone,E2,P,,,Sample development control matrix
+Smallholder Estates Zone,F,P,,,Sample development control matrix
+Smallholder Estates Zone,G,P,,,Sample development control matrix
+Smallholder Estates Zone,H,P,,,Sample development control matrix
+Smallholder Estates Zone,I,P,,,Sample development control matrix
+Smallholder Estates Zone,J,P,,,Sample development control matrix
+Smallholder Estates Zone,J1,P,,,Sample development control matrix
+Smallholder Estates Zone,K,P,,,Sample development control matrix
+Smallholder Estates Zone,L1,P,,,Sample development control matrix
+Smallholder Estates Zone,M,P,,,Sample development control matrix
+Smallholder Estates Zone,P,P,,,Sample development control matrix
+Smallholder Estates Zone,Q,P,,,Sample development control matrix
+Smallholder Estates Zone,R,P,,,Sample development control matrix
+Smallholder Estates Zone,S,P,,,Sample development control matrix
+Smallholder Estates Zone,T,P,,,Sample development control matrix
+Smallholder Estates Zone,U,,,,Sample development control matrix
+Smallholder Estates Zone,V,SC,,,Sample development control matrix
+Smallholder Estates Zone,X,P,,,Sample development control matrix
+Smallholder Estates Zone,Z,P,,,Sample development control matrix
+Smallholder Estates Zone,UF,P,,,Sample development control matrix
+Forestry / Conservation Zone,A,SC,,,Sample development control matrix
+Forestry / Conservation Zone,A1,X,,,Sample development control matrix
+Forestry / Conservation Zone,A2,SC,,,Sample development control matrix
+Forestry / Conservation Zone,A3,SC,,,Sample development control matrix
+Forestry / Conservation Zone,B,SC,,,Sample development control matrix
+Forestry / Conservation Zone,B1,SC,,,Sample development control matrix
+Forestry / Conservation Zone,B2,SC,,,Sample development control matrix
+Forestry / Conservation Zone,C,X,,,Sample development control matrix
+Forestry / Conservation Zone,D,SC,,,Sample development control matrix
+Forestry / Conservation Zone,D1,X,,,Sample development control matrix
+Forestry / Conservation Zone,E,SC,,,Sample development control matrix
+Forestry / Conservation Zone,E1,SC,,,Sample development control matrix
+Forestry / Conservation Zone,E2,SC,,,Sample development control matrix
+Forestry / Conservation Zone,F,X,,,Sample development control matrix
+Forestry / Conservation Zone,G,X,,,Sample development control matrix
+Forestry / Conservation Zone,H,SC,,,Sample development control matrix
+Forestry / Conservation Zone,I,P,,,Sample development control matrix
+Forestry / Conservation Zone,J,X,,,Sample development control matrix
+Forestry / Conservation Zone,J1,SC,,,Sample development control matrix
+Forestry / Conservation Zone,K,P,,,Sample development control matrix
+Forestry / Conservation Zone,L1,X,,,Sample development control matrix
+Forestry / Conservation Zone,M,SC,,,Sample development control matrix
+Forestry / Conservation Zone,P,X,,,Sample development control matrix
+Forestry / Conservation Zone,Q,X,,,Sample development control matrix
+Forestry / Conservation Zone,R,SC,,,Sample development control matrix
+Forestry / Conservation Zone,S,P,,,Sample development control matrix
+Forestry / Conservation Zone,T,P,,,Sample development control matrix
+Forestry / Conservation Zone,U,,,,Sample development control matrix
+Forestry / Conservation Zone,V,X,,,Sample development control matrix
+Forestry / Conservation Zone,X,P,,,Sample development control matrix
+Forestry / Conservation Zone,Z,P,,,Sample development control matrix
+Forestry / Conservation Zone,UF,P,,,Sample development control matrix
+Game Park Zone,A,SC,,,Sample development control matrix
+Game Park Zone,A1,X,,,Sample development control matrix
+Game Park Zone,A2,X,,,Sample development control matrix
+Game Park Zone,A3,X,,,Sample development control matrix
+Game Park Zone,B,X,,,Sample development control matrix
+Game Park Zone,B1,P,,,Sample development control matrix
+Game Park Zone,B2,SC,,,Sample development control matrix
+Game Park Zone,C,SC,,,Sample development control matrix
+Game Park Zone,D,SC,,,Sample development control matrix
+Game Park Zone,D1,SC,,,Sample development control matrix
+Game Park Zone,E,SC,,,Sample development control matrix
+Game Park Zone,E1,SC,,,Sample development control matrix
+Game Park Zone,E2,SC,,,Sample development control matrix
+Game Park Zone,F,X,,,Sample development control matrix
+Game Park Zone,G,P,,,Sample development control matrix
+Game Park Zone,H,SC,,,Sample development control matrix
+Game Park Zone,I,SC,,,Sample development control matrix
+Game Park Zone,J,X,,,Sample development control matrix
+Game Park Zone,J1,X,,,Sample development control matrix
+Game Park Zone,K,X,,,Sample development control matrix
+Game Park Zone,L1,X,,,Sample development control matrix
+Game Park Zone,M,X,,,Sample development control matrix
+Game Park Zone,P,X,,,Sample development control matrix
+Game Park Zone,Q,X,,,Sample development control matrix
+Game Park Zone,R,SC,,,Sample development control matrix
+Game Park Zone,S,X,,,Sample development control matrix
+Game Park Zone,T,P,,,Sample development control matrix
+Game Park Zone,U,,,,Sample development control matrix
+Game Park Zone,V,X,,,Sample development control matrix
+Game Park Zone,X,P,,,Sample development control matrix
+Game Park Zone,Z,X,,,Sample development control matrix
+Game Park Zone,UF,SC,,,Sample development control matrix
+Game Corridor Zone,A,X,,,Sample development control matrix
+Game Corridor Zone,A1,X,,,Sample development control matrix
+Game Corridor Zone,A2,X,,,Sample development control matrix
+Game Corridor Zone,A3,X,,,Sample development control matrix
+Game Corridor Zone,B,X,,,Sample development control matrix
+Game Corridor Zone,B1,X,,,Sample development control matrix
+Game Corridor Zone,B2,X,,,Sample development control matrix
+Game Corridor Zone,C,X,,,Sample development control matrix
+Game Corridor Zone,D,X,,,Sample development control matrix
+Game Corridor Zone,D1,,,,Sample development control matrix
+Game Corridor Zone,E,SC,,,Sample development control matrix
+Game Corridor Zone,E1,SC,,,Sample development control matrix
+Game Corridor Zone,E2,X,,,Sample development control matrix
+Game Corridor Zone,F,X,,,Sample development control matrix
+Game Corridor Zone,G,SC,,,Sample development control matrix
+Game Corridor Zone,H,SC,,,Sample development control matrix
+Game Corridor Zone,I,X,,,Sample development control matrix
+Game Corridor Zone,J,X,,,Sample development control matrix
+Game Corridor Zone,J1,X,,,Sample development control matrix
+Game Corridor Zone,K,X,,,Sample development control matrix
+Game Corridor Zone,L1,X,,,Sample development control matrix
+Game Corridor Zone,M,X,,,Sample development control matrix
+Game Corridor Zone,P,X,,,Sample development control matrix
+Game Corridor Zone,Q,X,,,Sample development control matrix
+Game Corridor Zone,R,X,,,Sample development control matrix
+Game Corridor Zone,S,X,,,Sample development control matrix
+Game Corridor Zone,T,X,,,Sample development control matrix
+Game Corridor Zone,U,,,,Sample development control matrix
+Game Corridor Zone,V,X,,,Sample development control matrix
+Game Corridor Zone,X,P,,,Sample development control matrix
+Game Corridor Zone,Z,X,,,Sample development control matrix
+Game Corridor Zone,UF,SC,,,Sample development control matrix
+Urban Expansion Zone,A,P,,,Sample development control matrix
+Urban Expansion Zone,A1,P,,,Sample development control matrix
+Urban Expansion Zone,A2,P,,,Sample development control matrix
+Urban Expansion Zone,A3,P,,,Sample development control matrix
+Urban Expansion Zone,B,P,,,Sample development control matrix
+Urban Expansion Zone,B1,SC,,,Sample development control matrix
+Urban Expansion Zone,B2,P,,,Sample development control matrix
+Urban Expansion Zone,C,SC,,,Sample development control matrix
+Urban Expansion Zone,D,P,,,Sample development control matrix
+Urban Expansion Zone,D1,,,,Sample development control matrix
+Urban Expansion Zone,E,SC,,,Sample development control matrix
+Urban Expansion Zone,E1,SC,,,Sample development control matrix
+Urban Expansion Zone,E2,P,,,Sample development control matrix
+Urban Expansion Zone,F,SC,,,Sample development control matrix
+Urban Expansion Zone,G,X,,,Sample development control matrix
+Urban Expansion Zone,H,SC,,,Sample development control matrix
+Urban Expansion Zone,I,P,,,Sample development control matrix
+Urban Expansion Zone,J,SC,,,Sample development control matrix
+Urban Expansion Zone,J1,P,,,Sample development control matrix
+Urban Expansion Zone,K,P,,,Sample development control matrix
+Urban Expansion Zone,L1,SC,,,Sample development control matrix
+Urban Expansion Zone,M,X,,,Sample development control matrix
+Urban Expansion Zone,P,P,,,Sample development control matrix
+Urban Expansion Zone,Q,SC,,,Sample development control matrix
+Urban Expansion Zone,R,SC,,,Sample development control matrix
+Urban Expansion Zone,S,X,,,Sample development control matrix
+Urban Expansion Zone,T,P,,,Sample development control matrix
+Urban Expansion Zone,U,,,,Sample development control matrix
+Urban Expansion Zone,V,SC,,,Sample development control matrix
+Urban Expansion Zone,X,SC,,,Sample development control matrix
+Urban Expansion Zone,Z,SC,,,Sample development control matrix
+Urban Expansion Zone,UF,P,,,Sample development control matrix
+Industrial Zone,A,X,,,Sample development control matrix
+Industrial Zone,A1,X,,,Sample development control matrix
+Industrial Zone,A2,X,,,Sample development control matrix
+Industrial Zone,A3,X,,,Sample development control matrix
+Industrial Zone,B,X,,,Sample development control matrix
+Industrial Zone,B1,SC,,,Sample development control matrix
+Industrial Zone,B2,X,,,Sample development control matrix
+Industrial Zone,C,X,,,Sample development control matrix
+Industrial Zone,D,SC,,,Sample development control matrix
+Industrial Zone,D1,,,,Sample development control matrix
+Industrial Zone,E,P,,,Sample development control matrix
+Industrial Zone,E1,P,,,Sample development control matrix
+Industrial Zone,E2,SC,,,Sample development control matrix
+Industrial Zone,F,X,,,Sample development control matrix
+Industrial Zone,G,P,,,Sample development control matrix
+Industrial Zone,H,P,,,Sample development control matrix
+Industrial Zone,I,SC,,,Sample development control matrix
+Industrial Zone,J,X,,,Sample development control matrix
+Industrial Zone,J1,X,,,Sample development control matrix
+Industrial Zone,K,X,,,Sample development control matrix
+Industrial Zone,L1,P,,,Sample development control matrix
+Industrial Zone,M,P,,,Sample development control matrix
+Industrial Zone,P,X,,,Sample development control matrix
+Industrial Zone,Q,P,,,Sample development control matrix
+Industrial Zone,R,SC,,,Sample development control matrix
+Industrial Zone,S,P,,,Sample development control matrix
+Industrial Zone,T,P,,,Sample development control matrix
+Industrial Zone,U,,,,Sample development control matrix
+Industrial Zone,V,SC,,,Sample development control matrix
+Industrial Zone,X,X,,,Sample development control matrix
+Industrial Zone,Z,X,,,Sample development control matrix
+Industrial Zone,UF,X,,,Sample development control matrix
+Commercial Zone,A,SC,,,Sample development control matrix
+Commercial Zone,A1,P,,,Sample development control matrix
+Commercial Zone,A2,SC,,,Sample development control matrix
+Commercial Zone,A3,P,,,Sample development control matrix
+Commercial Zone,B,SC,,,Sample development control matrix
+Commercial Zone,B1,P,,,Sample development control matrix
+Commercial Zone,B2,SC,,,Sample development control matrix
+Commercial Zone,C,SC,,,Sample development control matrix
+Commercial Zone,D,P,,,Sample development control matrix
+Commercial Zone,D1,,,,Sample development control matrix
+Commercial Zone,E,P,,,Sample development control matrix
+Commercial Zone,E1,P,,,Sample development control matrix
+Commercial Zone,E2,P,,,Sample development control matrix
+Commercial Zone,F,P,,,Sample development control matrix
+Commercial Zone,G,SC,,,Sample development control matrix
+Commercial Zone,H,SC,,,Sample development control matrix
+Commercial Zone,I,P,,,Sample development control matrix
+Commercial Zone,J,SC,,,Sample development control matrix
+Commercial Zone,J1,X,,,Sample development control matrix
+Commercial Zone,K,SC,,,Sample development control matrix
+Commercial Zone,L1,SC,,,Sample development control matrix
+Commercial Zone,M,SC,,,Sample development control matrix
+Commercial Zone,P,X,,,Sample development control matrix
+Commercial Zone,Q,P,,,Sample development control matrix
+Commercial Zone,R,P,,,Sample development control matrix
+Commercial Zone,S,SC,,,Sample development control matrix
+Commercial Zone,T,P,,,Sample development control matrix
+Commercial Zone,U,,,,Sample development control matrix
+Commercial Zone,V,SC,,,Sample development control matrix
+Commercial Zone,X,X,,,Sample development control matrix
+Commercial Zone,Z,X,,,Sample development control matrix
+Commercial Zone,UF,X,,,Sample development control matrix

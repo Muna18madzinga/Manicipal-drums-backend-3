@@ -90,6 +90,7 @@ describe('migration plan', () => {
       '134_zones_single_source.sql',
       '135_zones_area_ha.sql',
       '136_zones_id_sequence.sql',
+      '138_district_development_matrix.sql',
     ])
 
     for (const filename of MIGRATIONS) {

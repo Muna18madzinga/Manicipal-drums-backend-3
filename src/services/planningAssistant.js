@@ -82,7 +82,7 @@ async function decideUse(pg, { zoneId, landUseGroupCode }) {
   const { rows } = await pg.query(
     `SELECT zlc.control_type, zlc.conditions, zlc.authority,
             lug.group_code, lug.description AS group_name, lug.development_category
-     FROM zone_land_use_controls zlc
+     FROM zone_effective_controls zlc
      JOIN land_use_groups lug ON lug.id = zlc.land_use_group_id
      WHERE zlc.zone_id = $1
        AND lug.group_code = $2
@@ -145,7 +145,7 @@ async function listPermittedUses(pg, zoneId) {
   if (!zoneId) return []
   const { rows } = await pg.query(
     `SELECT lug.group_code, lug.description AS group_name, zlc.control_type, zlc.conditions
-     FROM zone_land_use_controls zlc
+     FROM zone_effective_controls zlc
      JOIN land_use_groups lug ON lug.id = zlc.land_use_group_id
      WHERE zlc.zone_id = $1 AND zlc.deleted_at IS NULL
      ORDER BY
@@ -155,7 +155,7 @@ async function listPermittedUses(pg, zoneId) {
          WHEN 'prohibited'      THEN 3
          ELSE 4
        END,
-       lug.group_code`,
+       lug.display_order, lug.group_code`,
     [zoneId],
   )
   return rows.map(r => ({
