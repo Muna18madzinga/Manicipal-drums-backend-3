@@ -1,29 +1,31 @@
 #!/usr/bin/env node
 /**
- * Load the zoning permission matrix (zone_land_use_controls) from a CSV.
+ * Load a plan's zoning permission matrix (zone_land_use_controls) from a CSV.
  *
- *   node scripts/load-zoning-matrix.js --template district-matrix.csv
- *       Write a blank CSV for the DISTRICT matrix: every district zone type
- *       (Communal Farming ... Commercial) x every coded land use (A ... Z),
- *       decisions empty.
+ * Every command works inside ONE plan: its own zone types, its own land uses, its own
+ * decisions. Pick it with --plan <id or part of the title>. Without --plan the rural
+ * profile template is used (transitional, for the first sample matrix).
  *
- *   node scripts/load-zoning-matrix.js --template local-matrix.csv --local
- *       The same, but for a LOCAL plan: every zone polygon name x every land use.
+ *   node scripts/load-zoning-matrix.js --plan "Chipinge" --template sheet.csv
+ *       Write a blank CSV for that plan: every zone type x every land use, decisions empty.
  *
- *   node scripts/load-zoning-matrix.js --file zoning-matrix.csv
+ *   node scripts/load-zoning-matrix.js --plan "Chipinge" --file sheet.csv
  *       Dry run (the default): validate and report what would change. Writes nothing.
  *
- *   node scripts/load-zoning-matrix.js --file zoning-matrix.csv --apply
+ *   node scripts/load-zoning-matrix.js --plan "Chipinge" --file sheet.csv --apply
  *       Do it, in one transaction: all rows are loaded or none are.
  *
- *   node scripts/load-zoning-matrix.js --file zoning-matrix.csv --apply --rollback
+ *   node scripts/load-zoning-matrix.js --plan "Chipinge" --file sheet.csv --apply --rollback
  *       Run the whole write, then undo it: proves an import would succeed and
  *       keeps nothing. (--rollback is only meaningful together with --apply.)
  *
- * A row's `zone` is a zone type (district matrix) or a zone polygon name (local
- * plan). Rows with a blank control_type are "undecided" — like a blank cell in
- * the council's matrix: reported, never loaded.
- * See src/utils/zoningMatrixImport.js for the CSV format and the checks.
+ *   node scripts/load-zoning-matrix.js --list
+ *       List the plans you can load into.
+ *
+ * A row's `zone` is one of the plan's zone types, or a zone polygon name in that plan.
+ * Rows with a blank control_type are "undecided" (like a blank cell in the council's
+ * matrix): reported, never loaded. See src/utils/zoningMatrixImport.js for the format.
+ * Use scripts/adopt-plan-template.js to give an authority its own plan first.
  */
 const fs = require('fs')
 const path = require('path')
@@ -36,8 +38,31 @@ function arg(name) {
   return i === -1 ? null : (process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : true)
 }
 
-const KNOWN_FLAGS = new Set(['--template', '--file', '--apply', '--rollback', '--local'])
-const USAGE = 'Usage: --template <out.csv> [--local] | --file <in.csv> [--apply [--rollback]]'
+const KNOWN_FLAGS = new Set(['--template', '--file', '--apply', '--rollback', '--local', '--plan', '--list'])
+const USAGE = 'Usage: --list | [--plan <id|title>] --template <out.csv> [--local] | [--plan <id|title>] --file <in.csv> [--apply [--rollback]]'
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** The plan to work in: by id, by part of its title, or (no --plan) the rural template. */
+async function resolvePlan(pool, value) {
+  const base = `SELECT i.id, i.title, i.is_template, a.authority_name
+                  FROM plan_instrument i LEFT JOIN local_authorities a ON a.id = i.authority_id`
+  let rows
+  if (value === null || value === true) {
+    rows = (await pool.query(`${base} JOIN plan_profile p ON p.id = i.profile_id
+                              WHERE i.is_template AND p.code = 'rural' AND i.plan_type = 'district_master'
+                              ORDER BY i.created_at LIMIT 1`)).rows
+  } else if (UUID.test(value)) {
+    rows = (await pool.query(`${base} WHERE i.id = $1`, [value])).rows
+  } else {
+    rows = (await pool.query(`${base} WHERE i.title ILIKE $1 OR a.authority_name ILIKE $1 ORDER BY i.title`, [`%${value}%`])).rows
+  }
+  if (rows.length === 0) throw new Error(`No plan matches "${value}". Run with --list to see the plans.`)
+  if (rows.length > 1) {
+    throw new Error(`"${value}" matches ${rows.length} plans; be more specific or use an id:\n` +
+      rows.map((r) => `  ${r.id}  ${r.title}${r.authority_name ? ` (${r.authority_name})` : ' (template)'}`).join('\n'))
+  }
+  return rows[0]
+}
 
 async function main() {
   // A misspelt flag must never fall through to a real write.
@@ -49,61 +74,67 @@ async function main() {
   }
   const template = arg('template')
   const file = arg('file')
+  const planArg = arg('plan')
   const apply = process.argv.includes('--apply')
   const rollback = process.argv.includes('--rollback')
   const local = process.argv.includes('--local')
-  if (rollback && !apply) {
-    console.error('--rollback only applies together with --apply')
-    process.exit(2)
-  }
-  if (local && !template) {
-    console.error('--local only applies together with --template')
-    process.exit(2)
-  }
-  if (!template && !file) {
-    console.error(USAGE)
-    process.exit(2)
-  }
+  if (rollback && !apply) { console.error('--rollback only applies together with --apply'); process.exit(2) }
+  if (local && !template) { console.error('--local only applies together with --template'); process.exit(2) }
+  if (!process.argv.includes('--list') && !template && !file) { console.error(USAGE); process.exit(2) }
 
   const pool = new Pool({ connectionString: process.env.DATABASE_URL })
   try {
-    const { rows: zones } = await pool.query('SELECT id, zone FROM proposed_peri_urban_zones ORDER BY id')
-    const { rows: zoneTypes } = await pool.query('SELECT code, label, display_order FROM ref_zone_types')
-    const { rows: groups } = await pool.query('SELECT id, group_code, description, display_order, is_active FROM land_use_groups')
+    if (process.argv.includes('--list')) {
+      const { rows } = await pool.query('SELECT * FROM plan_instrument_summary ORDER BY is_template DESC, title')
+      for (const r of rows) {
+        console.log(`${r.id}  ${r.is_template ? '[template]' : '[' + (r.authority_name || '-') + ']'}  ${r.title}  (${r.zone_types} zone types, ${r.land_uses} land uses, ${r.decisions} decisions)`)
+      }
+      return
+    }
+
+    const plan = await resolvePlan(pool, planArg)
+    const { rows: zoneTypes } = await pool.query(
+      'SELECT id, code, name AS label, display_no AS display_order FROM plan_zone_type WHERE plan_instrument_id = $1', [plan.id])
+    const { rows: groups } = await pool.query(
+      'SELECT id, group_code, description, display_order, is_active FROM land_use_groups WHERE plan_instrument_id = $1', [plan.id])
+    const { rows: zones } = await pool.query(
+      'SELECT id, zone FROM proposed_peri_urban_zones WHERE plan_instrument_id = $1 ORDER BY id', [plan.id])
+
+    console.log(`Plan: ${plan.title} ${plan.is_template ? '(template)' : `(${plan.authority_name})`}`)
+    if (planArg === null) console.log('  (no --plan given: using the rural profile template)')
 
     if (template) {
-      const out = typeof template === 'string' ? template : (local ? 'local-matrix-template.csv' : 'district-matrix-template.csv')
-      const level = local ? 'local' : 'district'
+      const out = typeof template === 'string' ? template : 'zoning-matrix-template.csv'
+      const level = local ? 'local' : 'plan'
       fs.writeFileSync(out, buildTemplate({ zones, zoneTypes, groups, level }))
-      const nZones = level === 'district'
-        ? zoneTypes.filter((t) => t.display_order != null).length
-        : new Set(zones.map((z) => z.zone)).size
-      console.log(`Wrote ${out}: ${nZones} ${level === 'district' ? 'district zone types' : 'local zone names'} x ${groups.filter((g) => g.is_active).length} land uses.`)
+      const nZones = level === 'plan' ? zoneTypes.length : new Set(zones.map((z) => z.zone)).size
+      console.log(`Wrote ${out}: ${nZones} ${level === 'plan' ? 'zone types' : 'local zone names'} x ${groups.filter((g) => g.is_active).length} land uses.`)
       console.log('Fill in control_type (permitted | special_consent | prohibited, or P | SC | X);')
       console.log('leave blank anything not yet decided.')
       return
     }
 
     const { rows: existing } = await pool.query(
-      'SELECT zone_id, zone_type, land_use_group_id, control_type, conditions, notes, authority, deleted_at FROM zone_land_use_controls')
-    const plan = planImport({ rows: parseCsv(fs.readFileSync(file, 'utf8')), zones, zoneTypes, groups, existing })
-    const s = plan.summary
+      `SELECT zone_id, zone_type, plan_zone_type_id, land_use_group_id, control_type, conditions, notes, authority, deleted_at
+         FROM zone_land_use_controls WHERE plan_instrument_id = $1`, [plan.id])
+    const plan_ = planImport({ rows: parseCsv(fs.readFileSync(file, 'utf8')), zones, zoneTypes, groups, existing })
+    const s = plan_.summary
 
     console.log(`\nZoning matrix import — ${apply ? (rollback ? 'APPLY then ROLL BACK (test)' : 'APPLY') : 'dry run (nothing is written)'}`)
     console.log(`  CSV rows        ${s.rows}`)
     console.log(`  cells to load   ${s.cells}  (insert ${s.inserts}, update ${s.updates}, unchanged ${s.unchanged})`)
     console.log(`  undecided rows  ${s.undecided}  (blank control_type — skipped)`)
     console.log(`  errors          ${s.errors}`)
-    plan.errors.forEach((e) => console.log(`    ✗ ${e}`))
+    plan_.errors.forEach((e) => console.log(`    ✗ ${e}`))
 
-    console.log('\nCoverage (decisions per zone named in the CSV, of the active land uses):')
-    for (const c of plan.coverage) {
+    console.log('\nCoverage (decisions per zone named in the CSV, of the plan\'s active land uses):')
+    for (const c of plan_.coverage) {
       const where = c.kind === 'zone' ? `  (${c.polygons} polygon${c.polygons === 1 ? '' : 's'})` : ''
       const missing = c.missing.length ? `  no decision: ${c.missing.join(',')}` : ''
       console.log(`  ${c.zone.padEnd(40)} ${String(c.decided).padStart(2)}/${c.decided + c.missing.length}${where}${missing}`)
     }
 
-    if (plan.errors.length) {
+    if (plan_.errors.length) {
       console.log('\nNot loading: fix the errors above first.')
       process.exit(1)
     }
@@ -115,11 +146,13 @@ async function main() {
     const client = await pool.connect()
     try {
       await client.query('BEGIN')
-      for (const c of plan.cells.filter((x) => x.action !== 'unchanged')) {
-        // A cell targets a zone type or a zone polygon; each has its own unique key.
-        const target = c.zone_type
-          ? { col: 'zone_type', val: c.zone_type, conflict: '(zone_type, land_use_group_id) WHERE zone_type IS NOT NULL' }
-          : { col: 'zone_id', val: c.zone_id, conflict: '(zone_id, land_use_group_id)' }
+      for (const c of plan_.cells.filter((x) => x.action !== 'unchanged')) {
+        // A cell targets a plan zone type, a legacy global zone-type code, or a zone polygon.
+        const target = c.plan_zone_type_id
+          ? { col: 'plan_zone_type_id', val: c.plan_zone_type_id, conflict: '(plan_zone_type_id, land_use_group_id) WHERE plan_zone_type_id IS NOT NULL' }
+          : c.zone_type
+            ? { col: 'zone_type', val: c.zone_type, conflict: '(zone_type, land_use_group_id) WHERE zone_type IS NOT NULL' }
+            : { col: 'zone_id', val: c.zone_id, conflict: '(zone_id, land_use_group_id)' }
         await client.query(
           `INSERT INTO zone_land_use_controls (${target.col}, land_use_group_id, control_type, authority, conditions, notes)
            VALUES ($1, $2, $3, $4, $5, $6)
@@ -130,13 +163,13 @@ async function main() {
           [target.val, c.land_use_group_id, c.control_type, c.authority, c.conditions, c.notes])
       }
       if (rollback) {
-        const { rows: [n] } = await client.query('SELECT COUNT(*)::int AS n FROM zone_land_use_controls WHERE deleted_at IS NULL')
+        const { rows: [n] } = await client.query('SELECT COUNT(*)::int AS n FROM zone_land_use_controls WHERE plan_instrument_id = $1 AND deleted_at IS NULL', [plan.id])
         await client.query('ROLLBACK')
-        console.log(`\nTest import wrote ${s.inserts + s.updates} cells (the table held ${n.n} rows inside the transaction), then rolled back. Nothing was kept.`)
+        console.log(`\nTest import wrote ${s.inserts + s.updates} cells (the plan held ${n.n} decisions inside the transaction), then rolled back. Nothing was kept.`)
         return
       }
       await client.query('COMMIT')
-      console.log(`\nLoaded ${s.inserts + s.updates} cells (${s.unchanged} already up to date).`)
+      console.log(`\nLoaded ${s.inserts + s.updates} cells into "${plan.title}" (${s.unchanged} already up to date).`)
     } catch (err) {
       await client.query('ROLLBACK')
       throw err

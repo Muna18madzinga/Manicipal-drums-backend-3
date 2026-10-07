@@ -85,7 +85,8 @@ describe('SQL', () => {
   test('polygon reads go through the view, which already applies soft delete; type reads hit the table', () => {
     expect(ZONE_USES_SQL).toMatch(/FROM zone_effective_controls/)
     expect(RULES_COUNT_SQL).toMatch(/zone_effective_controls/)
-    expect(ZONE_TYPE_USES_SQL).toMatch(/c\.zone_type = \$1/)
+    expect(ZONE_TYPE_USES_SQL).toMatch(/t\.plan_instrument_id = \$1/) // scoped to one plan
+    expect(ZONE_TYPE_USES_SQL).toMatch(/t\.code = \$2/)
     expect(ZONE_TYPE_USES_SQL).toMatch(/c\.deleted_at IS NULL/)
     for (const sql of [ZONE_USES_SQL, ZONE_TYPE_USES_SQL]) expect(sql).toMatch(/ORDER BY g\.display_order/)
   })
@@ -115,5 +116,20 @@ describe('the committed sample matrix (docs/district-development-control-matrix.
     expect(blanks.filter((c) => c === 'U')).toHaveLength(11)
     expect(blanks.filter((c) => c === 'D1')).toHaveLength(4)
     expect(blanks).toHaveLength(15)
+  })
+})
+
+describe('planImport with a plan\'s own zone types', () => {
+  test('cells keep the plan zone type id, so the loader writes them to that plan', () => {
+    const { planImport } = require('../src/utils/zoningMatrixImport')
+    const out = planImport({
+      rows: [{ zone: 'Communal Farming Zone', group_code: 'A', control_type: 'P' }],
+      zones: [],
+      zoneTypes: [{ id: 'pzt-1', code: 'Communal Farming Zone', label: 'Communal Farming Zone' }],
+      groups: [{ id: 'g1', group_code: 'A', is_active: true }],
+      existing: [],
+    })
+    expect(out.cells[0].plan_zone_type_id).toBe('pzt-1')
+    expect(out.cells[0].zone_type).toBeNull()
   })
 })

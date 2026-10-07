@@ -11,9 +11,12 @@
 
 const { requireAuth, requireRole } = require('../middleware/jwtAuth')
 const {
+  DEFAULT_PLAN_SQL, PLAN_ZONE_TYPE_SQL,
   ZONE_USES_SQL, ZONE_TYPE_USES_SQL, ZONE_TYPES_SQL, LAND_USES_SQL, ZONE_TYPE_CELLS_SQL,
   RULES_COUNT_SQL, PERMISSION_CODE, CONTROL_TYPE, groupUses, buildGrid,
 } = require('../utils/zoneUses')
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // Council staff who may read the PII application register / dashboard.
 const STAFF_ROLES = [
@@ -151,14 +154,32 @@ async function developmentControlRoutes(fastify) {
   // LAND USE GROUPS
   // ============================================
 
-  // GET /api/development-control/groups
+  // The plan a request is about: ?plan=<id>, else the rural profile template (so clients
+  // written before plans existed keep working). Sends the error itself and returns null
+  // when the id is malformed or unknown.
+  async function planFor(request, reply) {
+    const value = request.query && request.query.plan
+    if (!value) {
+      const { rows } = await fastify.pg.query(DEFAULT_PLAN_SQL)
+      if (!rows.length) { reply.code(404).send({ success: false, error: 'No default plan is configured' }); return null }
+      return rows[0].id
+    }
+    if (!UUID_RE.test(value)) { reply.code(400).send({ success: false, error: 'plan must be a plan id' }); return null }
+    const { rows } = await fastify.pg.query('SELECT id FROM plan_instrument WHERE id = $1', [value])
+    if (!rows.length) { reply.code(404).send({ success: false, error: 'Unknown plan' }); return null }
+    return rows[0].id
+  }
+
+  // GET /api/development-control/groups?plan=<id>   a plan's land uses
   fastify.get('/groups', async (request, reply) => {
+    const plan = await planFor(request, reply)
+    if (!plan) return
     const { rows } = await fastify.pg.query(`
       SELECT id AS group_id, group_code, description, group_category, notes
       FROM land_use_groups
-      WHERE is_active = TRUE
-      ORDER BY group_code
-    `)
+      WHERE is_active = TRUE AND plan_instrument_id = $1
+      ORDER BY display_order, group_code
+    `, [plan])
     return { success: true, data: rows }
   })
 
@@ -219,28 +240,33 @@ async function developmentControlRoutes(fastify) {
   // uses down, P / X / SC in each cell, blank where nothing is decided. Public,
   // like permitted-uses: it is published planning policy.
 
-  // GET /api/development-control/zone-types
-  fastify.get('/zone-types', async () => {
-    const { rows } = await fastify.pg.query(ZONE_TYPES_SQL)
+  // GET /api/development-control/zone-types?plan=<id>
+  fastify.get('/zone-types', async (request, reply) => {
+    const plan = await planFor(request, reply)
+    if (!plan) return
+    const { rows } = await fastify.pg.query(ZONE_TYPES_SQL, [plan])
     return { success: true, count: rows.length, data: rows }
   })
 
-  // GET /api/development-control/zone-types/:code/uses
+  // GET /api/development-control/zone-types/:code/uses?plan=<id>
   fastify.get('/zone-types/:code/uses', async (request, reply) => {
+    const plan = await planFor(request, reply)
+    if (!plan) return
     const { code } = request.params
-    const { rows: found } = await fastify.pg.query(
-      'SELECT code, label FROM ref_zone_types WHERE code = $1', [code])
+    const { rows: found } = await fastify.pg.query(PLAN_ZONE_TYPE_SQL, [plan, code])
     if (!found.length) return reply.code(404).send({ success: false, error: 'Unknown zone type' })
-    const { rows } = await fastify.pg.query(ZONE_TYPE_USES_SQL, [code])
+    const { rows } = await fastify.pg.query(ZONE_TYPE_USES_SQL, [plan, code])
     return { success: true, data: { zone_type: found[0], ...groupUses(rows) } }
   })
 
-  // GET /api/development-control/matrix/grid
-  fastify.get('/matrix/grid', async () => {
+  // GET /api/development-control/matrix/grid?plan=<id>
+  fastify.get('/matrix/grid', async (request, reply) => {
+    const plan = await planFor(request, reply)
+    if (!plan) return
     const [zoneTypes, landUses, cells] = await Promise.all([
-      fastify.pg.query(ZONE_TYPES_SQL),
-      fastify.pg.query(LAND_USES_SQL),
-      fastify.pg.query(ZONE_TYPE_CELLS_SQL),
+      fastify.pg.query(ZONE_TYPES_SQL, [plan]),
+      fastify.pg.query(LAND_USES_SQL, [plan]),
+      fastify.pg.query(ZONE_TYPE_CELLS_SQL, [plan]),
     ])
     return {
       success: true,
@@ -273,9 +299,19 @@ async function developmentControlRoutes(fastify) {
     // compatibility but the canonical table does not store them.
     const { zone_id, group_code, permission_code, conditions } = request.body
 
+    // Land-use codes are per plan: take the code from the polygon's own plan, else from
+    // a template's shared vocabulary.
     const { rows: groupRows } = await fastify.pg.query(
-      'SELECT id FROM land_use_groups WHERE group_code = $1 AND is_active = TRUE',
-      [group_code]
+      `SELECT g.id
+         FROM land_use_groups g
+         LEFT JOIN plan_instrument gi ON gi.id = g.plan_instrument_id
+        WHERE g.group_code = $1 AND g.is_active
+          AND (g.plan_instrument_id = (SELECT plan_instrument_id FROM proposed_peri_urban_zones WHERE id = $2)
+               OR gi.is_template)
+        ORDER BY (g.plan_instrument_id = (SELECT plan_instrument_id FROM proposed_peri_urban_zones WHERE id = $2)) DESC NULLS LAST,
+                 g.created_at
+        LIMIT 1`,
+      [group_code, zone_id]
     )
 
     if (groupRows.length === 0) {

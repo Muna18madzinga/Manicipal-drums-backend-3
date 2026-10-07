@@ -8,10 +8,10 @@ async function setup(queryImpl) {
     get: (path, handler) => { routes[path] = handler },
   }
   await planModelRoutes(server)
-  const call = async (path, query = {}) => {
+  const call = async (path, query = {}, params = {}) => {
     const reply = { code: 200, body: null, code_(c) { this.code = c; return this }, send(b) { this.body = b; return this } }
     reply.code = function (c) { reply.statusCode = c; return reply }
-    const out = await routes[path]({ query, log: { error() {} } }, reply)
+    const out = await routes[path]({ query, params, log: { error() {} } }, reply)
     return { out, reply }
   }
   return { server, call }
@@ -80,5 +80,41 @@ describe('plan model endpoints', () => {
     expect(reply.statusCode).toBe(500)
     expect(reply.body).toEqual({ success: false, error: 'Failed to list plans' })
     expect(JSON.stringify(reply.body)).not.toMatch(/10\.0\.0\.5/) // the connection detail is not leaked
+  })
+
+  describe('GET /plans/:id/diff', () => {
+    const ID = '4c98ad9f-d0bd-4360-864b-af54cef9d08f'
+
+    test('a malformed id is a 400 and never reaches the database', async () => {
+      const { call, server } = await setup(async () => ({ rows: [] }))
+      const { reply } = await call('/plans/:id/diff', {}, { id: "x'; DROP TABLE plan_instrument; --" })
+      expect(reply.statusCode).toBe(400)
+      expect(server.pg.query).not.toHaveBeenCalled()
+    })
+
+    test('an unknown plan is a 404', async () => {
+      const { call } = await setup(async () => ({ rows: [] }))
+      const { reply } = await call('/plans/:id/diff', {}, { id: ID })
+      expect(reply.statusCode).toBe(404)
+    })
+
+    test('a plan that was not adopted from a template has no diff, and says so', async () => {
+      const { call, server } = await setup(async () => ({ rows: [{ id: ID, title: 'Own plan', derived_from_id: null }] }))
+      const { out } = await call('/plans/:id/diff', {}, { id: ID })
+      expect(out.count).toBe(0)
+      expect(out.data.note).toMatch(/not adopted from a template/)
+      expect(server.pg.query).toHaveBeenCalledTimes(1) // plan_diff() is not run
+    })
+
+    test('an adopted plan returns its changed cells', async () => {
+      const changes = [{ zone_type_code: 'Game Park Zone', land_use_code: 'D', template_decision: 'prohibited', plan_decision: 'permitted', change: 'changed' }]
+      const { call, server } = await setup(async (sql) => (/plan_diff/.test(sql)
+        ? { rows: changes }
+        : { rows: [{ id: ID, title: 'Adopted', derived_from_id: 'eed92770-213c-4542-b006-b954521e16d7' }] }))
+      const { out } = await call('/plans/:id/diff', {}, { id: ID })
+      expect(out.count).toBe(1)
+      expect(out.data.changes).toEqual(changes)
+      expect(server.pg.query).toHaveBeenLastCalledWith('SELECT * FROM plan_diff($1)', [ID])
+    })
   })
 })

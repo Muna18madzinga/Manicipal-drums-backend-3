@@ -136,6 +136,9 @@ const MIGRATIONS = [
   // 139: plan-model foundation. Authority kinds and combination membership, plan
   // profiles and instruments, zone types per plan, existing data attached.
   '139_plan_model_foundation.sql',
+  // 140: a plan owns its land uses and decisions. Land-use codes unique per plan,
+  // decisions on a plan's own zone types, adopt_plan_template() and plan_diff().
+  '140_plan_scoped_matrix.sql',
 ]
 
 function createPool(env = process.env) {

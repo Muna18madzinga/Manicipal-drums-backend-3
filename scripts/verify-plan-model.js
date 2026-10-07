@@ -14,6 +14,7 @@
 const path = require('path')
 require('dotenv').config({ path: path.join(__dirname, '..', '.env'), quiet: true })
 const { Pool } = require('pg')
+const { ZONE_TYPES_SQL, LAND_USES_SQL } = require('../src/utils/zoneUses')
 
 let failures = 0
 const check = (ok, msg) => {
@@ -36,7 +37,8 @@ const COUNTS_SQL = `SELECT (SELECT COUNT(*)::int FROM local_authorities) authori
                            (SELECT COUNT(*)::int FROM plan_instrument) plans,
                            (SELECT COUNT(*)::int FROM zone_land_use_controls) decisions,
                            (SELECT COUNT(*)::int FROM proposed_peri_urban_zones) polygons,
-                           (SELECT COUNT(*)::int FROM plan_zone_type) zone_types`
+                           (SELECT COUNT(*)::int FROM plan_zone_type) zone_types,
+                           (SELECT COUNT(*)::int FROM land_use_groups) land_uses`
 
 async function main() {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL })
@@ -101,7 +103,7 @@ async function main() {
     check(poly.plan_instrument_id === vplan.id && poly.plan_zone_type_id !== null, "a new zone polygon is filed under Vungu's plan, with its zone type created")
 
     // older writers still get the new references
-    const grp = (await client.query("SELECT id FROM land_use_groups WHERE group_code = 'A'")).rows[0].id
+    const grp = (await client.query("SELECT id FROM land_use_groups WHERE group_code = 'A' AND plan_instrument_id = $1", [template.id])).rows[0].id
     const typeRow = (await client.query("INSERT INTO zone_land_use_controls (zone_type, land_use_group_id, control_type) VALUES ('Communal Farming Zone', $1, 'permitted') ON CONFLICT (zone_type, land_use_group_id) WHERE zone_type IS NOT NULL DO UPDATE SET control_type = 'permitted' RETURNING plan_instrument_id, plan_zone_type_id", [grp])).rows[0]
     check(typeRow.plan_instrument_id === template.id && typeRow.plan_zone_type_id !== null, 'a zone-type decision written the old way gets the template and zone-type references filled')
     const polyRow = (await client.query("INSERT INTO zone_land_use_controls (zone_id, land_use_group_id, control_type) VALUES ($1, $2, 'special_consent') RETURNING plan_instrument_id", [poly.id, grp])).rows[0]
@@ -116,6 +118,57 @@ async function main() {
     await client.query("INSERT INTO zone_land_use_controls (zone_id, land_use_group_id, control_type) VALUES ($1, $2, 'prohibited')", [poly.id, grp])
     const overridden = (await client.query("SELECT control_type, source FROM zone_effective_controls WHERE zone_id = $1 AND land_use_group_id = $2", [poly.id, grp])).rows[0]
     check(overridden && overridden.control_type === 'prohibited' && overridden.source === 'zone', "the polygon's own rule wins over its zone type's")
+
+    // ---- Phase 2: a plan owns its land uses and decisions ----
+    console.log('== plans own their land uses and decisions (Phase 2)')
+    const adopter = (await client.query("INSERT INTO local_authorities (authority_name, code, kind, authority_type) VALUES ('Test adopting council', 'TESTADOPT', 'rural', 'Rural District Council') RETURNING id")).rows[0].id
+    const adopted = (await client.query("SELECT adopt_plan_template($1, $2, 'Verification adoption', 'district_master') AS id", [template.id, adopter])).rows[0].id
+    const sum = (await client.query('SELECT zone_types, land_uses, decisions FROM plan_instrument_summary WHERE id = $1', [adopted])).rows[0]
+    // Re-read the template: earlier checks may have added decisions since it was first read.
+    const tNow = (await client.query('SELECT zone_types, land_uses, decisions FROM plan_instrument_summary WHERE id = $1', [template.id])).rows[0]
+    check(sum.zone_types === tNow.zone_types && sum.land_uses === tNow.land_uses && sum.decisions === tNow.decisions,
+      `adopting a template copies everything (${sum.zone_types} zone types, ${sum.land_uses} land uses, ${sum.decisions} decisions)`)
+    const derived = (await client.query("SELECT id FROM plan_instrument WHERE id = $1 AND derived_from_id = $2", [adopted, template.id])).rows
+    check(derived.length === 1, 'the copy records which template it was adopted from')
+    const unprovenanced = (await client.query(`SELECT (SELECT COUNT(*)::int FROM plan_zone_type WHERE plan_instrument_id = $1 AND derived_from_id IS NULL)
+                                                   + (SELECT COUNT(*)::int FROM land_use_groups WHERE plan_instrument_id = $1 AND derived_from_id IS NULL)
+                                                   + (SELECT COUNT(*)::int FROM zone_land_use_controls WHERE plan_instrument_id = $1 AND derived_from_id IS NULL) AS n`, [adopted])).rows[0].n
+    check(unprovenanced === 0, 'every copied zone type, land use and decision records where it came from')
+    check((await client.query('SELECT COUNT(*)::int n FROM plan_diff($1)', [adopted])).rows[0].n === 0, 'a fresh copy has no difference from its template')
+
+    // the copy is independent of the template
+    const cell = (await client.query(`SELECT c.id, c.control_type FROM zone_land_use_controls c
+                                         JOIN plan_zone_type t ON t.id = c.plan_zone_type_id
+                                         JOIN land_use_groups g ON g.id = c.land_use_group_id
+                                        WHERE c.plan_instrument_id = $1 AND t.code = 'Communal Farming Zone' AND g.group_code = 'A'`, [adopted])).rows[0]
+    const flipped = cell.control_type === 'prohibited' ? 'permitted' : 'prohibited'
+    await client.query('UPDATE zone_land_use_controls SET control_type = $1 WHERE id = $2', [flipped, cell.id])
+    const orig = (await client.query(`SELECT c.control_type FROM zone_land_use_controls c
+                                         JOIN plan_zone_type t ON t.id = c.plan_zone_type_id
+                                         JOIN land_use_groups g ON g.id = c.land_use_group_id
+                                        WHERE c.plan_instrument_id = $1 AND t.code = 'Communal Farming Zone' AND g.group_code = 'A'`, [template.id])).rows[0]
+    check(orig.control_type === cell.control_type, 'changing the copy does not change the template')
+    const diff = (await client.query('SELECT * FROM plan_diff($1)', [adopted])).rows
+    check(diff.length === 1 && diff[0].change === 'changed' && diff[0].template_decision === cell.control_type && diff[0].plan_decision === flipped,
+      'plan_diff reports exactly the one changed cell')
+
+    // land-use codes are per plan
+    check((await client.query("SELECT COUNT(*)::int n FROM land_use_groups WHERE group_code = 'A' AND is_active")).rows[0].n === 2, "two plans can both have a land use 'A'")
+    await expectError(client, 'a plan cannot have the same land-use code twice',
+      "INSERT INTO land_use_groups (group_code, description, plan_instrument_id) VALUES ('A', 'Duplicate', $1)", [adopted], /duplicate key|unique/)
+    await client.query("INSERT INTO land_use_groups (group_code, description, plan_instrument_id, is_active) VALUES ('ZZ', 'Plan-only use', $1, TRUE)", [adopted])
+    const lu = async (plan) => (await client.query(LAND_USES_SQL, [plan])).rows.map((r) => r.group_code)
+    check((await lu(adopted)).includes('ZZ') && !(await lu(template.id)).includes('ZZ'), "a land use added to one plan does not appear in another")
+
+    // decisions stay inside one plan
+    const adoptedType = (await client.query("SELECT id FROM plan_zone_type WHERE plan_instrument_id = $1 AND code = 'Game Corridor Zone'", [adopted])).rows[0].id
+    const templateUse = (await client.query("SELECT id FROM land_use_groups WHERE plan_instrument_id = $1 AND group_code = 'U'", [template.id])).rows[0].id
+    await expectError(client, "a decision cannot pair one plan's zone type with another plan's land use",
+      "INSERT INTO zone_land_use_controls (plan_zone_type_id, land_use_group_id, control_type) VALUES ($1, $2, 'permitted')", [adoptedType, templateUse], /different plan/)
+
+    // the readers see each plan separately
+    const typeTotal = async (plan) => (await client.query(ZONE_TYPES_SQL, [plan])).rows.reduce((n, r) => n + r.permitted + r.special_consent + r.prohibited, 0)
+    check((await typeTotal(adopted)) === (await typeTotal(template.id)), "the zone-type reader counts a plan's own decisions (the copy equals the template)")
 
     await client.query('ROLLBACK')
   } catch (err) {

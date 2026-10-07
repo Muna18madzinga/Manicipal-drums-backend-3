@@ -6,6 +6,7 @@
  *   GET /api/plan-profiles     the reusable profiles (rural, urban) and their template plans
  *   GET /api/plans             plan instruments; filter with ?authority=<code>,
  *                              ?profile=<code>, ?template=true|false
+ *   GET /api/plans/:id/diff    how a plan adopted from a template differs from it
  *
  * Public, like the zone and matrix endpoints: authorities and the plans they
  * operate under are published planning information. Contact details are not
@@ -43,6 +44,8 @@ const PROFILES_SQL = `
     LEFT JOIN plan_instrument_summary t ON t.profile_code = p.code AND t.is_template
    ORDER BY p.kind`
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 /** Build the plans query from the optional filters, with bound parameters. */
 function plansQuery({ authority, profile, template }) {
   const where = []
@@ -76,6 +79,26 @@ async function planModelRoutes(fastify) {
     } catch (err) {
       request.log.error({ err }, 'list plan profiles failed')
       return reply.code(500).send({ success: false, error: 'Failed to list plan profiles' })
+    }
+  })
+
+  // A plan adopted from a template is a complete copy; this lists every cell where the copy
+  // has since changed (changed / added / removed), so drift from the template is visible.
+  fastify.get('/plans/:id/diff', async (request, reply) => {
+    const { id } = request.params
+    if (!UUID_RE.test(id)) return reply.code(400).send({ success: false, error: 'plan id must be a uuid' })
+    try {
+      const { rows: plan } = await fastify.pg.query(
+        'SELECT id, title, derived_from_id FROM plan_instrument WHERE id = $1', [id])
+      if (!plan.length) return reply.code(404).send({ success: false, error: 'Unknown plan' })
+      if (!plan[0].derived_from_id) {
+        return { success: true, count: 0, data: { plan_id: id, title: plan[0].title, template_id: null, changes: [], note: 'This plan was not adopted from a template.' } }
+      }
+      const { rows } = await fastify.pg.query('SELECT * FROM plan_diff($1)', [id])
+      return { success: true, count: rows.length, data: { plan_id: id, title: plan[0].title, template_id: plan[0].derived_from_id, changes: rows } }
+    } catch (err) {
+      request.log.error({ err }, 'plan diff failed')
+      return reply.code(500).send({ success: false, error: 'Failed to compute the plan diff' })
     }
   })
 

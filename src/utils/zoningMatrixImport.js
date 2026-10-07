@@ -88,7 +88,8 @@ function planImport({ rows, zones, zoneTypes = [], groups, existing, defaultAuth
   // Targets a CSV row can name. Zone types first so they win a clash.
   const targets = new Map() // lower-case name -> { kind, name, code?, ids? }
   for (const t of zoneTypes) {
-    const target = { kind: 'type', name: t.label || t.code, code: t.code }
+    // A plan's zone types carry an id; older callers pass only the global code.
+    const target = { kind: 'type', name: t.label || t.code, code: t.code, id: t.id ?? null }
     targets.set(String(t.code).trim().toLowerCase(), target)
     if (t.label) targets.set(String(t.label).trim().toLowerCase(), target)
   }
@@ -102,7 +103,8 @@ function planImport({ rows, zones, zoneTypes = [], groups, existing, defaultAuth
   const groupByCode = new Map(groups.filter((g) => g.is_active).map((g) => [g.group_code.toLowerCase(), g]))
   const live = new Map()
   for (const e of existing.filter((x) => !x.deleted_at)) {
-    live.set(e.zone_type ? `type:${e.zone_type}|${e.land_use_group_id}` : `zone:${e.zone_id}|${e.land_use_group_id}`, e)
+    const typeKey = e.plan_zone_type_id ?? e.zone_type
+    live.set(typeKey ? `type:${typeKey}|${e.land_use_group_id}` : `zone:${e.zone_id}|${e.land_use_group_id}`, e)
   }
 
   const seen = new Set()
@@ -141,9 +143,16 @@ function planImport({ rows, zones, zoneTypes = [], groups, existing, defaultAuth
       zone: target.name,
       group_code: group.group_code,
     }
+    // A type-level cell points at the plan's own zone type when it has an id, else at the
+    // global text code (older callers).
     const wantedTargets = target.kind === 'type'
-      ? [{ zone_type: target.code, zone_id: null, key: `type:${target.code}|${group.id}` }]
-      : target.ids.map((id) => ({ zone_type: null, zone_id: id, key: `zone:${id}|${group.id}` }))
+      ? [{
+          zone_type: target.id ? null : target.code,
+          plan_zone_type_id: target.id,
+          zone_id: null,
+          key: `type:${target.id ?? target.code}|${group.id}`,
+        }]
+      : target.ids.map((id) => ({ zone_type: null, plan_zone_type_id: null, zone_id: id, key: `zone:${id}|${group.id}` }))
 
     for (const w of wantedTargets) {
       const current = live.get(w.key)
@@ -152,7 +161,7 @@ function planImport({ rows, zones, zoneTypes = [], groups, existing, defaultAuth
         action = same(current.control_type, base.control_type) && same(current.conditions, base.conditions)
           && same(current.notes, base.notes) && same(current.authority, base.authority) ? 'unchanged' : 'update'
       }
-      cells.push({ ...base, zone_type: w.zone_type, zone_id: w.zone_id, action })
+      cells.push({ ...base, zone_type: w.zone_type, plan_zone_type_id: w.plan_zone_type_id, zone_id: w.zone_id, action })
     }
   }
 
@@ -196,14 +205,19 @@ function planImport({ rows, zones, zoneTypes = [], groups, existing, defaultAuth
  * A blank CSV for the planners.
  *  - 'district': every district zone type (ref_zone_types with a display_order,
  *    in the matrix's column order) x every active land use (in its row order);
- *  - 'local': every zone polygon name x every active land use.
+ *  - 'local': every zone polygon name x every active land use;
+ *  - 'plan': ALL of one plan's own zone types (ordered by display_order, then name) x
+ *    that plan's active land uses (the loader passes only that plan's rows).
  * Decisions are left empty. Defaults to 'district' when zone types are given.
  */
 function buildTemplate({ zones, zoneTypes = [], groups, level }) {
   const lvl = level || (zoneTypes.some((t) => t.display_order != null) ? 'district' : 'local')
-  const names = lvl === 'district'
-    ? zoneTypes.filter((t) => t.display_order != null).sort((a, b) => a.display_order - b.display_order).map((t) => t.code)
-    : [...new Set(zones.map((z) => z.zone))].sort((a, b) => a.localeCompare(b))
+  const byOrder = (a, b) => (a.display_order ?? 1e9) - (b.display_order ?? 1e9) || String(a.code).localeCompare(String(b.code))
+  const names = lvl === 'plan'
+    ? [...zoneTypes].sort(byOrder).map((t) => t.code)
+    : lvl === 'district'
+      ? zoneTypes.filter((t) => t.display_order != null).sort((a, b) => a.display_order - b.display_order).map((t) => t.code)
+      : [...new Set(zones.map((z) => z.zone))].sort((a, b) => a.localeCompare(b))
   const active = groups.filter((g) => g.is_active).sort((a, b) =>
     (a.display_order ?? 1e9) - (b.display_order ?? 1e9) || a.group_code.localeCompare(b.group_code))
   const q = (v) => (/[",\n\r]/.test(v) ? `"${String(v).replace(/"/g, '""')}"` : v)
