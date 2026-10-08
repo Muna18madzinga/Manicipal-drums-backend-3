@@ -1,0 +1,673 @@
+status,reason,farm_id,farm_name,zone_id,farm_geometry,parcel_fid,parcel_name,parcel_overlap,parcels_close,cadastre_fid,cadastre_name,cadastre_overlap,zone_check,zone_old_name,zone_derived_name
+no_geometry,the farm has no shape,505,,,missing,,,,0,,,,no_assignment,,
+no_geometry,the farm has no shape,541,,,missing,,,,0,,,,no_assignment,,
+no_geometry,the farm has no shape,602,A,,missing,,,,0,,,,no_assignment,,
+no_geometry,the farm has no shape,604,Rukundo,,missing,,,,0,,,,no_assignment,,
+unmatched,no parcel overlaps it by half,672,,4,ok,146,,0.4744,0,,,,differs,Economic Corridor [Mixed Business],Low Density Residential
+unmatched,no parcel overlaps it by half,1,KENILWORTH BLOCK ESTATE,,ok,13,Nirth Shagani,0.0001,0,533,KENILWORTH BLOCK ESTATE,0.0323,no_assignment,,
+unmatched,no parcel overlaps it by half,2,Baltimore,,ok,34,South Beldans,0.0033,0,534,Baltimore,0.5771,no_assignment,,
+unmatched,no parcel overlaps it by half,3,Longwe Block,,ok,13,Nirth Shagani,0.0003,0,535,Longwe Block,0.0064,no_assignment,,
+unmatched,no parcel overlaps it by half,4,Shemers Farm,,ok,13,Nirth Shagani,0.0012,0,536,Shemers Farm,0.35,no_assignment,,
+unmatched,no parcel overlaps it by half,6,A,,ok,5,Ruby Block,0.0027,0,370,A,0.4701,no_assignment,,
+unmatched,no parcel overlaps it by half,7,MBATI - TIABETSI BLOCK,,ok,5,Ruby Block,0.0021,0,1,MBATI - TIABETSI BLOCK,0.027,no_assignment,,
+unmatched,no parcel overlaps it by half,8,Shangani Farm North,,ok,51,A,0.0078,0,371,Shangani Farm North,0.3754,no_assignment,,
+unmatched,no parcel overlaps it by half,9,BULAWAYO SYNDICATE BLOCK,,ok,727,Woodend,0.0045,0,538,BULAWAYO SYNDICATE BLOCK,0.6263,no_assignment,,
+unmatched,no parcel overlaps it by half,10,Lynes Farm,,ok,640,South Shangani,0.0026,0,539,Lynes Farm,0.3312,no_assignment,,
+unmatched,no parcel overlaps it by half,11,Josephs Block,,ok,640,South Shangani,0.0197,0,540,Josephs Block,0.5389,no_assignment,,
+unmatched,no parcel overlaps it by half,12,Leechdale,,ok,186,,0.0801,0,372,Leechdale,0.8424,no_assignment,,
+unmatched,no parcel overlaps it by half,13,,,ok,2,,0.3705,0,373,,0.8056,no_assignment,,
+unmatched,no parcel overlaps it by half,14,Thornville,,ok,188,,0.059,0,374,Thornville,0.9263,no_assignment,,
+unmatched,no parcel overlaps it by half,16,Shangani Farm North,,ok,51,A,0,0,376,Shangani Farm North,0.0001,no_assignment,,
+unmatched,no parcel overlaps it by half,17,,,ok,88,,0.0104,0,496,,1,no_assignment,,
+unmatched,no parcel overlaps it by half,18,Battle Farm,,ok,2,,0.0088,0,377,Battle Farm,0.9275,no_assignment,,
+unmatched,no parcel overlaps it by half,22,Langton Ranch,,ok,4,Communal Land,0,0,,,,no_assignment,,
+unmatched,no parcel overlaps it by half,72,Junita,,ok,,,,0,,,,no_assignment,,
+unmatched,no parcel overlaps it by half,77,Linte Ridge,,ok,181,Redlands,0,0,,,,no_assignment,,
+unmatched,no parcel overlaps it by half,94,Melrose,,ok,181,Redlands,0,0,,,,no_assignment,,
+unmatched,no parcel overlaps it by half,173,Kingswood,,ok,,,,0,,,,no_assignment,,
+unmatched,no parcel overlaps it by half,181,Lucky Retreat,,ok,167,Lucky Retreat,0.4277,0,516,Lucky Retreat,0.998,no_assignment,,
+unmatched,no parcel overlaps it by half,316,A5,,ok,,,,0,208,A5,0.4111,no_assignment,,
+unmatched,no parcel overlaps it by half,359,,,ok,167,Lucky Retreat,0.2917,0,526,,1,no_assignment,,
+unmatched,no parcel overlaps it by half,591,Pauldale,,ok,694,State Land,0,0,,,,no_assignment,,
+unmatched,no parcel overlaps it by half,619,Netherburn Extention,,ok,679,State Land,0.099,0,671,Netherburn Extention,0.2394,no_assignment,,
+unmatched,no parcel overlaps it by half,621,Bushy Park,,ok,703,Rivrdale Est.,0,0,482,Bushy Park,0.338,no_assignment,,
+unmatched,no parcel overlaps it by half,622,Makuti Ranch,,ok,703,Rivrdale Est.,0.0001,0,483,Makuti Ranch,0.9984,no_assignment,,
+unmatched,no parcel overlaps it by half,623,North Beldans,,ok,25,North Beldans,0.0029,0,546,North Beldans,1,no_assignment,,
+weak,similar shape but the names differ or are missing,130,,43,ok,116,,0.9886,1,37,,0.4452,cannot_remap,Institutional,Economic Corridor [Mixed Business]
+weak,similar shape but the names differ or are missing,216,,19,ok,207,,0.8113,1,192,,0.0034,agrees,Institutional,Institutional
+weak,similar shape but the names differ or are missing,217,,34,ok,208,,0.9842,1,191,,0.9574,differs,Low Density Residential,Mixed Density Residential
+weak,similar shape but the names differ or are missing,223,,17,ok,214,,0.9816,1,60,,0.893,differs,Mixed Density Residential,High Density Residential
+weak,similar shape but the names differ or are missing,238,,19,invalid,230,,0.9137,1,192,,0.9782,differs,Institutional,Mixed Density Residential
+weak,the best parcel overlaps only 0.74,253,73,10,invalid,243,73,0.7411,0,565,73,0.2449,agrees,Densification Zone [LDR],Densification Zone [LDR]
+weak,similar shape but the names differ or are missing,270,,35,ok,262,,0.9846,1,200,,0.8766,differs,Economic Corridor [Mixed Business],Mixed Density Residential
+weak,similar shape but the names differ or are missing,271,,18,ok,263,,0.912,1,,,,agrees,Densification Zone [LDR],Densification Zone [LDR]
+weak,similar shape but the names differ or are missing,292,,40,ok,285,,0.9832,1,203,,1,agrees,Mixed Density Residential,Mixed Density Residential
+weak,similar shape but the names differ or are missing,320,,25,ok,314,,0.8793,1,93,,0.8796,differs,High Density Residential,High Density Residential
+weak,similar shape but the names differ or are missing,348,,27,ok,348,,0.8231,1,213,,0.7182,agrees,Densification Zone [LDR],Densification Zone [LDR]
+weak,similar shape but the names differ or are missing,350,,27,ok,350,,0.9639,1,214,,0.7072,agrees,Densification Zone [LDR],Densification Zone [LDR]
+weak,similar shape but the names differ or are missing,369,,17,ok,371,,0.8051,1,108,,0.1036,agrees,Mixed Density Residential,Mixed Density Residential
+weak,the best parcel overlaps only 0.51,370,,22,ok,372,,0.5141,0,217,,0.2115,agrees,Low Density Residential,Low Density Residential
+weak,the best parcel overlaps only 0.78,380,25,22,ok,387,25,0.7837,0,,,,agrees,Low Density Residential,Low Density Residential
+weak,the best parcel overlaps only 0.63,385,,24,ok,392,,0.6311,0,339,,0.0065,agrees,Medium Density Residential,Medium Density Residential
+weak,similar shape but the names differ or are missing,388,,19,ok,395,,0.9392,1,223,,0.9922,differs,Institutional,Mixed Density Residential
+weak,the best parcel overlaps only 0.72,408,60,10,ok,419,60,0.7169,0,588,60,0.1174,agrees,Densification Zone [LDR],Densification Zone [LDR]
+weak,the best parcel overlaps only 0.79,409,,26,ok,420,,0.7861,0,226,,0.8256,differs,Economic Corridor [Mixed Business],Mixed Density Residential
+weak,similar shape but the names differ or are missing,413,,17,ok,425,,0.9282,1,,,,agrees,Mixed Density Residential,Mixed Density Residential
+weak,the best parcel overlaps only 0.64,418,,17,ok,433,,0.6402,0,,,,agrees,Mixed Density Residential,Mixed Density Residential
+weak,similar shape but the names differ or are missing,476,,12,ok,490,,0.8729,1,,,,differs,Economic Corridor [Mixed Business],Low Density Residential
+weak,the best parcel overlaps only 0.59,479,,10,ok,494,,0.5923,0,618,,0.0014,agrees,Densification Zone [LDR],Densification Zone [LDR]
+weak,similar shape but the names differ or are missing,486,,26,ok,502,,0.854,1,238,,0.9193,differs,Economic Corridor [Mixed Business],Mixed Density Residential
+weak,similar shape but the names differ or are missing,488,,40,ok,504,,0.8757,1,240,,0.9559,agrees,Mixed Density Residential,Mixed Density Residential
+weak,the best parcel overlaps only 0.78,499,,17,ok,519,,0.7768,0,,,,agrees,Mixed Density Residential,Mixed Density Residential
+weak,the best parcel overlaps only 0.79,504,,28,ok,524,,0.7892,0,248,,0.7892,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+weak,similar shape but the names differ or are missing,506,,17,ok,526,,0.8442,1,,,,agrees,Mixed Density Residential,Mixed Density Residential
+weak,the best parcel overlaps only 0.66,525,,37,ok,553,,0.6598,0,159,,0.6598,agrees,High Density Residential,High Density Residential
+weak,similar shape but the names differ or are missing,526,,12,ok,556,,0.8537,1,,,,agrees,Economic Corridor [Mixed Business],Economic Corridor [Mixed Business]
+weak,the best parcel overlaps only 0.75,543,,10,ok,589,,0.7459,0,,,,agrees,Densification Zone [LDR],Densification Zone [LDR]
+weak,the best parcel overlaps only 0.70,550,,4,ok,601,,0.702,0,,,,differs,Economic Corridor [Mixed Business],Densification Zone [LDR]
+weak,the best parcel overlaps only 0.69,552,,26,ok,603,,0.687,0,263,,0.6537,differs,Economic Corridor [Mixed Business],Mixed Density Residential
+weak,the best parcel overlaps only 0.63,553,,17,ok,604,,0.632,0,,,,agrees,Mixed Density Residential,Mixed Density Residential
+weak,similar shape but the names differ or are missing,643,,24,ok,702,,0.8159,1,357,,0.7608,agrees,Medium Density Residential,Medium Density Residential
+weak,similar shape but the names differ or are missing,658,,40,ok,713,,0.9899,1,287,,1,agrees,Mixed Density Residential,Mixed Density Residential
+weak,similar shape but the names differ or are missing,659,,40,ok,714,,0.9362,1,288,,1,agrees,Mixed Density Residential,Mixed Density Residential
+weak,similar shape but the names differ or are missing,671,,37,ok,726,,0.9154,1,178,,0.5273,agrees,High Density Residential,High Density Residential
+weak,the best parcel overlaps only 0.59,15,,,ok,2,,0.5853,0,375,,0.9997,no_assignment,,
+weak,similar shape but the names differ or are missing,33,,,ok,21,,0.9882,1,366,,0.9894,no_assignment,,
+weak,the best parcel overlaps only 0.55,58,,,ok,44,,0.5547,0,300,,0.9894,no_assignment,,
+weak,the best parcel overlaps only 0.72,63,Breyten Farm 1,,ok,49,Breyten Farm 1,0.7214,0,381,Breyten Farm 1,0.9643,no_assignment,,
+weak,similar shape but the names differ or are missing,75,,,ok,61,,0.8905,1,505,,1,no_assignment,,
+weak,similar shape but the names differ or are missing,105,,,ok,88,,0.9532,1,509,,1,no_assignment,,
+weak,similar shape but the names differ or are missing,114,,,ok,97,,0.9773,1,368,,0.969,no_assignment,,
+weak,similar shape but the names differ or are missing,120,,,ok,105,,0.8368,1,398,,0.8792,no_assignment,,
+weak,similar shape but the names differ or are missing,185,,,ok,171,,0.9581,1,517,,1,no_assignment,,
+weak,similar shape but the names differ or are missing,193,,,ok,180,,0.9462,1,520,,1,no_assignment,,
+weak,similar shape but the names differ or are missing,198,,,ok,186,,0.9103,1,428,,0.9986,no_assignment,,
+weak,similar shape but the names differ or are missing,200,,,ok,188,,0.9264,1,429,,0.9773,no_assignment,,
+weak,similar shape but the names differ or are missing,293,,,ok,286,,0.9175,1,525,,1,no_assignment,,
+weak,similar shape but the names differ or are missing,297,,,ok,290,,0.9722,1,329,,0.9512,no_assignment,,
+weak,similar shape but the names differ or are missing,578,Mandaiay,,ok,641,Woodend,0.9469,1,464,Mandaiay,0.998,no_assignment,,
+weak,similar shape but the names differ or are missing,590,,,ok,654,2,0.8971,1,469,,0.601,no_assignment,,
+weak,similar shape but the names differ or are missing,601,,,ok,669,,0.9538,1,272,,0.9831,no_assignment,,
+weak,the best parcel overlaps only 0.78,606,,,ok,672,,0.7773,0,666,,1,no_assignment,,
+weak,similar shape but the names differ or are missing,616,,,ok,659,,0.8894,1,644,,1,no_assignment,,
+weak,similar shape but the names differ or are missing,648,Rivrdale Est.,,ok,729,Waters,0.8365,1,362,Rivrdale Est.,1,no_assignment,,
+weak,similar shape but the names differ or are missing,657,,,ok,712,,0.981,1,474,,1,no_assignment,,
+ambiguous,parcel 1 is also the best match of 1 other farm(s),5,South Beldans,,ok,1,South Beldans,1,1,547,South Beldans,1,no_assignment,,
+ambiguous,parcel 1 is also the best match of 1 other farm(s),624,South Beldans,,ok,1,South Beldans,1,1,537,South Beldans,1,no_assignment,,
+ambiguous,2 parcels overlap it by 0.8 or more,635,State Land,,invalid,703,Rivrdale Est.,0.9937,2,486,State Land,0.9241,no_assignment,,
+probable,similar shape and the same name,34,Wildebeeste Block,18,ok,22,Wildebeeste Block,0.9842,1,180,Wildebeeste Block,0.9875,differs,Densification Zone [LDR],Residential Agricultural Plots
+probable,similar shape and the same name,150,23,29,ok,136,23,0.9755,1,187,23,0.7015,differs,Cemetry,Mixed Density Residential
+probable,similar shape and the same name,334,61,10,ok,333,61,0.8344,1,578,61,0.0922,agrees,Densification Zone [LDR],Densification Zone [LDR]
+probable,similar shape and the same name,361,24,18,ok,363,24,0.921,1,,,,differs,Densification Zone [LDR],Low Density Residential
+probable,similar shape and the same name,365,27,22,ok,367,27,0.8204,1,,,,agrees,Low Density Residential,Low Density Residential
+probable,similar shape and the same name,383,29,22,ok,390,29,0.8761,1,,,,agrees,Low Density Residential,Low Density Residential
+probable,similar shape and the same name,467,B,43,ok,481,B,0.8276,1,134,B,0.9856,cannot_remap,Institutional,High Density Residential
+probable,similar shape and the same name,632,The Wildebeeste Block,27,ok,687,The Wildebeeste Block,0.9623,1,277,The Wildebeeste Block,0.8999,differs,Densification Zone [LDR],Residential Agricultural Plots
+probable,similar shape and the same name,640,54,10,ok,699,54,0.905,1,284,54,0.9005,differs,Densification Zone [LDR],Residential Agricultural Plots
+probable,similar shape and the same name,665,Divide,18,ok,720,Divide,0.9889,1,292,Divide,0.8733,differs,Densification Zone [LDR],Mixed Density Residential
+probable,similar shape and the same name,29,Ghoko Block,,ok,728,Ghoko Block,0.9717,1,503,Ghoko Block,1,no_assignment,,
+probable,similar shape and the same name,32,Figtree,,ok,20,Figtree,0.948,1,378,Figtree,0.6979,no_assignment,,
+probable,similar shape and the same name,39,Missouri,,ok,28,Missouri,0.9882,1,294,Missouri,0.9609,no_assignment,,
+probable,similar shape and the same name,41,Arizona,,ok,30,Arizona,0.9697,1,296,Arizona,0.9785,no_assignment,,
+probable,similar shape and the same name,42,Deanfield,,ok,31,Deanfield,0.9757,1,297,Deanfield,0.9758,no_assignment,,
+probable,similar shape and the same name,50,3,,ok,10,3,0.954,1,504,3,1,no_assignment,,
+probable,similar shape and the same name,74,A,,ok,51,A,0.9009,1,383,A,0.9987,no_assignment,,
+probable,similar shape and the same name,90,Braklaagte,,ok,74,Braklaagte,0.9844,1,507,Braklaagte,1,no_assignment,,
+probable,similar shape and the same name,95,Fairfield,,ok,78,Fairfield,0.8896,1,508,Fairfield,1,no_assignment,,
+probable,similar shape and the same name,108,Cross Roads,,ok,91,Cross Roads,0.9474,1,673,Cross Roads,0.9462,no_assignment,,
+probable,similar shape and the same name,109,A,,ok,92,A,0.9563,1,392,A,0.9895,no_assignment,,
+probable,similar shape and the same name,112,24,,ok,95,24,0.9653,1,185,24,0.9708,no_assignment,,
+probable,similar shape and the same name,133,En Avant B,,ok,119,En Avant B,0.9504,1,511,En Avant B,1,no_assignment,,
+probable,similar shape and the same name,135,En Avant A,,ok,121,En Avant A,0.9507,1,512,En Avant A,1,no_assignment,,
+probable,similar shape and the same name,142,A,,ok,128,A,0.983,1,408,A,0.9969,no_assignment,,
+probable,similar shape and the same name,159,Foxton,,ok,144,Foxton,0.9713,1,313,Foxton,0.9707,no_assignment,,
+probable,similar shape and the same name,177,St. Patrick,,ok,163,St. Patrick,0.9097,1,515,St. Patrick,1,no_assignment,,
+probable,similar shape and the same name,191,Weda,,ok,178,Weda,0.9181,1,518,Weda,1,no_assignment,,
+probable,similar shape and the same name,194,Redlands,,ok,181,Redlands,0.9733,1,316,Redlands,0.9806,no_assignment,,
+probable,similar shape and the same name,199,A,,ok,187,A,0.9711,1,521,A,1,no_assignment,,
+probable,similar shape and the same name,261,23A,,ok,251,23A,0.9886,1,196,23A,0.6662,no_assignment,,
+probable,similar shape and the same name,272,North field,,ok,265,North field,0.9177,1,323,North field,0.813,no_assignment,,
+probable,similar shape and the same name,283,Highgate,,ok,276,Highgate,0.8816,1,326,Highgate,1,no_assignment,,
+probable,similar shape and the same name,577,South Shangani,,ok,640,South Shangani,0.9887,1,169,South Shangani,0.9985,no_assignment,,
+probable,similar shape and the same name,579,Woodend,,ok,727,Woodend,0.9443,1,170,Woodend,0.9992,no_assignment,,
+probable,similar shape and the same name,587,Lawndate,,ok,649,Lawndate,0.898,1,527,Lawndate,1,no_assignment,,
+probable,similar shape and the same name,589,Ghoko Plains,,ok,651,Ghoko Plains,0.9608,1,529,Ghoko Plains,0.9462,no_assignment,,
+probable,similar shape and the same name,592,Hashu,,ok,655,Hashu,0.9899,1,653,Hashu,0.9871,no_assignment,,
+probable,similar shape and the same name,594,Linslade,,ok,662,Linslade,0.9656,1,657,Linslade,1,no_assignment,,
+probable,similar shape and the same name,595,Albany,,ok,663,Albany,0.9679,1,270,Albany,0.9931,no_assignment,,
+probable,similar shape and the same name,596,Buti,,ok,664,Buti,0.9379,1,480,Buti,0.884,no_assignment,,
+probable,similar shape and the same name,603,Gando Estate,,ok,670,Gando Estate,0.891,1,634,Gando Estate,1,no_assignment,,
+probable,similar shape and the same name,607,Rockland,,ok,673,Rockland,0.8909,1,636,Rockland,1,no_assignment,,
+probable,similar shape and the same name,615,Ingeli,,ok,658,Ingeli,0.9394,1,643,Ingeli,1,no_assignment,,
+probable,similar shape and the same name,617,A,,ok,660,A,0.9344,1,645,A,1,no_assignment,,
+probable,similar shape and the same name,620,State Land,,ok,679,State Land,0.8705,1,481,State Land,0.6538,no_assignment,,
+probable,similar shape and the same name,627,1,,ok,682,1,0.9738,1,648,1,1,no_assignment,,
+probable,similar shape and the same name,628,Boulder Estate,,ok,683,Boulder Estate,0.9433,1,649,Boulder Estate,1,no_assignment,,
+probable,similar shape and the same name,652,Zhaaghwe Estate,,ok,707,Zhaaghwe Estate,0.9721,1,532,Zhaaghwe Estate,0.9817,no_assignment,,
+exact,same shape and name,23,State Land,28,ok,7,State Land,1,1,4,State Land,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,25,Ngamo,25,ok,9,Ngamo,1,1,5,Ngamo,1,differs,High Density Residential,Residential Agricultural Plots
+exact,same shape and name,26,Avondale,28,ok,11,Avondale,1,1,6,Avondale,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,31,Staines Estate,28,ok,16,Staines Estate,1,1,8,Staines Estate,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,47,Somabula,43,ok,36,Somabula,0.996,1,12,Somabula,0.0277,cannot_remap,Institutional,Economic Corridor [Mixed Business]
+exact,same shape and name,51,A,30,ok,17,A,1,1,14,A,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,52,1,25,ok,18,1,0.9984,1,15,1,0.9984,differs,High Density Residential,Residential Agricultural Plots
+exact,same shape and name,59,Koedoe Estate,43,ok,45,Koedoe Estate,1,1,19,Koedoe Estate,0.9847,cannot_remap,Institutional,Residential Agricultural Plots
+exact,same shape and name,61,B,28,ok,47,B,1,1,21,B,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,69,22,30,ok,57,22,1,1,183,22,1,differs,Residential Agricultural Plots,Mixed Density Residential
+exact,same shape and name,70,Tray,28,ok,58,Tray,1,1,550,Tray,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,76,21,29,ok,26,21,1,1,184,21,1,differs,Cemetry,Mixed Density Residential
+exact,same shape and name,82,Patchwood,28,ok,66,Patchwood,1,1,27,Patchwood,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,97,Bijou,28,ok,80,Bijou,1,1,30,Bijou,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,111,Grassymeade,30,ok,94,Grassymeade,1,1,36,Grassymeade,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,125,Bartoo,28,ok,110,Bartoo,1,1,552,Bartoo,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,132,Hillside,26,ok,118,Hillside,1,1,554,Hillside,1,differs,Economic Corridor [Mixed Business],Residential Agricultural Plots
+exact,same shape and name,134,9,26,ok,120,9,1,1,38,9,1,differs,Economic Corridor [Mixed Business],Residential Agricultural Plots
+exact,same shape and name,141,,24,ok,127,,1,1,39,,1,agrees,Medium Density Residential,Medium Density Residential
+exact,same shape and name,146,2,28,ok,132,2,1,1,42,2,1,differs,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,149,18,30,ok,135,18,1,1,44,18,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,151,40,28,ok,137,40,1,1,188,40,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,156,Cumberland,28,ok,125,Cumberland,1,1,312,Cumberland,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,157,3,26,ok,142,3,1,1,46,3,1,differs,Economic Corridor [Mixed Business],Residential Agricultural Plots
+exact,same shape and name,160,Sonambula,43,ok,145,Sonambula,1,1,47,Sonambula,0.9933,cannot_remap,Institutional,Residential Agricultural Plots
+exact,same shape and name,187,,40,ok,173,,1,1,52,,1,agrees,Mixed Density Residential,Mixed Density Residential
+exact,same shape and name,190,82,28,ok,177,82,1,1,555,82,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,201,74,10,ok,189,74,1,1,556,74,0.9941,differs,Densification Zone [LDR],Residential Agricultural Plots
+exact,same shape and name,203,,30,ok,192,,1,1,53,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,204,Ber,24,ok,193,Ber,1,1,54,Ber,1,differs,Medium Density Residential,Residential Agricultural Plots
+exact,same shape and name,206,,24,ok,195,,1,1,317,,1,agrees,Medium Density Residential,Medium Density Residential
+exact,same shape and name,208,Yorkshire,28,ok,197,Yorkshire,1,1,319,Yorkshire,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,211,,26,ok,200,,1,1,190,,1,differs,Economic Corridor [Mixed Business],Mixed Density Residential
+exact,same shape and name,212,,28,ok,202,,1,1,557,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,213,Derbyshire,28,ok,203,Derbyshire,1,1,56,Derbyshire,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,215,Lancanshir,28,ok,205,Lancanshir,1,1,58,Lancanshir,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,221,Mayfield,30,ok,212,Mayfield,1,1,59,Mayfield,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,227,Middlesex,28,ok,218,Middlesex,1,1,63,Middlesex,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,229,,28,ok,220,,1,1,558,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,230,BA,28,ok,221,BA,1,1,559,BA,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,233,76,28,ok,224,76,1,1,561,76,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,234,,24,ok,225,,1,1,64,,0.9959,differs,Medium Density Residential,High Density Residential
+exact,same shape and name,235,London,28,ok,226,London,1,1,65,London,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,237,,25,ok,229,,1,1,67,,1,differs,High Density Residential,Residential Agricultural Plots
+exact,same shape and name,239,Davon,25,ok,232,Davon,1,1,68,Davon,1,agrees,High Density Residential,High Density Residential
+exact,same shape and name,240,Sussex,25,ok,233,Sussex,1,1,69,Sussex,1,agrees,High Density Residential,High Density Residential
+exact,same shape and name,241,Hants,28,ok,234,Hants,1,1,70,Hants,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,242,78,28,ok,235,78,1,1,562,78,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,243,Kent,25,ok,236,Kent,1,1,71,Kent,1,differs,High Density Residential,Residential Agricultural Plots
+exact,same shape and name,246,,25,ok,239,,1,1,72,,1,agrees,High Density Residential,High Density Residential
+exact,same shape and name,250,Essok,28,ok,157,Essok,1,1,73,Essok,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,251,,25,ok,174,,1,1,74,,1,agrees,High Density Residential,High Density Residential
+exact,same shape and name,252,81,28,ok,206,81,1,1,564,81,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,256,,40,ok,246,,0.9915,1,195,,0.9985,agrees,Mixed Density Residential,Mixed Density Residential
+exact,same shape and name,259,Surre,28,ok,249,Surre,1,1,75,Surre,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,262,,24,ok,252,,1,1,76,,1,agrees,Medium Density Residential,Medium Density Residential
+exact,same shape and name,266,Matts,28,ok,256,Matts,1,1,78,Matts,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,268,,24,ok,258,,1,1,79,,1,differs,Medium Density Residential,Residential Agricultural Plots
+exact,same shape and name,269,,24,ok,259,,1,1,80,,1,differs,Medium Density Residential,Residential Agricultural Plots
+exact,same shape and name,273,,28,ok,266,,1,1,567,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,274,,40,ok,267,,0.9924,1,201,,0.8874,agrees,Mixed Density Residential,Mixed Density Residential
+exact,same shape and name,275,41,28,ok,268,41,1,1,202,41,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,279,Gloucester,25,ok,272,Gloucester,0.9903,1,81,Gloucester,0.9903,agrees,High Density Residential,High Density Residential
+exact,same shape and name,288,63A,28,ok,281,63A,1,1,568,63A,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,289,,25,ok,282,,1,1,84,,1,agrees,High Density Residential,High Density Residential
+exact,same shape and name,295,,10,ok,288,,1,1,569,,0.9436,differs,Densification Zone [LDR],Residential Agricultural Plots
+exact,same shape and name,298,,24,ok,291,,0.9907,1,330,,1,differs,Medium Density Residential,Economic Corridor [Mixed Business]
+exact,same shape and name,299,A,28,ok,292,A,1,1,85,A,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,301,C,28,ok,294,C,1,1,86,C,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,302,,24,ok,295,,1,1,87,,1,agrees,Medium Density Residential,Medium Density Residential
+exact,same shape and name,303,,12,ok,296,,1,1,204,,0.8953,differs,Economic Corridor [Mixed Business],Mixed Density Residential
+exact,same shape and name,304,85,28,ok,297,85,1,1,571,85,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,306,,24,ok,300,,1,1,89,,0.3213,agrees,Medium Density Residential,Medium Density Residential
+exact,same shape and name,307,62,28,ok,301,62,1,1,572,62,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,308,,28,ok,302,,1,1,573,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,311,,35,ok,306,,1,1,206,,0.8862,differs,Economic Corridor [Mixed Business],Mixed Density Residential
+exact,same shape and name,315,,28,ok,310,,1,1,575,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,317,,28,ok,311,,1,1,576,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,323,Goodyear,24,ok,319,Goodyear,1,1,95,Goodyear,1,differs,Medium Density Residential,High Density Residential
+exact,same shape and name,328,,24,ok,324,,1,1,96,,1,differs,Medium Density Residential,High Density Residential
+exact,same shape and name,332,,43,ok,331,,1,1,98,,0.9731,cannot_remap,Institutional,Residential Agricultural Plots
+exact,same shape and name,335,,28,ok,334,,1,1,579,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,337,,24,ok,336,,1,1,99,,1,agrees,Medium Density Residential,Medium Density Residential
+exact,same shape and name,339,42,28,ok,338,42,1,1,211,42,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,340,28,18,ok,339,28,1,1,,,,differs,Densification Zone [LDR],Low Density Residential
+exact,same shape and name,341,,27,ok,340,,1,1,212,,1,agrees,Densification Zone [LDR],Densification Zone [LDR]
+exact,same shape and name,344,,18,ok,343,,1,1,,,,agrees,Densification Zone [LDR],Densification Zone [LDR]
+exact,same shape and name,345,26,18,ok,345,26,1,1,,,,differs,Densification Zone [LDR],Low Density Residential
+exact,same shape and name,347,,25,ok,347,,1,1,101,,1,agrees,High Density Residential,High Density Residential
+exact,same shape and name,349,,25,ok,349,,1,1,102,,1,agrees,High Density Residential,High Density Residential
+exact,same shape and name,351,,24,ok,351,,1,1,334,,1,agrees,Medium Density Residential,Medium Density Residential
+exact,same shape and name,352,,24,ok,352,,1,1,335,,1,agrees,Medium Density Residential,Medium Density Residential
+exact,same shape and name,353,,19,ok,353,,1,1,215,,0.9726,differs,Institutional,Mixed Density Residential
+exact,same shape and name,354,,43,ok,355,,1,1,103,,0.9905,cannot_remap,Institutional,High Density Residential
+exact,same shape and name,356,,28,ok,359,,1,1,216,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,366,67,28,ok,368,67,1,1,583,67,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,371,48,28,ok,374,48,1,1,218,48,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,374,,28,ok,379,,1,1,220,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,381,,28,ok,388,,1,1,585,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,384,,43,ok,391,,1,1,112,,0.9101,cannot_remap,Institutional,Residential Agricultural Plots
+exact,same shape and name,386,,19,ok,394,,1,1,222,,0.9401,agrees,Institutional,Institutional
+exact,same shape and name,393,,19,ok,400,,1,1,224,,1,differs,Institutional,Mixed Density Residential
+exact,same shape and name,397,,26,ok,405,,1,1,340,,1,differs,Economic Corridor [Mixed Business],Residential Agricultural Plots
+exact,same shape and name,401,,28,ok,412,,1,1,586,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,410,,26,ok,421,,1,1,681,,1,agrees,Economic Corridor [Mixed Business],Economic Corridor [Mixed Business]
+exact,same shape and name,411,,28,ok,423,,1,1,589,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,414,A,43,ok,427,A,1,1,123,A,0.0025,cannot_remap,Institutional,High Density Residential
+exact,same shape and name,417,,26,ok,430,,1,1,124,,1,differs,Economic Corridor [Mixed Business],Mixed Density Residential
+exact,same shape and name,419,,24,ok,434,,1,1,344,,1,differs,Medium Density Residential,Economic Corridor [Mixed Business]
+exact,same shape and name,420,,28,ok,435,,1,1,591,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,424,,40,ok,261,,1,1,228,,1,agrees,Mixed Density Residential,Mixed Density Residential
+exact,same shape and name,425,,32,ok,438,,1,1,229,,1,differs,Mixed Density Residential,Mixed Density Residential
+exact,same shape and name,426,,40,ok,439,,1,1,230,,1,agrees,Mixed Density Residential,Mixed Density Residential
+exact,same shape and name,427,,26,ok,440,,1,1,231,,1,differs,Economic Corridor [Mixed Business],Mixed Density Residential
+exact,same shape and name,428,,28,ok,441,,1,1,593,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,429,,28,ok,442,,1,1,594,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,430,,28,ok,443,,1,1,595,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,432,,40,ok,445,,1,1,232,,1,agrees,Mixed Density Residential,Mixed Density Residential
+exact,same shape and name,433,,28,ok,446,,1,1,597,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,437,,32,ok,451,,1,1,233,,1,differs,Mixed Density Residential,Mixed Density Residential
+exact,same shape and name,438,,40,ok,452,,1,1,234,,1,agrees,Mixed Density Residential,Mixed Density Residential
+exact,same shape and name,440,,32,ok,455,,1,1,235,,1,differs,Mixed Density Residential,Mixed Density Residential
+exact,same shape and name,441,,28,ok,456,,1,1,600,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,442,,26,ok,457,,1,1,601,,1,differs,Economic Corridor [Mixed Business],Residential Agricultural Plots
+exact,same shape and name,444,,32,ok,460,,1,1,236,,1,differs,Mixed Density Residential,Mixed Density Residential
+exact,same shape and name,446,4,43,ok,354,4,1,1,125,4,1,cannot_remap,Institutional,High Density Residential
+exact,same shape and name,448,,24,ok,462,,1,1,347,,1,differs,Medium Density Residential,Economic Corridor [Mixed Business]
+exact,same shape and name,449,5,43,ok,463,5,1,1,126,5,0.999,cannot_remap,Institutional,High Density Residential
+exact,same shape and name,454,,28,ok,468,,1,1,607,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,456,,43,ok,470,,1,1,128,,0.8856,cannot_remap,Institutional,Residential Agricultural Plots
+exact,same shape and name,457,,28,ok,471,,1,1,609,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,460,,28,ok,474,,1,1,611,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,461,,24,ok,475,,1,1,130,,1,agrees,Medium Density Residential,Medium Density Residential
+exact,same shape and name,462,,43,ok,476,,1,1,131,,1,cannot_remap,Institutional,Economic Corridor [Mixed Business]
+exact,same shape and name,463,,24,ok,477,,1,1,348,,1,agrees,Medium Density Residential,Medium Density Residential
+exact,same shape and name,464,2,37,ok,478,2,1,1,132,2,1,agrees,High Density Residential,High Density Residential
+exact,same shape and name,465,,28,ok,479,,1,1,612,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,468,,28,ok,482,,1,1,613,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,471,1,37,ok,485,1,1,1,135,1,1,agrees,High Density Residential,High Density Residential
+exact,same shape and name,472,,24,ok,486,,1,1,349,,1,agrees,Medium Density Residential,Medium Density Residential
+exact,same shape and name,478,,28,ok,492,,1,1,138,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,480,,40,ok,495,,1,1,237,,1,agrees,Mixed Density Residential,Mixed Density Residential
+exact,same shape and name,484,,28,ok,500,,1,1,619,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,485,,26,ok,501,,1,1,620,,1,differs,Economic Corridor [Mixed Business],Residential Agricultural Plots
+exact,same shape and name,487,,32,ok,503,,1,1,239,,1,differs,Mixed Density Residential,Mixed Density Residential
+exact,same shape and name,489,,28,ok,505,,1,1,241,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,495,,40,ok,512,,1,1,242,,1,agrees,Mixed Density Residential,Mixed Density Residential
+exact,same shape and name,496,,12,ok,513,,1,1,243,,0.6698,differs,Economic Corridor [Mixed Business],Mixed Density Residential
+exact,same shape and name,500,,40,ok,520,,1,1,245,,1,agrees,Mixed Density Residential,Mixed Density Residential
+exact,same shape and name,502,,28,ok,522,,1,1,246,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,503,,28,ok,523,,1,1,247,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,507,,10,ok,527,,1,1,621,,0.6684,differs,Densification Zone [LDR],Residential Agricultural Plots
+exact,same shape and name,514,,22,ok,536,,1,1,249,,0.0521,agrees,Low Density Residential,Low Density Residential
+exact,same shape and name,516,,18,ok,538,,1,1,250,,0.1931,agrees,Densification Zone [LDR],Densification Zone [LDR]
+exact,same shape and name,519,,10,ok,542,,1,1,622,,0.4255,agrees,Densification Zone [LDR],Densification Zone [LDR]
+exact,same shape and name,520,,27,ok,543,,1,1,251,,1,agrees,Densification Zone [LDR],Densification Zone [LDR]
+exact,same shape and name,521,,17,ok,544,,1,1,,,,differs,Mixed Density Residential,Medium Density Residential
+exact,same shape and name,524,,18,ok,548,,1,1,252,,0.2427,differs,Densification Zone [LDR],Low Density Residential
+exact,same shape and name,528,,3,ok,560,,1,1,,,,differs,Mixed Density Residential,Economic Corridor [Mixed Business]
+exact,same shape and name,529,,22,ok,565,,1,1,253,,0.0994,agrees,Low Density Residential,Low Density Residential
+exact,same shape and name,530,,18,ok,567,,1,1,254,,0.1865,agrees,Densification Zone [LDR],Densification Zone [LDR]
+exact,same shape and name,531,,40,ok,569,,1,1,255,,1,agrees,Mixed Density Residential,Mixed Density Residential
+exact,same shape and name,532,,18,ok,571,,1,1,256,,0.1689,agrees,Densification Zone [LDR],Densification Zone [LDR]
+exact,same shape and name,533,,22,ok,573,,1,1,257,,0.081,agrees,Low Density Residential,Low Density Residential
+exact,same shape and name,534,,12,ok,576,,1,1,,,,agrees,Economic Corridor [Mixed Business],Economic Corridor [Mixed Business]
+exact,same shape and name,535,,18,ok,577,,1,1,258,,0.1616,agrees,Densification Zone [LDR],Densification Zone [LDR]
+exact,same shape and name,536,,40,ok,579,,1,1,259,,0.6856,agrees,Mixed Density Residential,Mixed Density Residential
+exact,same shape and name,539,,27,ok,583,,1,1,260,,1,agrees,Densification Zone [LDR],Densification Zone [LDR]
+exact,same shape and name,540,,12,ok,584,,1,1,,,,agrees,Economic Corridor [Mixed Business],Economic Corridor [Mixed Business]
+exact,same shape and name,542,,27,ok,588,,1,1,261,,1,differs,Densification Zone [LDR],Economic Corridor [Mixed Business]
+exact,same shape and name,544,,12,ok,590,,1,1,,,,agrees,Economic Corridor [Mixed Business],Economic Corridor [Mixed Business]
+exact,same shape and name,545,,28,ok,591,,1,1,624,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,546,,26,ok,592,,1,1,160,,1,agrees,Economic Corridor [Mixed Business],Economic Corridor [Mixed Business]
+exact,same shape and name,547,,26,ok,595,,1,1,161,,1,agrees,Economic Corridor [Mixed Business],Economic Corridor [Mixed Business]
+exact,same shape and name,548,,26,ok,596,,1,1,162,,1,differs,Economic Corridor [Mixed Business],Residential Agricultural Plots
+exact,same shape and name,549,,40,ok,600,,1,1,262,,1,agrees,Mixed Density Residential,Mixed Density Residential
+exact,same shape and name,554,,28,ok,605,,1,1,163,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,555,,26,ok,607,,1,1,626,,1,agrees,Economic Corridor [Mixed Business],Economic Corridor [Mixed Business]
+exact,same shape and name,556,,40,ok,608,,1,1,264,,1,agrees,Mixed Density Residential,Mixed Density Residential
+exact,same shape and name,557,,28,ok,612,,1,1,164,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,558,,26,ok,613,,1,1,165,,1,agrees,Economic Corridor [Mixed Business],Economic Corridor [Mixed Business]
+exact,same shape and name,559,,28,ok,616,,1,1,166,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,560,,26,ok,617,,1,1,167,,1,differs,Economic Corridor [Mixed Business],Residential Agricultural Plots
+exact,same shape and name,561,,26,ok,618,,1,1,,,,agrees,Economic Corridor [Mixed Business],Economic Corridor [Mixed Business]
+exact,same shape and name,562,,12,ok,619,,1,1,,,,agrees,Economic Corridor [Mixed Business],Economic Corridor [Mixed Business]
+exact,same shape and name,563,,28,ok,621,,1,1,627,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,564,,28,ok,622,,1,1,628,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,565,,10,ok,623,,1,1,,,,agrees,Densification Zone [LDR],Densification Zone [LDR]
+exact,same shape and name,566,,12,ok,625,,1,1,,,,agrees,Economic Corridor [Mixed Business],Economic Corridor [Mixed Business]
+exact,same shape and name,567,,10,ok,626,,1,1,,,,differs,Densification Zone [LDR],Economic Corridor [Mixed Business]
+exact,same shape and name,568,,36,ok,627,,1,1,265,,1,agrees,Economic Corridor [Mixed Business],Economic Corridor [Mixed Business]
+exact,same shape and name,569,,12,ok,628,,1,1,,,,agrees,Economic Corridor [Mixed Business],Economic Corridor [Mixed Business]
+exact,same shape and name,570,,28,ok,629,,1,1,629,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,573,,26,ok,633,,1,1,630,,0.6168,agrees,Economic Corridor [Mixed Business],Economic Corridor [Mixed Business]
+exact,same shape and name,574,,12,ok,634,,1,1,,,,agrees,Economic Corridor [Mixed Business],Economic Corridor [Mixed Business]
+exact,same shape and name,575,,36,ok,635,,1,1,266,,1,agrees,Economic Corridor [Mixed Business],Economic Corridor [Mixed Business]
+exact,same shape and name,576,,28,ok,639,,1,1,168,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,630,1,28,ok,685,1,1,1,275,1,0.9541,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,631,Grainthorpe,28,ok,686,Grainthorpe,1,1,276,Grainthorpe,0.9614,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,633,Sanale,28,ok,688,Sanale,1,1,279,Sanale,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,639,,28,ok,698,,1,1,283,,1,agrees,Residential Agricultural Plots,Residential Agricultural Plots
+exact,same shape and name,641,,24,ok,700,,1,1,356,,1,agrees,Medium Density Residential,Medium Density Residential
+exact,same shape and name,642,,24,ok,701,,1,1,173,,1,agrees,Medium Density Residential,Medium Density Residential
+exact,same shape and name,650,,24,ok,705,,1,1,652,,1,differs,Medium Density Residential,Economic Corridor [Mixed Business]
+exact,same shape and name,651,,24,ok,706,,0.9902,1,364,,0.9902,agrees,Medium Density Residential,Medium Density Residential
+exact,same shape and name,660,,40,ok,715,,1,1,289,,1,agrees,Mixed Density Residential,Mixed Density Residential
+exact,same shape and name,661,,32,ok,716,,1,1,290,,1,differs,Mixed Density Residential,Mixed Density Residential
+exact,same shape and name,664,Divide,18,ok,719,Divide,0.9993,1,291,Divide,0.9191,differs,Densification Zone [LDR],Densification Zone [LDR]
+exact,same shape and name,666,8,26,ok,721,8,1,1,174,8,1,differs,Economic Corridor [Mixed Business],Mixed Density Residential
+exact,same shape and name,667,8,26,ok,722,8,1,1,175,8,1,differs,Economic Corridor [Mixed Business],Residential Agricultural Plots
+exact,same shape and name,668,8,26,ok,723,8,1,1,176,8,1,agrees,Economic Corridor [Mixed Business],Economic Corridor [Mixed Business]
+exact,same shape and name,669,,17,ok,724,,1,1,177,,0.0184,differs,Mixed Density Residential,Medium Density Residential
+exact,same shape and name,670,,17,ok,725,,1,1,365,,0.0412,differs,Mixed Density Residential,Medium Density Residential
+exact,same shape and name,19,Communal Land,,ok,4,Communal Land,1,1,2,Communal Land,0.9935,no_assignment,,
+exact,same shape and name,20,Ruby Block,,ok,5,Ruby Block,0.992,1,3,Ruby Block,0.9983,no_assignment,,
+exact,same shape and name,21,The Torva Block,,ok,6,The Torva Block,1,1,541,The Torva Block,0.9948,no_assignment,,
+exact,same shape and name,24,Hampton Ranch,,ok,8,Hampton Ranch,1,1,542,Hampton Ranch,1,no_assignment,,
+exact,same shape and name,27,Nirth Shagani,,ok,13,Nirth Shagani,1,1,543,Nirth Shagani,0.996,no_assignment,,
+exact,same shape and name,28,Zanda,,ok,14,Zanda,1,1,7,Zanda,1,no_assignment,,
+exact,same shape and name,30,,,ok,15,,1,1,487,,1,no_assignment,,
+exact,same shape and name,35,Lewis,,ok,23,Lewis,1,1,9,Lewis,1,no_assignment,,
+exact,same shape and name,36,Ensors,,ok,24,Ensors,1,1,10,Ensors,1,no_assignment,,
+exact,same shape and name,37,North Beldans,,ok,25,North Beldans,1,1,544,North Beldans,0.9999,no_assignment,,
+exact,same shape and name,38,Ranche Farm,,ok,27,Ranche Farm,1,1,293,Ranche Farm,1,no_assignment,,
+exact,same shape and name,40,Keynshamburg,,ok,29,Keynshamburg,1,1,295,Keynshamburg,1,no_assignment,,
+exact,same shape and name,43,Somerrset Estate,,ok,32,Somerrset Estate,1,1,298,Somerrset Estate,1,no_assignment,,
+exact,same shape and name,44,Gilman,,ok,33,Gilman,1,1,11,Gilman,1,no_assignment,,
+exact,same shape and name,45,South Beldans,,ok,34,South Beldans,1,1,545,South Beldans,0.9956,no_assignment,,
+exact,same shape and name,46,Game Park Est.,,ok,35,Game Park Est.,1,1,299,Game Park Est.,1,no_assignment,,
+exact,same shape and name,48,The Meadows,,ok,37,The Meadows,1,1,13,The Meadows,1,no_assignment,,
+exact,same shape and name,49,Good Hope,,ok,38,Good Hope,1,1,379,Good Hope,1,no_assignment,,
+exact,same shape and name,53,1A,,ok,39,1A,1,1,16,1A,1,no_assignment,,
+exact,same shape and name,54,Barehill,,ok,40,Barehill,1,1,17,Barehill,1,no_assignment,,
+exact,same shape and name,55,4,,ok,41,4,1,1,380,4,1,no_assignment,,
+exact,same shape and name,56,Caylon,,ok,42,Caylon,1,1,18,Caylon,1,no_assignment,,
+exact,same shape and name,57,A,,ok,43,A,1,1,,,,no_assignment,,
+exact,same shape and name,60,Richmond,,ok,46,Richmond,1,1,20,Richmond,1,no_assignment,,
+exact,same shape and name,62,Blink Klip,,ok,48,Blink Klip,1,1,22,Blink Klip,1,no_assignment,,
+exact,same shape and name,64,Loudoun,,ok,50,Loudoun,1,1,301,Loudoun,1,no_assignment,,
+exact,same shape and name,65,Netherby,,ok,52,Netherby,1,1,548,Netherby,1,no_assignment,,
+exact,same shape and name,66,Lochie,,ok,53,Lochie,1,1,549,Lochie,1,no_assignment,,
+exact,same shape and name,67,Walton,,ok,54,Walton,1,1,23,Walton,1,no_assignment,,
+exact,same shape and name,68,,,ok,55,,1,1,382,,1,no_assignment,,
+exact,same shape and name,71,Chersty,,ok,59,Chersty,1,1,24,Chersty,1,no_assignment,,
+exact,same shape and name,73,Matamba,,ok,60,Matamba,1,1,302,Matamba,1,no_assignment,,
+exact,same shape and name,78,Julena,,ok,62,Julena,1,1,25,Julena,1,no_assignment,,
+exact,same shape and name,79,East Lynne Est.,,ok,63,East Lynne Est.,1,1,26,East Lynne Est.,1,no_assignment,,
+exact,same shape and name,80,,,ok,64,,1,1,672,,1,no_assignment,,
+exact,same shape and name,81,Stormvale,,ok,65,Stormvale,1,1,303,Stormvale,1,no_assignment,,
+exact,same shape and name,83,Maddy Waters,,ok,67,Maddy Waters,1,1,384,Maddy Waters,1,no_assignment,,
+exact,same shape and name,84,The Cinderella,,ok,68,The Cinderella,1,1,385,The Cinderella,1,no_assignment,,
+exact,same shape and name,85,1,,ok,69,1,1,1,386,1,1,no_assignment,,
+exact,same shape and name,86,11,,ok,70,11,1,1,387,11,1,no_assignment,,
+exact,same shape and name,87,Mopani,,ok,71,Mopani,1,1,304,Mopani,0.9493,no_assignment,,
+exact,same shape and name,88,Garryowen Estate,,ok,72,Garryowen Estate,1,1,367,Garryowen Estate,1,no_assignment,,
+exact,same shape and name,89,Rewhorst,,ok,73,Rewhorst,1,1,506,Rewhorst,1,no_assignment,,
+exact,same shape and name,91,Vungu South,,ok,75,Vungu South,1,1,28,Vungu South,1,no_assignment,,
+exact,same shape and name,92,Fyvie,,ok,76,Fyvie,1,1,305,Fyvie,0.9967,no_assignment,,
+exact,same shape and name,93,Browns Farm,,ok,77,Browns Farm,1,1,388,Browns Farm,1,no_assignment,,
+exact,same shape and name,96,Retreat,,ok,79,Retreat,1,1,29,Retreat,1,no_assignment,,
+exact,same shape and name,98,Vungwana South,,ok,81,Vungwana South,1,1,31,Vungwana South,1,no_assignment,,
+exact,same shape and name,99,Desvages,,ok,82,Desvages,1,1,32,Desvages,1,no_assignment,,
+exact,same shape and name,100,Vungwana North,,ok,83,Vungwana North,1,1,33,Vungwana North,1,no_assignment,,
+exact,same shape and name,101,,,ok,84,,0.9934,1,389,,0.8667,no_assignment,,
+exact,same shape and name,102,Middleton Ranch,,ok,85,Middleton Ranch,1,1,390,Middleton Ranch,1,no_assignment,,
+exact,same shape and name,103,1,,ok,86,1,1,1,34,1,1,no_assignment,,
+exact,same shape and name,104,Vungu North,,ok,87,Vungu North,1,1,35,Vungu North,1,no_assignment,,
+exact,same shape and name,106,,,ok,89,,1,1,391,,1,no_assignment,,
+exact,same shape and name,107,South Praira,,ok,90,South Praira,1,1,510,South Praira,1,no_assignment,,
+exact,same shape and name,110,14,,ok,93,14,1,1,393,14,1,no_assignment,,
+exact,same shape and name,113,Myra Shay,,ok,96,Myra Shay,1,1,394,Myra Shay,1,no_assignment,,
+exact,same shape and name,115,Neemaur,,ok,98,Neemaur,1,1,395,Neemaur,1,no_assignment,,
+exact,same shape and name,116,Umnlali,,ok,101,Umnlali,1,1,551,Umnlali,1,no_assignment,,
+exact,same shape and name,117,Beaconsfield,,ok,102,Beaconsfield,1,1,396,Beaconsfield,1,no_assignment,,
+exact,same shape and name,118,Onverwags,,ok,103,Onverwags,1,1,397,Onverwags,1,no_assignment,,
+exact,same shape and name,119,Adair,,ok,104,Adair,1,1,674,Adair,1,no_assignment,,
+exact,same shape and name,121,Pleasent View,,ok,106,Pleasent View,1,1,399,Pleasent View,1,no_assignment,,
+exact,same shape and name,122,,,ok,107,,1,1,400,,1,no_assignment,,
+exact,same shape and name,123,Harston,,ok,108,Harston,1,1,306,Harston,1,no_assignment,,
+exact,same shape and name,124,26,,ok,109,26,1,1,401,26,1,no_assignment,,
+exact,same shape and name,126,Dunlop,,ok,111,Dunlop,1,1,307,Dunlop,1,no_assignment,,
+exact,same shape and name,127,Dispute,,ok,112,Dispute,1,1,402,Dispute,1,no_assignment,,
+exact,same shape and name,128,Mangwene,,ok,114,Mangwene,1,1,308,Mangwene,0.914,no_assignment,,
+exact,same shape and name,129,Whiterwater,,ok,115,Whiterwater,1,1,553,Whiterwater,1,no_assignment,,
+exact,same shape and name,131,,,ok,117,,1,1,403,,1,no_assignment,,
+exact,same shape and name,136,A,,ok,122,A,1,1,309,A,1,no_assignment,,
+exact,same shape and name,137,Fairview A,,ok,123,Fairview A,0.9989,1,404,Fairview A,1,no_assignment,,
+exact,same shape and name,138,,,ok,124,,1,1,405,,1,no_assignment,,
+exact,same shape and name,139,30,,ok,99,30,1,1,406,30,1,no_assignment,,
+exact,same shape and name,140,,,ok,100,,1,1,407,,1,no_assignment,,
+exact,same shape and name,143,Long Valley,,ok,129,Long Valley,0.997,1,310,Long Valley,1,no_assignment,,
+exact,same shape and name,144,27,,ok,130,27,1,1,40,27,1,no_assignment,,
+exact,same shape and name,145,Agincourt,,ok,131,Agincourt,1,1,41,Agincourt,1,no_assignment,,
+exact,same shape and name,147,Koppias,,ok,133,Koppias,1,1,409,Koppias,1,no_assignment,,
+exact,same shape and name,148,Broomrig,,ok,134,Broomrig,1,1,43,Broomrig,1,no_assignment,,
+exact,same shape and name,152,Northhumberland,,ok,138,Northhumberland,1,1,311,Northhumberland,1,no_assignment,,
+exact,same shape and name,153,C,,ok,139,C,1,1,410,C,1,no_assignment,,
+exact,same shape and name,154,,,ok,140,,0.9931,1,411,,1,no_assignment,,
+exact,same shape and name,155,Shenstone,,ok,141,Shenstone,1,1,45,Shenstone,1,no_assignment,,
+exact,same shape and name,158,A,,ok,143,A,1,1,189,A,1,no_assignment,,
+exact,same shape and name,161,Ripplemead,,ok,147,Ripplemead,1,1,412,Ripplemead,1,no_assignment,,
+exact,same shape and name,162,Fallofield,,ok,148,Fallofield,1,1,513,Fallofield,1,no_assignment,,
+exact,same shape and name,163,Henley,,ok,149,Henley,1,1,48,Henley,1,no_assignment,,
+exact,same shape and name,164,,,ok,150,,1,1,514,,1,no_assignment,,
+exact,same shape and name,165,Campbel,,ok,151,Campbel,1,1,49,Campbel,1,no_assignment,,
+exact,same shape and name,166,Four Streams,,ok,152,Four Streams,1,1,413,Four Streams,1,no_assignment,,
+exact,same shape and name,167,,,ok,153,,1,1,414,,1,no_assignment,,
+exact,same shape and name,168,Smith Farm,,ok,154,Smith Farm,1,1,415,Smith Farm,1,no_assignment,,
+exact,same shape and name,169,Granlaigh,,ok,155,Granlaigh,1,1,416,Granlaigh,1,no_assignment,,
+exact,same shape and name,170,,,ok,156,,1,1,314,,1,no_assignment,,
+exact,same shape and name,171,Hazeldene,,ok,158,Hazeldene,1,1,50,Hazeldene,1,no_assignment,,
+exact,same shape and name,172,Granite,,ok,159,Granite,1,1,417,Granite,1,no_assignment,,
+exact,same shape and name,174,Menniw,,ok,160,Menniw,1,1,315,Menniw,1,no_assignment,,
+exact,same shape and name,175,Kenilworth D,,ok,161,Kenilworth D,1,1,418,Kenilworth D,1,no_assignment,,
+exact,same shape and name,176,,,ok,162,,1,1,419,,1,no_assignment,,
+exact,same shape and name,178,Pender,,ok,164,Pender,1,1,420,Pender,1,no_assignment,,
+exact,same shape and name,179,Lucknow,,ok,165,Lucknow,1,1,421,Lucknow,1,no_assignment,,
+exact,same shape and name,180,4,,ok,166,4,1,1,,,,no_assignment,,
+exact,same shape and name,182,,,ok,168,,1,1,675,,1,no_assignment,,
+exact,same shape and name,183,,,ok,169,,1,1,488,,1,no_assignment,,
+exact,same shape and name,184,Mantrose,,ok,170,Mantrose,1,1,51,Mantrose,1,no_assignment,,
+exact,same shape and name,186,,,ok,172,,1,1,422,,1,no_assignment,,
+exact,same shape and name,188,Middel Build,,ok,175,Middel Build,1,1,423,Middel Build,1,no_assignment,,
+exact,same shape and name,189,B,,ok,176,B,1,1,424,B,1,no_assignment,,
+exact,same shape and name,192,Success,,ok,179,Success,1,1,519,Success,1,no_assignment,,
+exact,same shape and name,195,West Raptus,,ok,182,West Raptus,1,1,425,West Raptus,1,no_assignment,,
+exact,same shape and name,196,Kenilworth C,,ok,183,Kenilworth C,1,1,426,Kenilworth C,1,no_assignment,,
+exact,same shape and name,197,A,,ok,184,A,1,1,427,A,1,no_assignment,,
+exact,same shape and name,202,Willow Run,,ok,191,Willow Run,1,1,430,Willow Run,1,no_assignment,,
+exact,same shape and name,205,1,,ok,194,1,1,1,431,1,1,no_assignment,,
+exact,same shape and name,207,Durham,,ok,196,Durham,1,1,318,Durham,1,no_assignment,,
+exact,same shape and name,209,,,ok,198,,1,1,55,,1,no_assignment,,
+exact,same shape and name,210,,,ok,199,,1,1,489,,1,no_assignment,,
+exact,same shape and name,214,Good Luck,,ok,204,Good Luck,1,1,57,Good Luck,1,no_assignment,,
+exact,same shape and name,218,A,,ok,209,A,1,1,432,A,1,no_assignment,,
+exact,same shape and name,219,15,,ok,210,15,1,1,433,15,1,no_assignment,,
+exact,same shape and name,220,Imbila,,ok,211,Imbila,1,1,434,Imbila,1,no_assignment,,
+exact,same shape and name,222,B,,ok,213,B,1,1,435,B,1,no_assignment,,
+exact,same shape and name,224,,,ok,215,,1,1,61,,1,no_assignment,,
+exact,same shape and name,225,Aintree,,ok,216,Aintree,1,1,62,Aintree,1,no_assignment,,
+exact,same shape and name,226,Springvale,,ok,217,Springvale,1,1,321,Springvale,1,no_assignment,,
+exact,same shape and name,228,,,ok,219,,1,1,436,,1,no_assignment,,
+exact,same shape and name,231,,,ok,222,,1,1,437,,1,no_assignment,,
+exact,same shape and name,232,Sangar,,ok,223,Sangar,1,1,560,Sangar,1,no_assignment,,
+exact,same shape and name,236,,,ok,228,,1,1,438,,1,no_assignment,,
+exact,same shape and name,244,17 B,,ok,237,17 B,1,1,439,17 B,1,no_assignment,,
+exact,same shape and name,245,,,ok,238,,1,1,194,,1,no_assignment,,
+exact,same shape and name,247,By Luck,,ok,240,By Luck,1,1,563,By Luck,1,no_assignment,,
+exact,same shape and name,248,15,,ok,241,15,1,1,440,15,1,no_assignment,,
+exact,same shape and name,249,,,ok,242,,1,1,322,,1,no_assignment,,
+exact,same shape and name,254,Vrade,,ok,244,Vrade,1,1,441,Vrade,1,no_assignment,,
+exact,same shape and name,255,Parents Gift,,ok,245,Parents Gift,1,1,442,Parents Gift,1,no_assignment,,
+exact,same shape and name,257,Erfdeel,,ok,247,Erfdeel,1,1,443,Erfdeel,1,no_assignment,,
+exact,same shape and name,258,Beatrix,,ok,248,Beatrix,1,1,444,Beatrix,1,no_assignment,,
+exact,same shape and name,260,Merre,,ok,250,Merre,1,1,445,Merre,1,no_assignment,,
+exact,same shape and name,263,,,ok,253,,1,1,566,,1,no_assignment,,
+exact,same shape and name,264,,,ok,254,,1,1,677,,1,no_assignment,,
+exact,same shape and name,265,28,,ok,255,28,1,1,77,28,1,no_assignment,,
+exact,same shape and name,267,,,ok,257,,1,1,446,,1,no_assignment,,
+exact,same shape and name,276,,,ok,269,,1,1,447,,1,no_assignment,,
+exact,same shape and name,277,1,,ok,270,1,1,1,325,1,1,no_assignment,,
+exact,same shape and name,278,2,,ok,271,2,1,1,448,2,1,no_assignment,,
+exact,same shape and name,280,,,ok,273,,1,1,522,,1,no_assignment,,
+exact,same shape and name,281,A,,ok,274,A,1,1,449,A,1,no_assignment,,
+exact,same shape and name,282,East Lynne Est.,,ok,275,East Lynne Est.,1,1,82,East Lynne Est.,1,no_assignment,,
+exact,same shape and name,284,Kenilworth B,,ok,277,Kenilworth B,1,1,450,Kenilworth B,1,no_assignment,,
+exact,same shape and name,285,,,ok,278,,1,1,451,,1,no_assignment,,
+exact,same shape and name,286,Savanna,,ok,260,Savanna,1,1,83,Savanna,1,no_assignment,,
+exact,same shape and name,287,,,ok,280,,1,1,327,,1,no_assignment,,
+exact,same shape and name,290,Viekfontain,,ok,283,Viekfontain,1,1,523,Viekfontain,1,no_assignment,,
+exact,same shape and name,291,,,ok,284,,1,1,524,,1,no_assignment,,
+exact,same shape and name,294,,,ok,287,,1,1,452,,1,no_assignment,,
+exact,same shape and name,296,,,ok,289,,1,1,570,,1,no_assignment,,
+exact,same shape and name,300,Prospect,,ok,293,Prospect,1,1,453,Prospect,1,no_assignment,,
+exact,same shape and name,305,Haven,,ok,298,Haven,1,1,88,Haven,1,no_assignment,,
+exact,same shape and name,309,17,,ok,303,17,1,1,205,17,1,no_assignment,,
+exact,same shape and name,310,,,ok,304,,1,1,90,,1,no_assignment,,
+exact,same shape and name,312,,,ok,307,,1,1,574,,1,no_assignment,,
+exact,same shape and name,313,Parkland,,ok,308,Parkland,1,1,92,Parkland,1,no_assignment,,
+exact,same shape and name,314,,,ok,309,,1,1,678,,1,no_assignment,,
+exact,same shape and name,318,A,,ok,312,A,1,1,454,A,1,no_assignment,,
+exact,same shape and name,319,,,ok,313,,1,1,331,,1,no_assignment,,
+exact,same shape and name,321,,,ok,315,,1,1,577,,1,no_assignment,,
+exact,same shape and name,322,,,ok,317,,1,1,94,,1,no_assignment,,
+exact,same shape and name,324,,,ok,320,,0.9971,1,455,,1,no_assignment,,
+exact,same shape and name,325,,,ok,321,,1,1,332,,1,no_assignment,,
+exact,same shape and name,326,,,ok,322,,1,1,456,,1,no_assignment,,
+exact,same shape and name,327,,,ok,323,,1,1,457,,1,no_assignment,,
+exact,same shape and name,329,,,ok,327,,1,1,,,,no_assignment,,
+exact,same shape and name,330,,,ok,328,,1,1,209,,1,no_assignment,,
+exact,same shape and name,331,,,ok,330,,1,1,97,,1,no_assignment,,
+exact,same shape and name,333,,,ok,332,,1,1,,,,no_assignment,,
+exact,same shape and name,336,,,ok,279,,1,1,,,,no_assignment,,
+exact,same shape and name,338,,,ok,337,,1,1,333,,1,no_assignment,,
+exact,same shape and name,342,,,ok,341,,1,1,100,,1,no_assignment,,
+exact,same shape and name,343,,,ok,342,,1,1,458,,1,no_assignment,,
+exact,same shape and name,346,,,ok,346,,1,1,580,,1,no_assignment,,
+exact,same shape and name,355,,,ok,357,,1,1,104,,1,no_assignment,,
+exact,same shape and name,357,,,ok,360,,1,1,105,,1,no_assignment,,
+exact,same shape and name,358,,,ok,361,,1,1,459,,1,no_assignment,,
+exact,same shape and name,360,,,ok,362,,1,1,679,,1,no_assignment,,
+exact,same shape and name,362,,,ok,364,,1,1,106,,1,no_assignment,,
+exact,same shape and name,363,,,ok,365,,1,1,581,,1,no_assignment,,
+exact,same shape and name,364,,,ok,366,,1,1,582,,1,no_assignment,,
+exact,same shape and name,367,,,ok,369,,1,1,107,,1,no_assignment,,
+exact,same shape and name,368,,,ok,370,,0.9979,1,336,,1,no_assignment,,
+exact,same shape and name,372,,,ok,375,,1,1,109,,1,no_assignment,,
+exact,same shape and name,373,,,ok,378,,1,1,219,,1,no_assignment,,
+exact,same shape and name,375,,,ok,380,,1,1,337,,1,no_assignment,,
+exact,same shape and name,376,,,ok,382,,1,1,110,,1,no_assignment,,
+exact,same shape and name,377,,,ok,383,,1,1,584,,1,no_assignment,,
+exact,same shape and name,378,,,ok,384,,1,1,338,,1,no_assignment,,
+exact,same shape and name,379,,,ok,386,,1,1,111,,1,no_assignment,,
+exact,same shape and name,382,,,ok,389,,1,1,,,,no_assignment,,
+exact,same shape and name,387,,,ok,299,,1,1,113,,1,no_assignment,,
+exact,same shape and name,389,,,ok,396,,1,1,680,,1,no_assignment,,
+exact,same shape and name,390,,,ok,397,,1,1,114,,1,no_assignment,,
+exact,same shape and name,391,,,ok,398,,1,1,460,,1,no_assignment,,
+exact,same shape and name,392,,,ok,399,,1,1,115,,1,no_assignment,,
+exact,same shape and name,394,,,ok,402,,1,1,,,,no_assignment,,
+exact,same shape and name,395,,,ok,403,,1,1,116,,1,no_assignment,,
+exact,same shape and name,396,,,ok,404,,1,1,117,,1,no_assignment,,
+exact,same shape and name,398,,,ok,408,,1,1,119,,1,no_assignment,,
+exact,same shape and name,399,,,ok,409,,1,1,120,,1,no_assignment,,
+exact,same shape and name,400,A,,ok,410,A,1,1,461,A,1,no_assignment,,
+exact,same shape and name,402,,,ok,413,,1,1,121,,1,no_assignment,,
+exact,same shape and name,403,,,ok,414,,1,1,122,,1,no_assignment,,
+exact,same shape and name,404,,,ok,415,,1,1,341,,1,no_assignment,,
+exact,same shape and name,405,,,ok,416,,1,1,587,,1,no_assignment,,
+exact,same shape and name,406,,,ok,417,,1,1,462,,1,no_assignment,,
+exact,same shape and name,407,,,ok,418,,1,1,342,,1,no_assignment,,
+exact,same shape and name,412,,,ok,424,,1,1,,,,no_assignment,,
+exact,same shape and name,415,,,ok,428,,1,1,463,,1,no_assignment,,
+exact,same shape and name,416,,,ok,429,,1,1,343,,1,no_assignment,,
+exact,same shape and name,421,,,ok,436,,1,1,592,,1,no_assignment,,
+exact,same shape and name,422,,,ok,437,,1,1,682,,1,no_assignment,,
+exact,same shape and name,423,,,ok,19,,0.9999,1,345,,1,no_assignment,,
+exact,same shape and name,431,,,ok,444,,1,1,596,,1,no_assignment,,
+exact,same shape and name,434,,,ok,448,,1,1,683,,1,no_assignment,,
+exact,same shape and name,435,,,ok,449,,1,1,684,,1,no_assignment,,
+exact,same shape and name,436,,,ok,450,,1,1,598,,1,no_assignment,,
+exact,same shape and name,439,,,ok,454,,1,1,599,,1,no_assignment,,
+exact,same shape and name,443,,,ok,458,,1,1,602,,1,no_assignment,,
+exact,same shape and name,445,,,ok,461,,1,1,603,,1,no_assignment,,
+exact,same shape and name,447,,,ok,126,,1,1,604,,1,no_assignment,,
+exact,same shape and name,450,,,ok,464,,1,1,605,,1,no_assignment,,
+exact,same shape and name,451,,,ok,465,,1,1,606,,1,no_assignment,,
+exact,same shape and name,452,,,ok,466,,1,1,127,,1,no_assignment,,
+exact,same shape and name,453,,,ok,467,,1,1,685,,1,no_assignment,,
+exact,same shape and name,455,,,ok,469,,1,1,608,,1,no_assignment,,
+exact,same shape and name,458,,,ok,472,,1,1,129,,1,no_assignment,,
+exact,same shape and name,459,,,ok,473,,1,1,610,,1,no_assignment,,
+exact,same shape and name,466,,,ok,480,,1,1,133,,1,no_assignment,,
+exact,same shape and name,469,,,ok,483,,1,1,614,,1,no_assignment,,
+exact,same shape and name,470,,,ok,484,,1,1,615,,1,no_assignment,,
+exact,same shape and name,473,,,ok,487,,1,1,136,,1,no_assignment,,
+exact,same shape and name,474,,,ok,488,,1,1,616,,1,no_assignment,,
+exact,same shape and name,475,,,ok,489,,1,1,137,,1,no_assignment,,
+exact,same shape and name,477,,,ok,491,,1,1,617,,1,no_assignment,,
+exact,same shape and name,481,,,ok,497,,1,1,139,,1,no_assignment,,
+exact,same shape and name,482,,,ok,498,,1,1,140,,1,no_assignment,,
+exact,same shape and name,483,,,ok,499,,1,1,141,,1,no_assignment,,
+exact,same shape and name,490,,,ok,506,,1,1,142,,1,no_assignment,,
+exact,same shape and name,491,,,ok,508,,1,1,143,,1,no_assignment,,
+exact,same shape and name,492,,,ok,509,,1,1,144,,1,no_assignment,,
+exact,same shape and name,493,,,ok,510,,1,1,145,,1,no_assignment,,
+exact,same shape and name,494,,,ok,511,,1,1,146,,1,no_assignment,,
+exact,same shape and name,497,,,ok,514,,1,1,147,,1,no_assignment,,
+exact,same shape and name,498,,,ok,517,,1,1,148,,1,no_assignment,,
+exact,same shape and name,501,,,ok,521,,1,1,149,,1,no_assignment,,
+exact,same shape and name,508,,,ok,529,,1,1,350,,1,no_assignment,,
+exact,same shape and name,509,,,ok,530,,1,1,151,,1,no_assignment,,
+exact,same shape and name,510,,,ok,531,,1,1,152,,1,no_assignment,,
+exact,same shape and name,511,,,ok,532,,1,1,153,,1,no_assignment,,
+exact,same shape and name,512,,,ok,533,,1,1,154,,1,no_assignment,,
+exact,same shape and name,513,,,ok,534,,1,1,155,,1,no_assignment,,
+exact,same shape and name,515,,,ok,537,,1,1,156,,1,no_assignment,,
+exact,same shape and name,517,,,ok,539,,1,1,157,,1,no_assignment,,
+exact,same shape and name,518,,,ok,540,,1,1,158,,1,no_assignment,,
+exact,same shape and name,522,,,ok,545,,1,1,686,,1,no_assignment,,
+exact,same shape and name,523,,,ok,547,,1,1,351,,1,no_assignment,,
+exact,same shape and name,527,,,ok,557,,1,1,352,,1,no_assignment,,
+exact,same shape and name,537,,,ok,580,,1,1,353,,1,no_assignment,,
+exact,same shape and name,538,,,ok,582,,1,1,623,,1,no_assignment,,
+exact,same shape and name,551,,,ok,602,,1,1,625,,1,no_assignment,,
+exact,same shape and name,571,,,ok,631,,1,1,687,,1,no_assignment,,
+exact,same shape and name,572,,,ok,632,,1,1,354,,1,no_assignment,,
+exact,same shape and name,580,Ally Sloper Est,,ok,642,Ally Sloper Est,1,1,355,Ally Sloper Est,1,no_assignment,,
+exact,same shape and name,581,Walton South,,ok,643,Walton South,1,1,171,Walton South,1,no_assignment,,
+exact,same shape and name,582,Vogelstruis Randt,,ok,644,Vogelstruis Randt,1,1,172,Vogelstruis Randt,1,no_assignment,,
+exact,same shape and name,583,Hillpath,,ok,645,Hillpath,1,1,465,Hillpath,1,no_assignment,,
+exact,same shape and name,584,Grasslands,,ok,646,Grasslands,1,1,466,Grasslands,1,no_assignment,,
+exact,same shape and name,585,Four Chums,,ok,647,Four Chums,1,1,467,Four Chums,1,no_assignment,,
+exact,same shape and name,586,Southgate,,ok,648,Southgate,1,1,468,Southgate,1,no_assignment,,
+exact,same shape and name,588,Scrub,,ok,650,Scrub,1,1,528,Scrub,1,no_assignment,,
+exact,same shape and name,593,Guburie,,ok,661,Guburie,0.9998,1,656,Guburie,0.8836,no_assignment,,
+exact,same shape and name,597,Indiva,,ok,665,Indiva,1,1,271,Indiva,1,no_assignment,,
+exact,same shape and name,598,State Land,,ok,666,State Land,1,1,632,State Land,1,no_assignment,,
+exact,same shape and name,599,Caradoc,,ok,667,Caradoc,1,1,633,Caradoc,1,no_assignment,,
+exact,same shape and name,600,The Vale,,ok,668,The Vale,1,1,662,The Vale,1,no_assignment,,
+exact,same shape and name,605,Canberra,,ok,671,Canberra,1,1,635,Canberra,1,no_assignment,,
+exact,same shape and name,608,,,ok,674,,1,1,637,,1,no_assignment,,
+exact,same shape and name,609,Biddick,,ok,675,Biddick,1,1,638,Biddick,1,no_assignment,,
+exact,same shape and name,610,,,ok,676,,1,1,274,,1,no_assignment,,
+exact,same shape and name,611,Raja's Grant,,ok,652,Raja's Grant,1,1,639,Raja's Grant,1,no_assignment,,
+exact,same shape and name,612,,,ok,653,,1,1,640,,1,no_assignment,,
+exact,same shape and name,613,,,ok,656,,1,1,641,,1,no_assignment,,
+exact,same shape and name,614,Hay Gold,,ok,657,Hay Gold,1,1,642,Hay Gold,1,no_assignment,,
+exact,same shape and name,618,,,ok,677,,0.9958,1,646,,1,no_assignment,,
+exact,same shape and name,625,,,ok,680,,1,1,369,,0.9965,no_assignment,,
+exact,same shape and name,626,Boulder,,ok,681,Boulder,1,1,647,Boulder,1,no_assignment,,
+exact,same shape and name,629,Kanuka,,ok,684,Kanuka,1,1,650,Kanuka,1,no_assignment,,
+exact,same shape and name,634,State Land,,ok,689,State Land,0.9998,1,280,State Land,0.4404,no_assignment,,
+exact,same shape and name,636,Gando Estate,,ok,695,Gando Estate,0.9913,1,651,Gando Estate,1,no_assignment,,
+exact,same shape and name,637,Dopton,,ok,696,Dopton,1,1,281,Dopton,1,no_assignment,,
+exact,same shape and name,638,Dopton,,ok,697,Dopton,1,1,282,Dopton,1,no_assignment,,
+exact,same shape and name,644,Welkom,,ok,690,Welkom,0.9994,1,358,Welkom,1,no_assignment,,
+exact,same shape and name,645,Welkom,,ok,691,Welkom,1,1,359,Welkom,1,no_assignment,,
+exact,same shape and name,646,,,ok,692,,1,1,360,,1,no_assignment,,
+exact,same shape and name,647,,,ok,693,,1,1,361,,1,no_assignment,,
+exact,same shape and name,649,Rivrdale Est.,,ok,704,Rivrdale Est.,1,1,363,Rivrdale Est.,1,no_assignment,,
+exact,same shape and name,653,1,,ok,708,1,1,1,470,1,1,no_assignment,,
+exact,same shape and name,654,1,,ok,709,1,1,1,471,1,1,no_assignment,,
+exact,same shape and name,655,Harmonie,,ok,710,Harmonie,1,1,472,Harmonie,1,no_assignment,,
+exact,same shape and name,656,,,ok,711,,1,1,473,,1,no_assignment,,
+exact,same shape and name,662,SableDawsohs Farm,,ok,717,SableDawsohs Farm,1,1,475,SableDawsohs Farm,1,no_assignment,,
+exact,same shape and name,663,SableDawsohs Farm,,ok,718,SableDawsohs Farm,1,1,476,SableDawsohs Farm,1,no_assignment,,

@@ -19,7 +19,7 @@ duplicate, by comparing the geometry, and what depends on each table.
 | Table | Rows | What it is | Disposition |
 |---|---|---|---|
 | `gweru_beyond_periurban_zones` | 16 (15 with geometry) | **Duplicate** of `vungu_beyond_peri_urban_zones`: 15 of 15 shapes identical. The 16th row has no geometry and repeats attributes (`FLSCF`, `lu014`) the canonical table already holds. | **Retired 2026-10-08** with the tool; dump `backups/gweru_beyond_periurban_zones-2026-10-08.sql`. The QGIS layer of the same *name* reads the Vungu table and is untouched. |
-| `gweru_peri_urban_zone` | 43 (37 with geometry) | **Duplicate** of `proposed_peri_urban_zones`: 36 shapes identical; the 37th is the zone whose name was corrected on the map (`Cemetry` / `Cemetery`). The other 6 rows have **no geometry** (`Densification Zone [MDR]`, `Economic Corridor` x2, High, Low and Mixed Density Residential): junk. | **Blocked: needs you in QGIS.** The project still has a layer that reads it. Remove that layer from the project, then run the tool with `--ignore-null-geometry`. Nothing is lost. |
+| `gweru_peri_urban_zone` | 43 (37 with geometry) | Mostly a copy of `proposed_peri_urban_zones` (36 shapes identical, one of them the zone renamed `Cemetry` / `Cemetery`; 6 junk rows with no geometry). **But it is not safe to retire** (update 2026-10-08, evening): (1) row **id 43**, an `Institutional` polygon of 25.8 km², lies outside every canonical zone (0.2% covered). It carries a copy of row 19's attributes (`area_ha` 489.57 ha) but a different 9-vertex shape that measures about 2,580 ha: probably a mis-drawn copy, but nothing proves it. (2) **Its ids are the key to `gweru_rural_farms.zone_id`** (see below). | **Keep for now.** The QGIS layer is gone (you removed it). Settle id 43, remap the farm zone ids, then retire. |
 | `gweru_rural_farms` | 672 | **Not a duplicate.** The working farm register: carries `zone_id` (262 farms assigned to a zone), `current_land_use_group_id` and compliance columns (both empty). Used by the development-control routes, the planner's zoning card, the parcel selector and sync coverage. 24 names repeat. | **Keep; decision needed** (below). |
 | `vungu_farm_cadastre` | 687 | Farm cadastre geometry (name, area; no planning attributes). | Keep; see farms. |
 | `vungu_parcels` | 733 | The largest farm/parcel layer, used by tiles, parcel zoning and permits. | Keep; see farms. |
@@ -58,6 +58,46 @@ the wards whose code begins `ZW1704`, plus 250 m**. That is the Gweru **district
 own planning zones cover only 761 km² of it. So neither is Vungu RDC's jurisdiction; both are the
 district.
 
+## Farm match table (built 2026-10-08)
+
+`node scripts/build-farm-match.js --csv` fills `public.farm_match` and writes `docs/farm-match-review.csv`
+(worst cases first). Nothing is merged. A refresh keeps any reviewer decision.
+
+| Farms in `gweru_rural_farms` → `vungu_parcels` | Count |
+|---|---|
+| exact (same shape, same name, claimed once) | 527 |
+| probable (same shape, name differs or missing; or similar shape and same name) | 49 |
+| ambiguous (several parcels, or the parcel is also another farm's best match) | 3 |
+| weak (best parcel overlaps only 0.5 to 0.99) | 59 |
+| unmatched (no parcel overlaps it by half) | 30 |
+| no geometry | 4 |
+
+Of the 262 farms with a zone assignment: 213 exact, 10 probable, 38 weak, 1 unmatched. Of the 39
+weak or unmatched ones, 38 are at least 95% covered by parcels: the land is in `vungu_parcels`,
+cut into different parcels, so the match is one-to-many, not a loss.
+
+### The farm zone assignments point at the wrong zones
+
+`gweru_rural_farms.zone_id` was assigned against the ids of the **old `gweru_peri_urban_zone`
+table** (ids up to 43). The canonical table has ids 1 to 36. Read as they stand, **only 2 of 262**
+assignments point at the zone the farm lies in, and 36 point at an id that does not exist.
+Remapped from the old ids (old id, old zone, the canonical zone with the same shape):
+
+| Result | Farms |
+|---|---|
+| agrees with the zone the farm lies in (largest overlap) | 177 |
+| differs from it (the assignment and the geometry disagree: for a person to settle) | 72 |
+| cannot be remapped (the old id has no canonical shape: id 43 and the 6 junk rows) | 13 |
+
+**Live defect:** `development-control-refactored.js` reads `f.zone_id = z.id` (the by-parcel permitted
+uses, the farm list, the farm-by-zone queries), so those paths show the wrong zone for farms. The
+planner's zoning card uses the point-in-zone lookup and is not affected when it has a centroid. And a
+farm update (line 603) writes ids, so the column now mixes old and new ids.
+
+**Recommended:** drop the stored assignment as the source of truth. Parcel zoning (migration 144)
+already derives a parcel's zone from where it lies; the stored `zone_id` should be remapped once, the
+72 disagreements reviewed, and the column then retired in favour of the derived zone.
+
 ## Decisions recorded (2026-10-08)
 
 1. **The boundary is interim.** It will be replaced by the Zimbabwe Electoral Commission's delimited
@@ -84,7 +124,8 @@ district.
 
 ## Left for you
 
-- Remove the `gweru_peri_urban_zone` layer from the QGIS project, then the table can be retired.
+- Settle `gweru_peri_urban_zone` id 43 (the 25.8 km² `Institutional` polygon): keep as a new zone, or discard.
+- Review the 72 farms whose assignment and location disagree, then remap or retire `farms.zone_id`.
 - Decide the farm consolidation above.
 - `gweru_health_centres` is empty: where should its data come from?
 - Documents still mention retired tables (`SSOT-spatial.md`, the fidelity reports, the seed
