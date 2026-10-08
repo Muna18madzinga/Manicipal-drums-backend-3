@@ -27,12 +27,60 @@ geometry, and a data sync never changes symbology.
 | Concept | Canonical | Consumers | Notes |
 |---|---|---|---|
 | **Peri-urban zoning** | `proposed_peri_urban_zones` (aliased `zones_master` view for the map) | tiles (`spatialLayers.js`), QGIS (`vungu-project.qgs`), permits (`development-control-refactored.js`, fn `075`), zone-editing CRUD (`zones.js`), search (`map-search.js`, `tiles.js`) | Single master. `id` is the FK target for `development_matrix`, `gweru_rural_farms.zone_id`, `zone_land_use_controls`. `updated_at` is maintained by `trg_touch_updated_at`, not by hand — this is the one table a planner edits straight from QGIS Desktop, so no application statement runs on an edit. **`vungu_proposed_peri_urban_zones` is gone**, finally: see the correction below. |
-| Beyond peri-urban zones | `vungu_beyond_peri_urban_zones` | tiles + QGIS | consolidated 2026-07-23; `gweru_beyond_periurban_zones` dropped |
+| Beyond peri-urban zones | `vungu_beyond_peri_urban_zones` | tiles + QGIS | consolidated 2026-07-23; `gweru_beyond_periurban_zones` was dropped then restored by the 2026-10-02 recovery, and retired again 2026-10-08 after its shapes were verified identical (see DATA-AUDIT-2026-10-08.md) |
 | Country boundary | `country` | tiles + QGIS (`zimbabwe` layer) | orphans `Countries`, `zimbabwe` table dropped |
 | Basemap (buildings, roads, landuse, water, admin, POIs) | the 900914→4326 OSM tables | tiles only | country-wide reference; SRID historically 900914 (CRS84 alias), now 4326 |
 
 **SRID:** master-plan tables are EPSG:4326. Any spatial join to a basemap table
 must `ST_Transform` explicitly — do not assume a shared SRID across concepts.
+
+---
+
+> **Duplicates are retired with evidence.** `scripts/retire-duplicate-table.js` drops a duplicate only when its features match the canonical table, no QGIS layer reads it (by data source), nothing depends on it and a dump exists. `scripts/audit-spatial-duplicates.js` reports what holds the same data. Findings: **DATA-AUDIT-2026-10-08.md**.
+
+## Layer catalogue: the QGIS project declares, the server approves
+
+The table above says which table masters each concept. The **catalogue** says which layers the
+portal shows, how they are grouped and which are on. Before 2026-10-08 five lists kept their own
+answer (the `spatial_layers` registry, the tile config, the QGIS project, the style registry and
+sets hard-coded in the frontend) and they disagreed. There is now one:
+
+| Role | Where | Decides |
+|---|---|---|
+| **Declares** | `qgis-projects/vungu-project.qgs` (read by `services/qgisCatalogue.js`) | which layers, their groups and order, which are switched on, the extent the author left the map on |
+| **Approves** | `layer_publication` (migration 152), default deny | which tables the portal may expose, and to whom (`staff` or `public`) |
+| **Renders** | `config/spatialLayers.js` | how a table becomes vector tiles, including the attribute allowlist |
+
+`GET /api/catalogue` (staff) merges them (`services/layerCatalogue.js`). A layer is listed only if
+the project declares it, its table is approved and the table exists. Whatever the server exposes that
+the project does not yet declare is listed under **"Not yet in the QGIS project"**, so nothing vanishes
+while the project catches up, and the gap is visible.
+
+**Why approval is separate.** A saved project must never widen what the server exposes: whoever can save
+the file could otherwise name any table. The project declares; it cannot approve. Editing and tile
+exposure keep their own controls; approval here grants neither.
+
+**Identity is the table in the layer's data source, never the layer's name.** In the project today
+`proposed_peri_urban_zones` reads the `zones_master` view, `zimbabwe` reads `country`, and a layer
+named `gweru_beyond_periurban_zones` reads `vungu_beyond_peri_urban_zones`: a Vungu table under a Gweru
+name. A name must not be taken for what the data is.
+
+**`GET /api/admin/catalogue/reconciliation`** (admin) lists every disagreement: a project layer whose
+table is gone (QGIS shows it broken), a project layer the server has not approved, two layers on one
+table, a name that differs from its table, tables approved but undeclared, tile layers the project lacks,
+and old registry rows. Nothing is fixed automatically. It exists because this document once called
+`gweru_beyond_periurban_zones` dropped while the table was back in the database, and a dropped table
+was still a layer in the project.
+
+**The project is edited in QGIS, not by the server or by script.** To group the layers: create groups
+(for example *Vungu planning*, *Boundaries*, *Base map*, *Other authorities* with a *Gweru* group inside
+it, switched off), drag each layer in, and save. The planner's layer list and opening extent follow the
+saved file. The tree's checked boxes are the defaults a planner arrives with (for tile layers).
+
+**Still open:** the style registry still publishes styles *into* the project (docs/SSOT-symbology.md), so
+styles flow registry to project while the catalogue flows project to portal; one direction should win.
+Layers the project does not declare yet need adding in QGIS. The auto-registry (`spatial_layers`) is no
+longer a source for the planner but older screens still read it.
 
 ---
 

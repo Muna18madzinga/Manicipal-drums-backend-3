@@ -162,6 +162,8 @@ const MIGRATIONS = [
   '150_plan_workbench.sql',
   // 151: council settings for the usage analytics (kill switch, retention).
   '151_analytics_settings.sql',
+  // 152: layer_publication, the server's approval list behind the QGIS-project layer catalogue.
+  '152_layer_publication.sql',
 ]
 
 function createPool(env = process.env) {
