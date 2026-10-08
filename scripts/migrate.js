@@ -168,6 +168,15 @@ const MIGRATIONS = [
   '154_authority_row_level_security.sql',
   // 155: permit children (consultations, objections, inspections, ...) follow their permit (Phase 4, slice 2).
   '155_permit_children_row_level_security.sql',
+  // 156-160: matrix reference data derived from the local plan draft: use-group hierarchy, development activities,
+  // standard kinds, existing use as a group, and the matrix audit view.
+  '156_land_use_group_hierarchy.sql',
+  '157_development_activity.sql',
+  '158_activity_standard_kinds.sql',
+  '159_existing_use_land_use_group.sql',
+  '160_plan_matrix_audit.sql',
+  // 161: provisional rules: review status per zone column, and the provisional flag in every rule snapshot.
+  '161_provisional_rules.sql',
 ]
 
 function createPool(env = process.env) {

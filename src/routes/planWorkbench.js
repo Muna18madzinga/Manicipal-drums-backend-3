@@ -7,6 +7,7 @@
  *   POST /api/workbench/plans/adopt              give an authority its own copy of a template
  *   POST /api/workbench/plans/:id/matrix/import  { csv, apply }  validate a sheet; write it only when apply is true
  *   POST /api/workbench/plans/:id/signoff        { comment }  the authority's planner signs the plan off
+ *   POST /api/workbench/plans/:id/zone-types/:code/review  { status, reviewer }  record where a zone column stands in review
  *   POST /api/workbench/plans/:id/status         { status, gazette_ref, effective_from }  one step along the chain
  *   POST /api/workbench/plans/:id/version        start the next version of an approved or gazetted plan
  *
@@ -93,8 +94,24 @@ async function planWorkbenchRoutes(fastify) {
         `SELECT e.event_type, e.actor_role, e.detail, e.at, u.email AS actor_email
            FROM plan_event e LEFT JOIN users u ON u.id = e.actor_id
           WHERE e.plan_instrument_id = $1 ORDER BY e.at DESC LIMIT 100`, [request.params.id])).rows
-      return reply.send({ success: true, data: { plan, next_statuses: next, events } })
+      const zoneTypes = (await db(request).query(
+        `SELECT code, name, category, review_status, reviewed_by, reviewed_at FROM plan_zone_type WHERE plan_instrument_id = $1 ORDER BY display_no NULLS LAST, name`,
+        [request.params.id])).rows
+      return reply.send({ success: true, data: { plan, next_statuses: next, events, zone_types: zoneTypes } })
     } catch (err) { return fail(request, reply, err, 'get workbench plan') }
+  })
+
+  // Findings about a plan's matrix that a planner should settle (migration 160). Advisory: nothing is blocked.
+  fastify.get('/workbench/plans/:id/audit', reader, async (request, reply) => {
+    try {
+      if (!(await needPlan(request, reply))) return
+      const { rows } = await db(request).query(
+        `SELECT severity, kind, zone_code, group_code, detail FROM plan_matrix_audit WHERE plan_instrument_id = $1
+          ORDER BY CASE severity WHEN 'error' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END, kind, zone_code NULLS LAST, group_code NULLS LAST`,
+        [request.params.id])
+      const count = (sev) => rows.filter((r) => r.severity === sev).length
+      return reply.send({ success: true, data: { errors: count('error'), warnings: count('warning'), reviews: count('review'), findings: rows } })
+    } catch (err) { return fail(request, reply, err, 'audit workbench plan') }
   })
 
   // Adding an authority is a platform decision, not an authority administrator's: authorities are shared
@@ -179,6 +196,26 @@ async function planWorkbenchRoutes(fastify) {
       const { rows } = await db(request).query('SELECT sign_off_plan($1, $2, $3, $4, $5) AS id', [request.params.id, a.id, a.name, a.role, comment])
       return reply.code(201).send({ success: true, data: { id: rows[0].id } })
     } catch (err) { return fail(request, reply, err, 'sign off') }
+  })
+
+  // Where a zone column stands in the council's review. Marking it reviewed names who did it; editing any decision in it
+  // afterwards puts it back in review (migration 161). The plan stays provisional until it is approved or gazetted.
+  const REVIEW_STATUSES = ['unreviewed', 'in_review', 'reviewed']
+  fastify.post('/workbench/plans/:id/zone-types/:code/review', writer, async (request, reply) => {
+    const plan = await needPlan(request, reply)
+    if (!plan) return
+    const b = request.body || {}
+    if (!REVIEW_STATUSES.includes(b.status)) return reply.code(400).send({ success: false, error: 'bad_status' })
+    const code = typeof request.params.code === 'string' ? request.params.code : ''
+    if (!code || code.length > 200) return reply.code(400).send({ success: false, error: 'bad_zone_type' })
+    const a = actorOf(request)
+    const reviewer = typeof b.reviewer === 'string' && b.reviewer.trim() ? b.reviewer.trim().slice(0, 200) : a.name
+    try {
+      const { rows } = await db(request).query('SELECT id FROM plan_zone_type WHERE plan_instrument_id = $1 AND code = $2', [request.params.id, code])
+      if (!rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
+      await db(request).query('SELECT set_zone_type_review($1, $2, $3, $4, $5)', [rows[0].id, b.status, reviewer, a.id, a.role])
+      return reply.send({ success: true, data: { zone_type: code, review_status: b.status, reviewer: b.status === 'reviewed' ? reviewer : null } })
+    } catch (err) { return fail(request, reply, err, 'review zone type') }
   })
 
   fastify.post('/workbench/plans/:id/status', writer, async (request, reply) => {

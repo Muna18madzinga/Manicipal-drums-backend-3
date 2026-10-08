@@ -108,6 +108,12 @@ describe('migration plan', () => {
       '152_layer_publication.sql',
       '154_authority_row_level_security.sql',
       '155_permit_children_row_level_security.sql',
+      '156_land_use_group_hierarchy.sql',
+      '157_development_activity.sql',
+      '158_activity_standard_kinds.sql',
+      '159_existing_use_land_use_group.sql',
+      '160_plan_matrix_audit.sql',
+      '161_provisional_rules.sql',
     ])
 
     for (const filename of MIGRATIONS) {

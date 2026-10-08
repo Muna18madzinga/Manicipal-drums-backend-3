@@ -1,0 +1,9 @@
+code,name,tests,matrix_lookup,standards_kinds,how_it_is_assessed
+new_building,New building,use,true,"coverage,height,setback,parking",The use being built is looked up in the matrix for the parcel's zone; building standards then apply.
+extension,Extension,standards,false,"coverage,height,setback","The use is unchanged, so the matrix is not consulted; the extended building must still meet the zone's standards."
+alteration,Alteration,standards,false,"height,setback",As for an extension; the matrix applies only if the alteration changes the use.
+change_of_use,Change of use,use,true,parking,"From the existing use group (spatial_planning.existing_use) to the proposed one; the matrix decides whether the proposed use is permitted, by special consent, or prohibited."
+subdivision,Subdivision,parcel,true,"min_stand_area,frontage","Tests the resulting parcels against the zone's minimum stand size, and the intended use against the matrix."
+consolidation,Consolidation,parcel,false,max_stand_area,Merges parcels; tests the combined parcel against the zone's standards.
+rezoning,Rezoning,zone,false,,"Asks to change the zone itself, so the matrix for the current zone does not decide it; follows the plan-amendment route."
+other,Other,manual,false,,Assessed by an officer; no automatic test.

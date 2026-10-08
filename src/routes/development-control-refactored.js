@@ -9,7 +9,8 @@
 // permitted-uses, compliance-check, local authorities, live updates) stay
 // open for the public map.
 
-const { requireAuth, requireRole } = require('../middleware/jwtAuth')
+const { requireAuth, requireRole, optionalAuth } = require('../middleware/jwtAuth')
+const { tenantPool } = require('../lib/tenancy')
 const {
   DEFAULT_PLAN_SQL, PLAN_ZONE_TYPE_SQL,
   ZONE_USES_SQL, ZONE_TYPE_USES_SQL, ZONE_TYPES_SQL, LAND_USES_SQL, ZONE_TYPE_CELLS_SQL,
@@ -30,6 +31,35 @@ async function developmentControlRoutes(fastify) {
   const authd = { preHandler: requireAuth(fastify) }
   const staffOnly = { preHandler: requireRole(fastify, STAFF_ROLES) }
   const adminPlanner = { preHandler: requireRole(fastify, ['admin', 'planner']) }
+
+  // The matrix reads below run as the person asking (or as the public), so the database shows them only the
+  // plans they may see: staff their own authority's drafts, everyone else a template or a gazetted plan.
+  // Nothing in a draft plan reaches the public map. (Migration 154; the writes below still use the owner connection.)
+  const rdb = (request) => tenantPool(fastify.pg, request.user)
+  const SIGNED_IN_READS = new Set(['/zones', '/zones/:zoneId', '/groups', '/zone-types', '/zone-types/:code/uses', '/matrix/grid',
+    '/parcels/:parcelId/permitted-uses', '/zoning-at', '/compliance-check'])
+  fastify.addHook('preHandler', async (request) => {
+    const full = (request.routeOptions && request.routeOptions.url) || ''
+    const url = fastify.prefix && full.startsWith(fastify.prefix) ? full.slice(fastify.prefix.length) : full
+    if (SIGNED_IN_READS.has(url)) await optionalAuth(fastify)(request)
+  })
+
+  // Whether what a zone decides is provisional: its plan is not in force, and where its column stands in review.
+  async function rulesStatusOfZone(request, zoneId) {
+    const { rows } = await rdb(request).query(
+      `SELECT plan_id, plan_title, plan_version, plan_status, provisional, zone_type_code, review_status, reviewed_by, reviewed_at
+         FROM zone_decision_status WHERE zone_id = $1`, [zoneId])
+    return rows[0] || null
+  }
+  async function rulesStatusOfPlan(request, planId) {
+    const { rows } = await rdb(request).query(
+      `SELECT i.id AS plan_id, i.title AS plan_title, i.version AS plan_version, i.status AS plan_status,
+              plan_is_provisional(i.status) AS provisional,
+              COUNT(t.*) FILTER (WHERE t.review_status = 'reviewed')::int AS columns_reviewed, COUNT(t.*)::int AS columns
+         FROM plan_instrument i LEFT JOIN plan_zone_type t ON t.plan_instrument_id = i.id
+        WHERE i.id = $1 GROUP BY i.id`, [planId])
+    return rows[0] || null
+  }
 
   // ============================================
   // ZONES (using proposed_peri_urban_zones)
@@ -64,7 +94,7 @@ async function developmentControlRoutes(fastify) {
     
     query += ` ORDER BY display_order, zone`
     
-    const { rows } = await fastify.pg.query(query, params)
+    const { rows } = await rdb(request).query(query, params)
     return { success: true, count: rows.length, data: rows }
   })
 
@@ -92,14 +122,14 @@ async function developmentControlRoutes(fastify) {
       FROM proposed_peri_urban_zones z
       WHERE z.id = $1 AND z.is_active = TRUE
     `
-    const { rows: zoneRows } = await fastify.pg.query(zoneQuery, [zoneId])
+    const { rows: zoneRows } = await rdb(request).query(zoneQuery, [zoneId])
     
     if (zoneRows.length === 0) {
       return reply.status(404).send({ success: false, error: 'Zone not found' })
     }
     
     // Get matrix for this zone
-    const { rows: controlRows } = await fastify.pg.query(ZONE_USES_SQL, [zoneId])
+    const { rows: controlRows } = await rdb(request).query(ZONE_USES_SQL, [zoneId])
     // Same shape as before (permission_code P / SC / X), now from zone_land_use_controls.
     const matrixRows = controlRows.map(r => ({
       group_code: r.group_code,
@@ -117,7 +147,8 @@ async function developmentControlRoutes(fastify) {
       success: true, 
       data: {
         zone: zoneRows[0],
-        matrix: matrixRows
+        matrix: matrixRows,
+        rules_status: await rulesStatusOfZone(request, zoneId)
       }
     }
   })
@@ -160,12 +191,12 @@ async function developmentControlRoutes(fastify) {
   async function planFor(request, reply) {
     const value = request.query && request.query.plan
     if (!value) {
-      const { rows } = await fastify.pg.query(DEFAULT_PLAN_SQL)
+      const { rows } = await rdb(request).query(DEFAULT_PLAN_SQL)
       if (!rows.length) { reply.code(404).send({ success: false, error: 'No default plan is configured' }); return null }
       return rows[0].id
     }
     if (!UUID_RE.test(value)) { reply.code(400).send({ success: false, error: 'plan must be a plan id' }); return null }
-    const { rows } = await fastify.pg.query('SELECT id FROM plan_instrument WHERE id = $1', [value])
+    const { rows } = await rdb(request).query('SELECT id FROM plan_instrument WHERE id = $1', [value])
     if (!rows.length) { reply.code(404).send({ success: false, error: 'Unknown plan' }); return null }
     return rows[0].id
   }
@@ -174,7 +205,7 @@ async function developmentControlRoutes(fastify) {
   fastify.get('/groups', async (request, reply) => {
     const plan = await planFor(request, reply)
     if (!plan) return
-    const { rows } = await fastify.pg.query(`
+    const { rows } = await rdb(request).query(`
       SELECT id AS group_id, group_code, description, group_category, notes
       FROM land_use_groups
       WHERE is_active = TRUE AND plan_instrument_id = $1
@@ -227,7 +258,7 @@ async function developmentControlRoutes(fastify) {
 
     query += ` ORDER BY z.display_order, g.group_code`
 
-    const { rows } = await fastify.pg.query(query, params)
+    const { rows } = await rdb(request).query(query, params)
     return {
       success: true,
       count: rows.length,
@@ -244,8 +275,8 @@ async function developmentControlRoutes(fastify) {
   fastify.get('/zone-types', async (request, reply) => {
     const plan = await planFor(request, reply)
     if (!plan) return
-    const { rows } = await fastify.pg.query(ZONE_TYPES_SQL, [plan])
-    return { success: true, count: rows.length, data: rows }
+    const { rows } = await rdb(request).query(ZONE_TYPES_SQL, [plan])
+    return { success: true, count: rows.length, data: rows, rules_status: await rulesStatusOfPlan(request, plan) }
   })
 
   // GET /api/development-control/zone-types/:code/uses?plan=<id>
@@ -253,10 +284,10 @@ async function developmentControlRoutes(fastify) {
     const plan = await planFor(request, reply)
     if (!plan) return
     const { code } = request.params
-    const { rows: found } = await fastify.pg.query(PLAN_ZONE_TYPE_SQL, [plan, code])
+    const { rows: found } = await rdb(request).query(PLAN_ZONE_TYPE_SQL, [plan, code])
     if (!found.length) return reply.code(404).send({ success: false, error: 'Unknown zone type' })
-    const { rows } = await fastify.pg.query(ZONE_TYPE_USES_SQL, [plan, code])
-    return { success: true, data: { zone_type: found[0], ...groupUses(rows) } }
+    const { rows } = await rdb(request).query(ZONE_TYPE_USES_SQL, [plan, code])
+    return { success: true, data: { zone_type: found[0], ...groupUses(rows), rules_status: await rulesStatusOfPlan(request, plan) } }
   })
 
   // GET /api/development-control/matrix/grid?plan=<id>
@@ -264,13 +295,14 @@ async function developmentControlRoutes(fastify) {
     const plan = await planFor(request, reply)
     if (!plan) return
     const [zoneTypes, landUses, cells] = await Promise.all([
-      fastify.pg.query(ZONE_TYPES_SQL, [plan]),
-      fastify.pg.query(LAND_USES_SQL, [plan]),
-      fastify.pg.query(ZONE_TYPE_CELLS_SQL, [plan]),
+      rdb(request).query(ZONE_TYPES_SQL, [plan]),
+      rdb(request).query(LAND_USES_SQL, [plan]),
+      rdb(request).query(ZONE_TYPE_CELLS_SQL, [plan]),
     ])
     return {
       success: true,
       data: buildGrid({ zoneTypes: zoneTypes.rows, landUses: landUses.rows, cells: cells.rows }),
+      rules_status: await rulesStatusOfPlan(request, plan),
     }
   })
 
@@ -356,7 +388,7 @@ async function developmentControlRoutes(fastify) {
     const { parcelId, proposedUseCode } = request.body
     
     try {
-      const { rows } = await fastify.pg.query(
+      const { rows } = await rdb(request).query(
         'SELECT * FROM check_development_permission($1, $2)',
         [parseInt(parcelId), proposedUseCode]
       )
@@ -402,7 +434,7 @@ async function developmentControlRoutes(fastify) {
         WHERE f.id = $1
       `
       
-      const { rows: parcelRows } = await fastify.pg.query(parcelQuery, [parseInt(parcelId)])
+      const { rows: parcelRows } = await rdb(request).query(parcelQuery, [parseInt(parcelId)])
       
       if (parcelRows.length === 0) {
         return reply.status(404).send({ success: false, error: 'Parcel not found' })
@@ -426,7 +458,7 @@ async function developmentControlRoutes(fastify) {
           ORDER BY ${RULES_COUNT_SQL} DESC
           LIMIT 1
         `
-        const { rows: zoneRows } = await fastify.pg.query(zoneQuery, [zone_name])
+        const { rows: zoneRows } = await rdb(request).query(zoneQuery, [zone_name])
         if (zoneRows.length > 0) {
           zone = zoneRows[0]
           console.log(`📋 Using zone: ${zone.zone_name} (ID: ${zone.zone_id}) for development controls`)
@@ -442,7 +474,7 @@ async function developmentControlRoutes(fastify) {
           LEFT JOIN proposed_peri_urban_zones z ON f.zone_id = z.id
           WHERE f.id = $1
         `
-        const { rows: parcelZoneRows } = await fastify.pg.query(parcelZoneQuery, [parseInt(parcelId)])
+        const { rows: parcelZoneRows } = await rdb(request).query(parcelZoneQuery, [parseInt(parcelId)])
         if (parcelZoneRows.length > 0 && parcelZoneRows[0].zone_id) {
           zone = parcelZoneRows[0]
         }
@@ -462,7 +494,7 @@ async function developmentControlRoutes(fastify) {
         }
       }
       
-      const uses = await usesForZone(zone.zone_id)
+      const uses = await usesForZone(request, zone.zone_id)
       return {
         success: true,
         data: {
@@ -473,7 +505,8 @@ async function developmentControlRoutes(fastify) {
             prohibited_count: uses.prohibited_uses.length,
             consent_required_count: uses.consent_required_uses.length
           },
-          ...uses
+          ...uses,
+          rules_status: await rulesStatusOfZone(request, zone.zone_id)
         }
       }
     } catch (error) {
@@ -498,7 +531,7 @@ async function developmentControlRoutes(fastify) {
     try {
       // Overlapping zones: prefer the one with the most active rules, as
       // permitted-uses does for a named zone.
-      const { rows } = await fastify.pg.query(
+      const { rows } = await rdb(request).query(
         `SELECT z.id AS zone_id, z.zone_code, z.zone AS zone_name
          FROM proposed_peri_urban_zones z
          WHERE z.is_active = TRUE
@@ -511,7 +544,7 @@ async function developmentControlRoutes(fastify) {
       if (!zone) {
         return { success: true, data: { zone: null, permitted_uses: [], prohibited_uses: [], consent_required_uses: [] } }
       }
-      return { success: true, data: { zone, ...(await usesForZone(zone.zone_id)) } }
+      return { success: true, data: { zone, ...(await usesForZone(request, zone.zone_id)), rules_status: await rulesStatusOfZone(request, zone.zone_id) } }
     } catch (error) {
       request.log.error({ err: error }, 'zoning-at failed')
       return reply.status(500).send({ success: false, error: 'Failed to look up zoning' })
@@ -520,8 +553,8 @@ async function developmentControlRoutes(fastify) {
 
   // Zoning rules for one zone polygon, grouped permitted / prohibited / special
   // consent. Reads zone_land_use_controls (see utils/zoneUses.js).
-  async function usesForZone(zoneId) {
-    const { rows } = await fastify.pg.query(ZONE_USES_SQL, [zoneId])
+  async function usesForZone(request, zoneId) {
+    const { rows } = await rdb(request).query(ZONE_USES_SQL, [zoneId])
     return groupUses(rows)
   }
 

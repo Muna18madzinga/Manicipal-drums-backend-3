@@ -288,6 +288,24 @@ async function main() {
     check(sNone.results[0].decision === null && sNone.results[0].land_use === null, 'a land use the plan does not have is "not decided", never allowed')
     check((await snap(standFar, 'A')).unzoned === true, 'the snapshot of an unzoned stand says so')
 
+    // provisional rules (migration 161): a draft plan and an unreviewed column say so in the snapshot
+    check(sIn.provisional === true && r0.plan.provisional === true && r0.zone.review_status === 'unreviewed',
+      'a snapshot of a draft plan is marked provisional, with the zone column unreviewed')
+    check((await snap(standFar, 'A')).provisional === false, 'a snapshot of an unzoned stand is not provisional (nothing to qualify)')
+    const reviewZt = (await client.query('SELECT plan_zone_type_id AS id FROM zone_land_use_controls WHERE id = $1', [cell.id])).rows[0].id
+    await expectError(client, 'a review needs the reviewer\'s name', "SELECT set_zone_type_review($1, 'reviewed', '')", [reviewZt], /name of the reviewer/)
+    await expectError(client, 'an unknown review status is refused', "SELECT set_zone_type_review($1, 'approved', 'x')", [reviewZt], /review status/)
+    await client.query("SELECT set_zone_type_review($1, 'reviewed', 'Verification Planner')", [reviewZt])
+    const rv = (await client.query('SELECT review_status, reviewed_by, reviewed_at IS NOT NULL AS dated FROM plan_zone_type WHERE id = $1', [reviewZt])).rows[0]
+    check(rv.review_status === 'reviewed' && rv.reviewed_by === 'Verification Planner' && rv.dated, 'a column can be marked reviewed, by whom and when')
+    check((await snap(standIn, 'A')).results[0].zone.review_status === 'reviewed' && (await snap(standIn, 'A')).provisional === true,
+      'a reviewed column in a plan that is not in force is still provisional')
+    check((await client.query("SELECT COUNT(*)::int n FROM plan_event WHERE plan_instrument_id = $1 AND event_type = 'zone_review'", [adopted])).rows[0].n === 1, 'the review is recorded in the plan\'s history')
+    await client.query("UPDATE zone_land_use_controls SET conditions = 'edited after review' WHERE id = $1", [cell.id])
+    check((await client.query('SELECT review_status FROM plan_zone_type WHERE id = $1', [reviewZt])).rows[0].review_status === 'in_review',
+      'editing a decision in a reviewed column puts the column back in review')
+    await client.query("UPDATE zone_land_use_controls SET conditions = NULL WHERE id = $1", [cell.id])
+
     await client.query("INSERT INTO decision_pathway (code, name, decision) VALUES ('verify_own_pathway', 'Own pathway', 'special_consent')")
     await client.query('UPDATE zone_land_use_controls SET pathway_code = $1 WHERE id = $2', ['verify_own_pathway', cell.id])
     const sOwn = (await snap(standIn, 'A')).results[0]
@@ -416,7 +434,10 @@ async function main() {
     check(gz.status === 'gazetted' && gz.gazette_ref === 'SI 1 of 2026' && gz.effective_from !== null, 'gazetting records the reference and effective date')
 
     // a change is a new version
+    await client.query("SELECT set_zone_type_review($1, 'reviewed', 'Verification Planner')", [reviewZt])
     const v2 = (await client.query('SELECT new_plan_version($1, NULL, $2) AS id', [adopted, 'verify'])).rows[0].id
+    check((await client.query("SELECT COUNT(*)::int n FROM plan_zone_type WHERE plan_instrument_id = $1 AND review_status = 'reviewed' AND reviewed_by = 'Verification Planner'", [v2])).rows[0].n === 1,
+      'a new version keeps the review state of a column it copies unchanged')
     const v2row = (await client.query('SELECT version, status, supersedes_id FROM plan_instrument WHERE id = $1', [v2])).rows[0]
     check(v2row.version === 2 && v2row.status === 'draft' && v2row.supersedes_id === adopted, 'a new version is the next draft and supersedes the old one')
     const counts = async (id) => (await client.query('SELECT zone_types, land_uses, decisions FROM plan_instrument_summary WHERE id = $1', [id])).rows[0]
@@ -448,6 +469,55 @@ async function main() {
       'every step is in the plan\'s event history')
     await expectError(client, 'events cannot be rewritten', "UPDATE plan_event SET event_type = 'x' WHERE plan_instrument_id = $1", [adopted], /append-only/)
     await expectError(client, 'sign-offs cannot be rewritten', "UPDATE plan_signoff SET comment = 'x' WHERE plan_instrument_id = $1", [adopted], /append-only/)
+    console.log('== matrix reference data and audit (migrations 156-160)')
+    const act = (await client.query('SELECT code FROM development_activity ORDER BY code')).rows.map((r) => r.code)
+    check(['new_building', 'alteration', 'extension', 'change_of_use', 'subdivision', 'consolidation', 'rezoning', 'other'].every((c) => act.includes(c)),
+      'the eight kinds of development the permit could always record are all in development_activity')
+    await expectError(client, 'a permit cannot be for an unknown kind of development',
+      "INSERT INTO spatial_planning.permit_application (applicant_name, development_type) VALUES ('x', 'teleportation')", [], /foreign key|development_type/)
+    check((await client.query("SELECT COUNT(*)::int n FROM activity_standard_kind WHERE activity_code = 'subdivision' AND kind_code IN ('min_stand_area', 'min_frontage')")).rows[0].n === 2,
+      'a subdivision is tested against minimum stand area and frontage')
+    await expectError(client, 'an activity cannot be linked to a standard kind that does not exist',
+      "INSERT INTO activity_standard_kind (activity_code, kind_code) VALUES ('subdivision', 'nonsense')", [], /foreign key/)
+    const tree = (await client.query("SELECT group_code, parent_group_code, parent_group_id IS NOT NULL AS resolved FROM land_use_group_tree WHERE plan_instrument_id = $1 AND group_code IN ('A', 'A1', 'D1', 'L1')", [vplan.id])).rows
+    const t = Object.fromEntries(tree.map((r) => [r.group_code, r]))
+    check(t.A && t.A.parent_group_code === null && t.A1.parent_group_code === 'A' && t.A1.resolved && t.D1.parent_group_code === 'D' && t.D1.resolved,
+      "A1 is under A and D1 under D in Vungu's plan")
+    check(t.L1 && t.L1.parent_group_code === 'L' && !t.L1.resolved, 'L1 names a class (L) that the plan does not have, and shows no parent')
+    check((await client.query("SELECT COUNT(*)::int n FROM information_schema.columns WHERE table_schema = 'spatial_planning' AND table_name = 'existing_use' AND column_name = 'land_use_group_code'")).rows[0].n === 1,
+      'an existing use can be recorded as a land-use group code')
+    check((await client.query('SELECT land_use_group_for($1, $2) AS id', [vplan.id, 'D1'])).rows[0].id !== null && (await client.query("SELECT land_use_group_for($1, 'QQ') AS id", [vplan.id])).rows[0].id === null,
+      'land_use_group_for finds a group by code in a plan, and nothing for an unknown code')
+
+    // a scratch plan that does each thing the audit looks for
+    const aud = (await client.query("INSERT INTO plan_instrument (authority_id, profile_id, plan_type, title, status) SELECT $1, id, 'local', 'Audit fixture', 'draft' FROM plan_profile WHERE code = 'urban' RETURNING id", [combo])).rows[0].id
+    const use = {}
+    for (const [code, order] of [['A', 1], ['A1', 2], ['B', 3], ['C', 4], ['D', 5], ['E', 6], ['F', 7], ['G', 8], ['H', 9], ['I', 10], ['J', 11], ['L1', 12]]) {
+      use[code] = (await client.query("INSERT INTO land_use_groups (group_code, description, group_category, plan_instrument_id, is_active, display_order) VALUES ($1, $4, 'residential', $2, TRUE, $3) RETURNING id", [code, aud, order, 'use ' + code])).rows[0].id
+    }
+    await client.query("INSERT INTO land_use_group_class (land_use_group_id, scheme, code, relation, status) VALUES ($1, 'HILUCS', '5_1_ResidentialUse', 'within', 'proposed'), ($2, 'HILUCS', '5_1_ResidentialUse', 'within', 'proposed')", [use.A, use.A1])
+    const zone = async (code, category) => (await client.query("INSERT INTO plan_zone_type (plan_instrument_id, code, name, category) VALUES ($1, $2, $4, $3) RETURNING id", [aud, code, category, "zone " + code])).rows[0].id
+    const decide = async (zid, fn) => { for (const code of Object.keys(use)) { const v = fn(code); if (v) await client.query('INSERT INTO zone_land_use_controls (plan_zone_type_id, land_use_group_id, control_type) VALUES ($1, $2, $3)', [zid, use[code], v]) } }
+    const zRes = await zone('RES-NODWELL', 'residential'); await decide(zRes, (c) => (c === 'A' || c === 'B' ? 'prohibited' : 'special_consent'))
+    const zCopy = await zone('RES-COPY', 'residential'); await decide(zCopy, (c) => (c === 'A' || c === 'B' ? 'prohibited' : 'special_consent'))
+    const zAll = await zone('EVERYTHING', 'mixed'); await decide(zAll, () => 'permitted')
+    const zGap = await zone('GAPPY', 'commercial'); await decide(zGap, (c) => (['A', 'B', 'C'].includes(c) ? null : c === 'D' ? 'permitted' : 'prohibited'))
+    const zOk = await zone('CONSIDERED', 'residential'); await decide(zOk, (c) => (c === 'A' ? 'permitted' : c === 'A1' ? 'prohibited' : c === 'D' ? 'special_consent' : c === 'E' ? 'permitted' : c === 'F' ? 'prohibited' : c === 'G' ? 'special_consent' : c === 'H' ? 'prohibited' : c === 'I' ? 'permitted' : c === 'J' ? 'prohibited' : c === 'L1' ? 'permitted' : 'special_consent'))
+    const findings = (await client.query('SELECT severity, kind, zone_code, group_code FROM plan_matrix_audit WHERE plan_instrument_id = $1', [aud])).rows
+    const has = (kind, zone2) => findings.some((f) => f.kind === kind && (zone2 === undefined || f.zone_code === zone2))
+    check(has('residential_zone_without_dwellings', 'RES-NODWELL') && has('residential_zone_without_dwellings', 'RES-COPY'), 'a residential zone that permits no dwelling outright is an error')
+    check(!has('residential_zone_without_dwellings', 'CONSIDERED'), 'a residential zone that does permit a dwelling is not')
+    check(has('near_identical_columns', 'RES-NODWELL') || has('near_identical_columns', 'RES-COPY'), 'two zones that decide every use the same way are reported')
+    check(has('default_fill', 'EVERYTHING') && !has('default_fill', 'CONSIDERED'), 'a zone that permits everything is reported as a default fill; a considered one is not')
+    check(has('no_decision', 'GAPPY') && !has('no_decision', 'CONSIDERED'), 'a zone with gaps is reported, listing them')
+    check(has('special_consent_without_condition', 'CONSIDERED'), 'special-consent decisions with no condition are reported for review')
+    check(findings.some((f) => f.kind === 'sub_class_without_class' && f.group_code === 'L1'), 'L1 without an L class is reported')
+    check(findings.every((f) => ['error', 'warning', 'review'].includes(f.severity)), 'every finding has a severity')
+    const auditSum = (await client.query('SELECT errors, warnings, reviews FROM plan_matrix_audit_summary WHERE plan_instrument_id = $1', [aud])).rows[0]
+    check(Number(auditSum.errors) >= 2 && Number(auditSum.warnings) >= 3 && Number(auditSum.reviews) >= 2, `the summary counts them (${auditSum.errors} errors, ${auditSum.warnings} warnings, ${auditSum.reviews} reviews)`)
+    check((await client.query("SELECT COUNT(*)::int n FROM plan_matrix_audit WHERE plan_instrument_id = (SELECT id FROM plan_instrument WHERE is_default_template AND profile_id = (SELECT id FROM plan_profile WHERE code = 'urban'))")).rows[0].n === 0,
+      'the audit reports nothing for the urban starter palette (it has no decisions, and does not use the lettered schedule)')
+
     await client.query('ROLLBACK')
   } catch (err) {
     await client.query('ROLLBACK')

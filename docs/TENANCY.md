@@ -44,7 +44,7 @@ The views `plan_instrument_summary`, `zone_effective_controls`, `v_application_s
 **Routes that opt in (and so are enforced):** the plan model routes, the workbench, parcel zoning, and every
 permit route in `development-management.js` (create, list, read, status, case, consultations, objections,
 public notice, EO decision, return and request-for-information, messages, building plans, stage inspections,
-occupation certificates, documents, work queues). Anything addressed `/permit-applications/:id…`, or by a
+occupation certificates, documents, work queues). The matrix read routes in `development-control-refactored.js` (zones, zone types, the matrix grid, permitted uses, zoning-at, compliance check) also run as the person asking, so the public map sees only a template or a gazetted plan, never another authority's draft. Anything addressed `/permit-applications/:id…`, or by a
 child's own id (`/consultations/:cid`, `/objections/:oid`, `/building-plans/:bpid`,
 `/stage-inspections/:sid`, `/generated-documents/:id`), answers 404 to a signed-in person whose authority
 does not own the permit, before the route runs. Kept on the owner connection on purpose: the audit-trail

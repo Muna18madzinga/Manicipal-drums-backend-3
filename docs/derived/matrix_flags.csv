@@ -1,0 +1,38 @@
+severity,zone,group_code,kind,detail
+warning,Cemetery,,default_fill,"permits 29 of 32 uses: looks like a default fill, not a considered column"
+warning,Densification Zone [LDR],,default_fill,"permits 30 of 32 uses: looks like a default fill, not a considered column"
+error,High Density Residential,,residential_zone_without_dwellings,a residential zone that does not permit any dwelling group outright (A=X A1=X A2=X A3=X): the column may be shifted or mislabelled
+error,Low Density Residential,,residential_zone_without_dwellings,a residential zone that does not permit any dwelling group outright (A=SC A1=X A2=X A3=X): the column may be shifted or mislabelled
+error,Medium Density Residential,,residential_zone_without_dwellings,a residential zone that does not permit any dwelling group outright (A=X A1=X A2=X A3=X): the column may be shifted or mislabelled
+error,Communal Farming Zone,,column_copied,"this zone's whole column equals the urban zone ""Densification Zone [LDR]"" (within one cell): the rural block looks like the urban block relabelled"
+warning,Communal Farming Zone,,default_fill,"permits 30 of 32 uses: looks like a default fill, not a considered column"
+error,High Intensive Commercial Farming Zone,,column_copied,"this zone's whole column equals the urban zone ""Densification Zone [LDR]"" (within one cell): the rural block looks like the urban block relabelled"
+warning,High Intensive Commercial Farming Zone,,default_fill,"permits 30 of 32 uses: looks like a default fill, not a considered column"
+error,Estates Zone (Large Farms),,column_copied,"this zone's whole column equals the urban zone ""Economic Corridor [Mixed Business]"" (within one cell): the rural block looks like the urban block relabelled"
+error,Irrigation Scheme Zone,,column_copied,"this zone's whole column equals the urban zone ""High Density Residential"" (within one cell): the rural block looks like the urban block relabelled"
+error,Smallholder Estates Zone,,column_copied,"this zone's whole column equals the urban zone ""Institutional"" (within one cell): the rural block looks like the urban block relabelled"
+error,Forestry / Conservation Zone,,column_copied,"this zone's whole column equals the urban zone ""Light Industry"" (within one cell): the rural block looks like the urban block relabelled"
+error,Game Park Zone,,column_copied,"this zone's whole column equals the urban zone ""Low Density Residential"" (within one cell): the rural block looks like the urban block relabelled"
+error,Game Corridor Zone,,column_copied,"this zone's whole column equals the urban zone ""Medium Density Residential"" (within one cell): the rural block looks like the urban block relabelled"
+error,Urban Expansion Zone,,column_copied,"this zone's whole column equals the urban zone ""Mixed Density Residential"" (within one cell): the rural block looks like the urban block relabelled"
+error,Industrial Zone,,column_copied,"this zone's whole column equals the urban zone ""Railways Common User Facilities"" (within one cell): the rural block looks like the urban block relabelled"
+error,Commercial Zone,,column_copied,"this zone's whole column equals the urban zone ""Residential Agricultural Plots"" (within one cell): the rural block looks like the urban block relabelled"
+warning,Cemetery,U,blank_cell,Parking garage: no decision recorded
+warning,High Density Residential,U,blank_cell,Parking garage: no decision recorded
+warning,Institutional,U,blank_cell,Parking garage: no decision recorded
+warning,Low Density Residential,U,blank_cell,Parking garage: no decision recorded
+warning,Medium Density Residential,U,blank_cell,Parking garage: no decision recorded
+warning,Mixed Density Residential,D1,blank_cell,Farm stores: no decision recorded
+warning,Mixed Density Residential,U,blank_cell,Parking garage: no decision recorded
+warning,Railways Common User Facilities,D1,blank_cell,Farm stores: no decision recorded
+warning,Railways Common User Facilities,U,blank_cell,Parking garage: no decision recorded
+warning,Irrigation Scheme Zone,U,blank_cell,Parking garage: no decision recorded
+warning,Smallholder Estates Zone,U,blank_cell,Parking garage: no decision recorded
+warning,Game Park Zone,U,blank_cell,Parking garage: no decision recorded
+warning,Urban Expansion Zone,D1,blank_cell,Farm stores: no decision recorded
+warning,Urban Expansion Zone,U,blank_cell,Parking garage: no decision recorded
+warning,Industrial Zone,U,blank_cell,Parking garage: no decision recorded
+review,Low Density Residential,B1,sub_class_more_permissive_than_class,B1 (Residential buildings (licensed)) is P but its class B is X
+review,Game Park Zone,B1,sub_class_more_permissive_than_class,B1 (Residential buildings (licensed)) is P but its class B is X
+review,,,lettering_gaps,"the use groups skip letters N, O, W, Y (and have L1 without L): check the council's schedule of use classes for groups the draft omits"
+review,,,no_conditions,0 of 704 cells carry a condition or note: a special-consent decision with no stated condition cannot be assessed

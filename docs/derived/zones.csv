@@ -1,0 +1,23 @@
+name,profile,proposed_palette_zone,category,hilucs_proposed,permitted,special_consent,prohibited,blank,audit,note
+Cemetery,urban,Open Space and Recreation,open_space,3_4_CulturalEntertainmentAndRecreationalServices:within,29,2,0,1,default_fill blank_cell,cemetery is a special use; may need its own zone type
+Densification Zone [LDR],urban,Low-Density Residential,residential,5_1_ResidentialUse:within,30,2,0,0,default_fill,a policy overlay on LDR land rather than a use zone: model as an overlay or a flag
+Economic Corridor [Mixed Business],urban,Town Centre / Mixed Use,mixed,3_1_CommercialServices:overlaps 5_1_ResidentialUse:overlaps,26,5,1,0,,
+High Density Residential,urban,High-Density Residential,residential,5_1_ResidentialUse:within,17,5,9,1,residential_zone_without_dwellings blank_cell,
+Institutional,urban,Institutional and Community,institutional,3_3_CommunityServices:within,24,7,0,1,blank_cell,
+Light Industry,urban,Light Industrial,industrial,2_3_LightEndProductIndustry:within,8,14,10,0,,
+Low Density Residential,urban,Low-Density Residential,residential,5_1_ResidentialUse:within,4,12,15,1,residential_zone_without_dwellings blank_cell,
+Medium Density Residential,urban,Medium-Density Residential,residential,5_1_ResidentialUse:within,1,5,25,1,residential_zone_without_dwellings blank_cell,
+Mixed Density Residential,urban,Medium-Density Residential,residential,5_1_ResidentialUse:within,14,13,3,2,blank_cell blank_cell,mixed density: confirm whether it is a distinct zone or a range
+Railways Common User Facilities,urban,Transport and Utilities,infrastructure,4_1_TransportNetworks:overlaps 4_3_Utilities:overlaps,9,6,15,2,blank_cell blank_cell,
+Residential Agricultural Plots,urban,Urban Agriculture / Peri-urban Fringe,agricultural,1_1_Agriculture:within,13,13,6,0,,
+Communal Farming Zone,rural,Communal Agriculture,agricultural,1_1_Agriculture:within,30,2,0,0,column_copied default_fill,
+High Intensive Commercial Farming Zone,rural,Commercial Agriculture,agricultural,1_1_Agriculture:within,30,2,0,0,column_copied default_fill,
+Estates Zone (Large Farms),rural,Commercial Agriculture,agricultural,1_1_Agriculture:within,26,5,1,0,column_copied,large-farm estates: distinct from intensive farming only by scale
+Irrigation Scheme Zone,rural,Irrigation Scheme,agricultural,1_1_Agriculture:within,17,5,9,1,column_copied blank_cell,
+Smallholder Estates Zone,rural,Smallholder and Resettlement Agriculture,agricultural,1_1_Agriculture:within,24,7,0,1,column_copied blank_cell,
+Forestry / Conservation Zone,rural,Forestry,forestry,1_2_Forestry:within,8,14,10,0,column_copied,two intents in one zone: forestry and conservation
+Game Park Zone,rural,Wildlife and Tourism,conservation,3_4_CulturalEntertainmentAndRecreationalServices:overlaps 6_1_AgriculturalNatureManagementAreas:overlaps,4,12,15,1,column_copied blank_cell,
+Game Corridor Zone,rural,Conservation and Protected Area,conservation,6_1_AgriculturalNatureManagementAreas:within,2,5,25,0,column_copied,
+Urban Expansion Zone,rural,Future Urban / Development Reserve,reserve,1_1_Agriculture:overlaps,14,13,3,2,column_copied blank_cell blank_cell,
+Industrial Zone,rural,Rural Industry and Agro-processing,industrial,2_3_LightEndProductIndustry:within,9,7,15,1,column_copied blank_cell,
+Commercial Zone,rural,Rural Commercial,commercial,3_1_CommercialServices:within,13,13,6,0,column_copied,

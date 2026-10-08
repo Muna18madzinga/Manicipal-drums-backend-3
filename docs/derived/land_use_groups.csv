@@ -1,0 +1,33 @@
+code,description,parent_code,category,use_scale,hilucs
+A,Detached (SFD) dwelling houses,,residential,,5_1_ResidentialUse:within
+A1,Cluster housing,A,residential,,5_1_ResidentialUse:within
+A2,Attached and semi-detached dwelling houses,A,residential,,5_1_ResidentialUse:within
+A3,Flats,A,residential,,5_1_ResidentialUse:within
+B,Residential buildings,,residential,,5_1_ResidentialUse:overlaps
+B1,Residential buildings (licensed),B,residential,,5_1_ResidentialUse:overlaps
+B2,Residential building (institutional),B,residential,,5_1_ResidentialUse:overlaps
+C,Schools and residential colleges,,institutional,,3_3_CommunityServices:within
+D,Shops,,commercial,,3_1_CommercialServices:within
+D1,Farm stores,D,commercial,,1_1_Agriculture:overlaps 3_1_CommercialServices:overlaps
+E,Offices,,commercial,,3_2_FinancialProfessionalAndInformationServices:within
+E1,Corporate offices,E,commercial,,3_2_FinancialProfessionalAndInformationServices:within
+E2,Surgeries and medical chambers,E,commercial,,3_3_CommunityServices:overlaps
+F,Institutions,,institutional,,3_3_CommunityServices:within
+G,Wholesale warehouse,,commercial,,3_1_CommercialServices:within
+H,Storage warehouse,,industrial,,4_2_LogisticalAndStorageServices:within
+I,Public buildings,,institutional,,3_3_CommunityServices:within
+J,Places of assembly,,institutional,,3_4_CulturalEntertainmentAndRecreationalServices:overlaps
+J1,Special places of assembly,J,institutional,,3_4_CulturalEntertainmentAndRecreationalServices:overlaps
+K,Place of public worship,,institutional,,3_3_CommunityServices:within
+L1,General industrial buildings,,industrial,,2_SecondaryProduction:exact
+M,Industrial buildings,,industrial,,2_SecondaryProduction:exact
+P,Agricultural small holdings,,agricultural,,1_1_Agriculture:within
+Q,Agricultural buildings,,agricultural,,1_1_Agriculture:within
+R,Petrol filling and service station,,commercial,,3_1_CommercialServices:within
+S,Lorry parking lot and rest house,,commercial,,3_1_CommercialServices:overlaps 4_1_TransportNetworks:overlaps
+T,Newspaper offices,,commercial,,3_2_FinancialProfessionalAndInformationServices:within
+U,Parking garage,,commercial,,4_1_TransportNetworks:overlaps
+V,Funeral parlour,,commercial,,3_1_CommercialServices:overlaps
+X,Game park,,recreation,,6_1_AgriculturalNatureManagementAreas:within
+Z,Horticulture,,agricultural,,1_1_Agriculture:within
+UF,Urban forestry,,agricultural,,1_2_Forestry:overlaps

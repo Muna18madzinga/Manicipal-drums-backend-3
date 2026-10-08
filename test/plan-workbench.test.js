@@ -139,6 +139,54 @@ describe('matrix import', () => {
   })
 })
 
+describe('zone column review', () => {
+  const review = (setup2, body, params = { id: PLAN, code: 'Cemetery' }) => setup2.call('POST /workbench/plans/:id/zone-types/:code/review', { params, body })
+  test('is a write for admin and planner only', async () => {
+    const { routes } = await setup(planExists())
+    expect(routes['POST /workbench/plans/:id/zone-types/:code/review'].opts.preHandler.roles).toEqual(['admin', 'planner'])
+  })
+  test('refuses an unknown status and an unknown zone type', async () => {
+    const s = await setup(planExists())
+    expect((await review(s, { status: 'approved' })).reply.statusCode).toBe(400)
+    expect((await review(s, { status: 'reviewed' })).reply.statusCode).toBe(404)   // the plan exists, the zone type does not
+  })
+  test('records the review as the signed-in person unless a reviewer is named', async () => {
+    const calls = []
+    const s = await setup(planExists(async (sql, params) => {
+      if (/FROM plan_zone_type WHERE plan_instrument_id/.test(sql)) return { rows: [{ id: 'zt-1' }] }
+      if (/set_zone_type_review/.test(sql)) { calls.push(params); return { rows: [] } }
+      return { rows: [] }
+    }))
+    const r1 = await review(s, { status: 'reviewed' })
+    expect(r1.reply.body.data).toMatchObject({ review_status: 'reviewed', reviewer: 'P. Lanner' })
+    const r2 = await review(s, { status: 'reviewed', reviewer: '  A. Council Planner ' })
+    expect(r2.reply.body.data.reviewer).toBe('A. Council Planner')
+    expect(calls[0]).toEqual(['zt-1', 'reviewed', 'P. Lanner', 'u1', 'planner'])
+  })
+  test('a database refusal is a readable 409', async () => {
+    const s = await setup(planExists(async (sql) => {
+      if (/FROM plan_zone_type WHERE plan_instrument_id/.test(sql)) return { rows: [{ id: 'zt-1' }] }
+      throw Object.assign(new Error('a review needs the name of the reviewer'), { code: '23514' })
+    }))
+    const { reply } = await review(s, { status: 'reviewed' })
+    expect(reply.statusCode).toBe(409)
+  })
+})
+
+describe('matrix audit', () => {
+  test('is a read for any workbench reader, counts findings by severity and needs a plan the caller can see', async () => {
+    const { routes } = await setup(planExists())
+    expect(routes['GET /workbench/plans/:id/audit'].opts.preHandler.roles).toContain('planning_clerk')
+    const rows = [{ severity: 'error', kind: 'k1' }, { severity: 'warning', kind: 'k2' }, { severity: 'warning', kind: 'k3' }, { severity: 'review', kind: 'k4' }]
+    const ok = await setup(planExists(async (sql) => (/plan_matrix_audit/.test(sql) ? { rows } : { rows: [] })))
+    const { reply } = await ok.call('GET /workbench/plans/:id/audit', { params: { id: PLAN } })
+    expect(reply.body.data).toMatchObject({ errors: 1, warnings: 2, reviews: 1 })
+    const none = await setup(async () => ({ rows: [] }))
+    expect((await none.call('GET /workbench/plans/:id/audit', { params: { id: PLAN } })).reply.statusCode).toBe(404)
+    expect((await none.call('GET /workbench/plans/:id/audit', { params: { id: 'x' } })).reply.statusCode).toBe(400)
+  })
+})
+
 describe('sign-off is attributed to the signed-in user', () => {
   test('uses the user, not anything in the body', async () => {
     const { call, server } = await setup(planExists(async () => ({ rows: [{ id: 'so-1' }] })))
