@@ -98,6 +98,26 @@ farm update (line 603) writes ids, so the column now mixes old and new ids.
 already derives a parcel's zone from where it lies; the stored `zone_id` should be remapped once, the
 72 disagreements reviewed, and the column then retired in favour of the derived zone.
 
+### The farm zone remap (prepared, not applied)
+
+`migrations/153_farm_zone_remap.sql` (with a `.down.sql`) is **prepared and deliberately not registered** in
+`scripts/migrate.js`. Rehearse it on the real data, changing nothing, with
+`node scripts/rehearse-farm-zone-remap.js [--csv]`: it applies the migration, checks it, applies it again,
+runs the down script, and rolls everything back. Result on the dev data:
+
+- 262 farms carry a zone; **177** are remapped and agree with where they lie, **72** are remapped but differ
+  from where they lie (kept as the assignment meant; flagged), **13** cannot be remapped and get NULL.
+- No farm is left pointing at a zone id that does not exist; every remapped zone has the same shape as the
+  old zone; every original value is kept in `zone_id_legacy`; a second run changes nothing; the down
+  script restores every original value exactly.
+- The review sheet is `docs/farm-zone-remap-review.csv` (85 farms for a person to look at).
+
+**All 13 unmappable farms were assigned to old id 43**, the `Institutional` polygon that matches nothing in the
+canonical table, and all 13 touch that polygon (2 lie mostly inside it). So the farms were assigned against
+it by intersection: id 43 was in use as a zone when the assignments were made. That weakens the "mis-drawn
+copy" reading above. It may be a real zone that was later dropped from the canonical table. Settling id 43
+(keep as a zone, or discard) settles those 13 farms.
+
 ## Decisions recorded (2026-10-08)
 
 1. **The boundary is interim.** It will be replaced by the Zimbabwe Electoral Commission's delimited

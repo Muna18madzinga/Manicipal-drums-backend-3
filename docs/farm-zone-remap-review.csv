@@ -1,0 +1,86 @@
+farm_id,farm_name,old_zone_id,old_zone_name,new_zone_id,new_zone_name,lies_in_zone_id,lies_in_zone_name,basis,agrees
+47,Somabula,43,Institutional,,,29,Economic Corridor [Mixed Business],no canonical counterpart,
+59,Koedoe Estate,43,Institutional,,,31,Residential Agricultural Plots,no canonical counterpart,
+130,,43,Institutional,,,29,Economic Corridor [Mixed Business],no canonical counterpart,
+160,Sonambula,43,Institutional,,,31,Residential Agricultural Plots,no canonical counterpart,
+332,,43,Institutional,,,31,Residential Agricultural Plots,no canonical counterpart,
+354,,43,Institutional,,,1,High Density Residential,no canonical counterpart,
+384,,43,Institutional,,,31,Residential Agricultural Plots,no canonical counterpart,
+414,A,43,Institutional,,,1,High Density Residential,no canonical counterpart,
+446,4,43,Institutional,,,1,High Density Residential,no canonical counterpart,
+449,5,43,Institutional,,,1,High Density Residential,no canonical counterpart,
+456,,43,Institutional,,,31,Residential Agricultural Plots,no canonical counterpart,
+462,,43,Institutional,,,29,Economic Corridor [Mixed Business],no canonical counterpart,
+467,B,43,Institutional,,,1,High Density Residential,no canonical counterpart,
+76,21,29,Cemetry,6,Cemetery,7,Mixed Density Residential,identical shape,false
+150,23,29,Cemetry,6,Cemetery,7,Mixed Density Residential,identical shape,false
+34,Wildebeeste Block,18,Densification Zone [LDR],21,Densification Zone [LDR],31,Residential Agricultural Plots,identical shape,false
+201,74,10,Densification Zone [LDR],12,Densification Zone [LDR],31,Residential Agricultural Plots,identical shape,false
+295,,10,Densification Zone [LDR],12,Densification Zone [LDR],31,Residential Agricultural Plots,identical shape,false
+340,28,18,Densification Zone [LDR],21,Densification Zone [LDR],26,Low Density Residential,identical shape,false
+345,26,18,Densification Zone [LDR],21,Densification Zone [LDR],26,Low Density Residential,identical shape,false
+361,24,18,Densification Zone [LDR],21,Densification Zone [LDR],26,Low Density Residential,identical shape,false
+507,,10,Densification Zone [LDR],12,Densification Zone [LDR],31,Residential Agricultural Plots,identical shape,false
+524,,18,Densification Zone [LDR],21,Densification Zone [LDR],26,Low Density Residential,identical shape,false
+542,,27,Densification Zone [LDR],30,Densification Zone [LDR],36,Economic Corridor [Mixed Business],identical shape,false
+567,,10,Densification Zone [LDR],12,Densification Zone [LDR],29,Economic Corridor [Mixed Business],identical shape,false
+632,The Wildebeeste Block,27,Densification Zone [LDR],30,Densification Zone [LDR],31,Residential Agricultural Plots,identical shape,false
+640,54,10,Densification Zone [LDR],12,Densification Zone [LDR],31,Residential Agricultural Plots,identical shape,false
+664,Divide,18,Densification Zone [LDR],21,Densification Zone [LDR],30,Densification Zone [LDR],identical shape,false
+665,Divide,18,Densification Zone [LDR],21,Densification Zone [LDR],7,Mixed Density Residential,identical shape,false
+132,Hillside,26,Economic Corridor [Mixed Business],29,Economic Corridor [Mixed Business],31,Residential Agricultural Plots,identical shape,false
+134,9,26,Economic Corridor [Mixed Business],29,Economic Corridor [Mixed Business],32,Residential Agricultural Plots,identical shape,false
+157,3,26,Economic Corridor [Mixed Business],29,Economic Corridor [Mixed Business],32,Residential Agricultural Plots,identical shape,false
+211,,26,Economic Corridor [Mixed Business],29,Economic Corridor [Mixed Business],7,Mixed Density Residential,identical shape,false
+270,,35,Economic Corridor [Mixed Business],35,Economic Corridor [Mixed Business],7,Mixed Density Residential,identical shape,false
+303,,12,Economic Corridor [Mixed Business],14,Economic Corridor [Mixed Business],7,Mixed Density Residential,identical shape,false
+311,,35,Economic Corridor [Mixed Business],35,Economic Corridor [Mixed Business],7,Mixed Density Residential,identical shape,false
+397,,26,Economic Corridor [Mixed Business],29,Economic Corridor [Mixed Business],31,Residential Agricultural Plots,identical shape,false
+409,,26,Economic Corridor [Mixed Business],29,Economic Corridor [Mixed Business],7,Mixed Density Residential,identical shape,false
+417,,26,Economic Corridor [Mixed Business],29,Economic Corridor [Mixed Business],7,Mixed Density Residential,identical shape,false
+427,,26,Economic Corridor [Mixed Business],29,Economic Corridor [Mixed Business],7,Mixed Density Residential,identical shape,false
+442,,26,Economic Corridor [Mixed Business],29,Economic Corridor [Mixed Business],31,Residential Agricultural Plots,identical shape,false
+476,,12,Economic Corridor [Mixed Business],14,Economic Corridor [Mixed Business],19,Low Density Residential,identical shape,false
+485,,26,Economic Corridor [Mixed Business],29,Economic Corridor [Mixed Business],31,Residential Agricultural Plots,identical shape,false
+486,,26,Economic Corridor [Mixed Business],29,Economic Corridor [Mixed Business],7,Mixed Density Residential,identical shape,false
+496,,12,Economic Corridor [Mixed Business],14,Economic Corridor [Mixed Business],7,Mixed Density Residential,identical shape,false
+548,,26,Economic Corridor [Mixed Business],29,Economic Corridor [Mixed Business],31,Residential Agricultural Plots,identical shape,false
+550,,4,Economic Corridor [Mixed Business],11,Economic Corridor [Mixed Business],21,Densification Zone [LDR],identical shape,false
+552,,26,Economic Corridor [Mixed Business],29,Economic Corridor [Mixed Business],7,Mixed Density Residential,identical shape,false
+560,,26,Economic Corridor [Mixed Business],29,Economic Corridor [Mixed Business],31,Residential Agricultural Plots,identical shape,false
+666,8,26,Economic Corridor [Mixed Business],29,Economic Corridor [Mixed Business],7,Mixed Density Residential,identical shape,false
+667,8,26,Economic Corridor [Mixed Business],29,Economic Corridor [Mixed Business],31,Residential Agricultural Plots,identical shape,false
+672,,4,Economic Corridor [Mixed Business],11,Economic Corridor [Mixed Business],25,Low Density Residential,identical shape,false
+25,Ngamo,25,High Density Residential,28,High Density Residential,31,Residential Agricultural Plots,identical shape,false
+52,1,25,High Density Residential,28,High Density Residential,31,Residential Agricultural Plots,identical shape,false
+237,,25,High Density Residential,28,High Density Residential,31,Residential Agricultural Plots,identical shape,false
+243,Kent,25,High Density Residential,28,High Density Residential,31,Residential Agricultural Plots,identical shape,false
+320,,25,High Density Residential,28,High Density Residential,1,High Density Residential,identical shape,false
+238,,19,Institutional,22,Institutional,7,Mixed Density Residential,identical shape,false
+353,,19,Institutional,22,Institutional,7,Mixed Density Residential,identical shape,false
+388,,19,Institutional,22,Institutional,7,Mixed Density Residential,identical shape,false
+393,,19,Institutional,22,Institutional,7,Mixed Density Residential,identical shape,false
+217,,34,Low Density Residential,19,Low Density Residential,7,Mixed Density Residential,identical shape,false
+204,Ber,24,Medium Density Residential,27,Medium Density Residential,31,Residential Agricultural Plots,identical shape,false
+234,,24,Medium Density Residential,27,Medium Density Residential,28,High Density Residential,identical shape,false
+268,,24,Medium Density Residential,27,Medium Density Residential,31,Residential Agricultural Plots,identical shape,false
+269,,24,Medium Density Residential,27,Medium Density Residential,31,Residential Agricultural Plots,identical shape,false
+298,,24,Medium Density Residential,27,Medium Density Residential,29,Economic Corridor [Mixed Business],identical shape,false
+323,Goodyear,24,Medium Density Residential,27,Medium Density Residential,28,High Density Residential,identical shape,false
+328,,24,Medium Density Residential,27,Medium Density Residential,28,High Density Residential,identical shape,false
+419,,24,Medium Density Residential,27,Medium Density Residential,29,Economic Corridor [Mixed Business],identical shape,false
+448,,24,Medium Density Residential,27,Medium Density Residential,29,Economic Corridor [Mixed Business],identical shape,false
+650,,24,Medium Density Residential,27,Medium Density Residential,29,Economic Corridor [Mixed Business],identical shape,false
+223,,17,Mixed Density Residential,20,Mixed Density Residential,28,High Density Residential,identical shape,false
+425,,32,Mixed Density Residential,34,Mixed Density Residential,7,Mixed Density Residential,identical shape,false
+437,,32,Mixed Density Residential,34,Mixed Density Residential,7,Mixed Density Residential,identical shape,false
+440,,32,Mixed Density Residential,34,Mixed Density Residential,7,Mixed Density Residential,identical shape,false
+444,,32,Mixed Density Residential,34,Mixed Density Residential,7,Mixed Density Residential,identical shape,false
+487,,32,Mixed Density Residential,34,Mixed Density Residential,7,Mixed Density Residential,identical shape,false
+521,,17,Mixed Density Residential,20,Mixed Density Residential,27,Medium Density Residential,identical shape,false
+528,,3,Mixed Density Residential,10,Mixed Density Residential,17,Economic Corridor [Mixed Business],identical shape,false
+661,,32,Mixed Density Residential,34,Mixed Density Residential,7,Mixed Density Residential,identical shape,false
+669,,17,Mixed Density Residential,20,Mixed Density Residential,27,Medium Density Residential,identical shape,false
+670,,17,Mixed Density Residential,20,Mixed Density Residential,27,Medium Density Residential,identical shape,false
+69,22,30,Residential Agricultural Plots,32,Residential Agricultural Plots,7,Mixed Density Residential,identical shape,false
+146,2,28,Residential Agricultural Plots,31,Residential Agricultural Plots,32,Residential Agricultural Plots,identical shape,false
