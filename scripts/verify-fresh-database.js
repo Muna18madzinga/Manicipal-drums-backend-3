@@ -76,6 +76,11 @@ async function main() {
     check(ver.code === 0 && /ALL CHECKS PASSED/.test(ver.out), 'all checks passed on the empty database')
     if (ver.code !== 0) console.log(ver.out.split('\n').filter((l) => /FAIL/.test(l)).join('\n'))
 
+    console.log('== row-level security by authority (verify-rls.js)')
+    const rls = run(path.join(__dirname, 'verify-rls.js'), [])
+    check(rls.code === 0 && /ALL CHECKS PASSED/.test(rls.out), 'authorities cannot see or change one another\'s permits and plans')
+    if (rls.code !== 0) console.log(rls.out.split('\n').filter((l) => /FAIL/.test(l)).join('\n'))
+
     console.log('== load the sample matrix with the real loader')
     const csv = path.join(ROOT, 'docs', 'district-development-control-matrix.csv')
     const load = run(path.join(__dirname, 'load-zoning-matrix.js'), ['--file', csv, '--apply'])

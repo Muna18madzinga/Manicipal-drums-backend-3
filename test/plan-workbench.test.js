@@ -1,17 +1,21 @@
 jest.mock('../src/middleware/jwtAuth', () => ({ requireAuth: () => async () => {}, requireRole: (_f, roles) => Object.assign(async () => {}, { roles }) }))
+const { makePg } = require('./helpers/fakePg')
 jest.mock('../src/services/planMatrixImport', () => ({ importCsv: jest.fn() }))
 
 const { planWorkbenchRoutes, ruleRefusal } = require('../src/routes/planWorkbench')
 const { importCsv } = require('../src/services/planMatrixImport')
 
 const PLAN = '4c98ad9f-d0bd-4360-864b-af54cef9d08f'
-const USER = { id: 'u1', role: 'planner', name: 'P. Lanner', email: 'p@x' }
+const USER = { id: 'u1', role: 'planner', name: 'P. Lanner', email: 'p@x', authority_id: 1 }
+const PLATFORM = { ...USER, role: 'admin', is_platform: true }
 
 function makeServer(queryImpl) {
   const routes = {}
   const reg = (verb) => (path, ...rest) => { routes[`${verb} ${path}`] = { handler: rest[rest.length - 1], opts: rest.length > 1 ? rest[0] : {} } }
+  const fake = makePg(queryImpl)
   const client = { query: jest.fn(async () => ({ rows: [] })), release: jest.fn() }
-  const server = { pg: { query: jest.fn(queryImpl), connect: jest.fn(async () => client) }, log: { error() {} }, get: reg('GET'), post: reg('POST') }
+  // db(request) goes through the tenancy helper (fake.pg.connect); the platform-only add-authority route uses the same pool.
+  const server = { pg: fake.pg, log: { error() {} }, get: reg('GET'), post: reg('POST') }
   const call = async (key, request) => {
     const reply = { statusCode: 200, body: null }
     reply.code = (c) => { reply.statusCode = c; return reply }
@@ -40,6 +44,9 @@ describe('who may do what', () => {
 })
 
 describe('database rules become readable refusals', () => {
+  test('a row-level-security refusal says it belongs to another authority, without the policy text', () => {
+    expect(ruleRefusal({ code: '42501', message: 'new row violates row-level security policy for table "plan_instrument"' })).toEqual({ status: 403, message: 'That belongs to another authority.' })
+  })
   test('check violations and our own messages are 409 with the message', () => {
     expect(ruleRefusal({ code: '23514', message: 'this plan is approved and cannot be edited' })).toEqual({ status: 409, message: 'this plan is approved and cannot be edited' })
     expect(ruleRefusal({ code: 'P0001', message: 'a template has no status to change' }).status).toBe(409)
@@ -74,9 +81,17 @@ describe('input validation (nothing reaches the database when it is wrong)', () 
     expect((await call('POST /workbench/plans/:id/status', { params: { id: PLAN }, body: { status: 'gazetted', effective_from: '1 June' } })).reply.statusCode).toBe(400)
     expect((await call('POST /workbench/plans/:id/status', { params: { id: PLAN }, body: { status: 'gazetted', gazette_ref: 'x'.repeat(300) } })).reply.statusCode).toBe(400)
   })
+  test("adding an authority is for the platform operator, not an authority's own administrator", async () => {
+    const { call, server } = await setup(async () => ({ rows: [] }))
+    const { reply } = await call('POST /workbench/authorities', { body: { code: 'CHIP', name: 'Chipinge', kind: 'rural' }, user: { ...USER, role: 'admin' } })
+    expect(reply.statusCode).toBe(403)
+    expect(reply.body.error).toBe('platform_only')
+    expect(server.pg.connect).not.toHaveBeenCalled()
+  })
+
   test('adding an authority validates code, name, kind and members', async () => {
     const { call, server } = await setup(async () => ({ rows: [] }))
-    const post = (body) => call('POST /workbench/authorities', { body })
+    const post = (body) => call('POST /workbench/authorities', { body, user: PLATFORM })
     expect((await post({ code: "x'; --", name: 'N', kind: 'rural' })).reply.statusCode).toBe(400)
     expect((await post({ code: 'CHIP', name: '', kind: 'rural' })).reply.statusCode).toBe(400)
     expect((await post({ code: 'CHIP', name: 'Chipinge', kind: 'suburban' })).reply.statusCode).toBe(400)

@@ -1,11 +1,13 @@
+jest.mock('../src/middleware/jwtAuth', () => ({ optionalAuth: () => async () => {} }))
+const { makePg } = require('./helpers/fakePg')
 const { planModelRoutes, plansQuery, AUTHORITIES_SQL, PROFILES_SQL } = require('../src/routes/planModel')
 
 // Registers the routes on a stand-in server and returns the handlers.
 async function setup(queryImpl) {
   const routes = {}
   const server = {
-    pg: { query: jest.fn(queryImpl) },
-    get: (path, handler) => { routes[path] = handler },
+    pg: makePg(queryImpl).pg,
+    get: (path, ...rest) => { routes[path] = rest[rest.length - 1] },
   }
   await planModelRoutes(server)
   const call = async (path, query = {}, params = {}) => {

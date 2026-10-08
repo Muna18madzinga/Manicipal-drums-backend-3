@@ -49,7 +49,8 @@
 const fs = require('fs').promises
 const path = require('path')
 const crypto = require('crypto')
-const { requireAuth, requireRole } = require('../middleware/jwtAuth')
+const { requireAuth, requireRole, optionalAuth } = require('../middleware/jwtAuth')
+const { tenantPool } = require('../lib/tenancy')
 const notifier = require('../services/notifier')
 const { canTransition, allowedTransitions } = require('../config/permitWorkflow')
 const { scanBuffer } = require('../services/malwareScan')
@@ -275,6 +276,24 @@ h3{font-size:0.9rem;margin-top:1.3rem}ol{padding-left:1.4rem}@media print{body{m
 
 async function developmentManagementRoutes(fastify) {
   const pg = fastify.pg
+  // Permit work runs as the person making the request, so the database (migration 154) shows and
+  // changes only their authority's permits (a citizen's own). `pg` stays for system actions on a row
+  // this request has just created, and for routes not yet converted (see docs/TENANCY.md).
+  const db = (request) => tenantPool(pg, request.user)
+
+  // Any permit addressed by id (/permit-applications/:id and what hangs off it) is invisible to a
+  // signed-in person whose authority does not own it: 404, as if it did not exist. Converted routes get
+  // the same from the database; this closes the routes that are not converted yet.
+  fastify.addHook('preHandler', async (request, reply) => {
+    const url = (request.routeOptions && request.routeOptions.url) || ''
+    if (!url.startsWith('/permit-applications/:id')) return
+    const id = request.params && request.params.id
+    if (!isUuid(id)) return // the route's own validation answers
+    await optionalAuth(fastify)(request)
+    if (!request.user) return // the route's own authentication answers 401
+    const { rows } = await db(request).query('SELECT 1 FROM spatial_planning.permit_application WHERE id = $1', [id])
+    if (!rows.length) return reply.code(404).send({ success: false, error: 'not_found' })
+  })
 
   // Append-only audit log helper (migration 082). Best-effort: a failed
   // audit insert must never break the primary action, but it is logged.
@@ -353,7 +372,7 @@ async function developmentManagementRoutes(fastify) {
       ? 'pending_payment'
       : 'registered'
     try {
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `INSERT INTO spatial_planning.permit_application
            (dev_app_id, tpd_reference, dev_register_no, stand_number, suburb_ward,
             street_address, stand_area_sqm, applicant_name, applicant_id_number,
@@ -387,7 +406,7 @@ async function developmentManagementRoutes(fastify) {
       const lat = Number(b.latitude ?? b.lat)
       const lng = Number(b.longitude ?? b.lng)
       if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        const upd = await pg.query(
+        const upd = await db(request).query(
           `UPDATE spatial_planning.permit_application
               SET location = ST_SetSRID(ST_MakePoint($2,$3),4326), updated_at = NOW()
             WHERE id = $1
@@ -448,7 +467,7 @@ async function developmentManagementRoutes(fastify) {
       // register can say "51–100 of 412" from one query. Without it a paged
       // register can only offer Next and discover the end by hitting it, and
       // the response shape has promised a total since it was first typed.
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         // The summary view carries the register columns but not the case
         // columns, so a list row arrived without created_at (the quarterly
         // return filtered on it and produced an empty return every time),
@@ -505,7 +524,7 @@ async function developmentManagementRoutes(fastify) {
       return reply.code(400).send({ success: false, error: 'bad_id' })
     }
     try {
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `SELECT *, ST_X(location) AS lng, ST_Y(location) AS lat
            FROM spatial_planning.permit_application WHERE id = $1`,
         [request.params.id],
@@ -535,14 +554,14 @@ async function developmentManagementRoutes(fastify) {
   }, async (request, reply) => {
     if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
     try {
-      const { rows: permit } = await pg.query(
+      const { rows: permit } = await db(request).query(
         'SELECT id, created_by, parcel_layer, parcel_id, parcel_match, plan_instrument_id FROM spatial_planning.permit_application WHERE id = $1',
         [request.params.id])
       if (!permit[0]) return reply.code(404).send({ success: false, error: 'not_found' })
       if (!STAFF_ROLES.includes(request.user.role) && permit[0].created_by !== request.user.id) {
         return reply.code(404).send({ success: false, error: 'not_found' })
       }
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `SELECT id, kind, land_use_code, plan_instrument_id, snapshot, taken_by, taken_at
            FROM spatial_planning.permit_rule_snapshot WHERE permit_id = $1 ORDER BY taken_at, id`,
         [request.params.id])
@@ -562,7 +581,7 @@ async function developmentManagementRoutes(fastify) {
     const ref = parseParcelRef(b.layer, b.id)
     if (!ref) return reply.code(400).send({ success: false, error: 'bad_parcel' })
     try {
-      const { rows } = await pg.query('SELECT spatial_planning.set_permit_parcel($1, $2, $3, $4) AS snapshot',
+      const { rows } = await db(request).query('SELECT spatial_planning.set_permit_parcel($1, $2, $3, $4) AS snapshot',
         [request.params.id, ref.layer, ref.id, request.user.id])
       return reply.send({ success: true, data: rows[0].snapshot })
     } catch (err) {
@@ -580,7 +599,7 @@ async function developmentManagementRoutes(fastify) {
     const use = parseUseCode((request.body || {}).land_use_code)
     if (!use) return reply.code(400).send({ success: false, error: 'bad_land_use_code' })
     try {
-      const { rows } = await pg.query('SELECT spatial_planning.take_permit_assessment_snapshot($1, $2, $3) AS snapshot',
+      const { rows } = await db(request).query('SELECT spatial_planning.take_permit_assessment_snapshot($1, $2, $3) AS snapshot',
         [request.params.id, use, request.user.id])
       return reply.code(201).send({ success: true, data: rows[0].snapshot })
     } catch (err) {

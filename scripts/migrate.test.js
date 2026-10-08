@@ -106,6 +106,7 @@ describe('migration plan', () => {
       '150_plan_workbench.sql',
       '151_analytics_settings.sql',
       '152_layer_publication.sql',
+      '154_authority_row_level_security.sql',
     ])
 
     for (const filename of MIGRATIONS) {

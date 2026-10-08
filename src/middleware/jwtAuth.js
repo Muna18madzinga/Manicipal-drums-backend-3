@@ -264,7 +264,8 @@ async function authenticate(fastify, request, reply) {
   const { rows } = await fastify.pg.query(
     `SELECT id, email, COALESCE(full_name, name) AS name, role, organization,
             job_title, department, phone, applicant_type,
-            national_id, physical_address, active, status, residency_status
+            national_id, physical_address, active, status, residency_status,
+            authority_id, is_platform
      FROM users WHERE id = $1`,
     [claims.sub],
   )
@@ -312,6 +313,21 @@ function requireRole(fastify, allowed) {
 }
 
 const requireAdmin = (fastify) => requireRole(fastify, 'admin')
+
+/**
+ * Fastify preHandler for PUBLIC routes that show more to a signed-in person: if there is a valid
+ * session, request.user is set; if there is none (or it is stale) the request simply stays anonymous.
+ * It never replies. Pair it with the tenancy helper so the database shows the right rows.
+ */
+function optionalAuth(fastify) {
+  return async (request) => {
+    const header = request.headers.authorization
+    const hasToken = request.cookies?.vungu_at || (header && header.startsWith('Bearer '))
+    if (!hasToken) return
+    const sink = { code() { return sink }, send() { return sink } }
+    try { await authenticate(fastify, request, sink) } catch { /* anonymous */ }
+  }
+}
 
 // Required lazily inside createSession's own module scope rather than at the
 // top: adminSettings.js is a leaf that needs nothing from here, but jwtAuth is
@@ -370,6 +386,7 @@ module.exports = {
   requireAuth,
   requireRole,
   requireAdmin,
+  optionalAuth,
   createSession,
   revokeSession,
   listSessions,

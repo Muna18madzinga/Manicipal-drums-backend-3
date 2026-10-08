@@ -19,6 +19,7 @@
  */
 const { requireRole } = require('../middleware/jwtAuth')
 const { importCsv } = require('../services/planMatrixImport')
+const { tenantPool } = require('../lib/tenancy')
 
 const WRITE_ROLES = ['admin', 'planner']
 const READ_ROLES = ['admin', 'planner', 'planning_clerk', 'eo', 'gis_officer']
@@ -38,6 +39,7 @@ function ruleRefusal(err) {
   if (!err) return null
   if (err.code === '23514' || err.code === '22023') return { status: 409, message: err.message }
   if (err.code === '23505') return { status: 409, message: 'That already exists.' }
+  if (err.code === '42501') return { status: 403, message: 'That belongs to another authority.' }
   if (err.code === 'P0001' && /unknown|not a|needs|only|cannot|template|sign-off|newer version|exist/i.test(err.message)) return { status: 409, message: err.message }
   return null
 }
@@ -54,6 +56,8 @@ const PLAN_SQL = `
 
 async function planWorkbenchRoutes(fastify) {
   const pg = fastify.pg
+  // Every database call for a request runs as that person: the database refuses what their authority may not touch.
+  const db = (request) => tenantPool(pg, request.user)
   const reader = { preHandler: requireRole(fastify, READ_ROLES) }
   const writer = { preHandler: requireRole(fastify, WRITE_ROLES) }
   const adminOnly = { preHandler: requireRole(fastify, ['admin']) }
@@ -67,14 +71,14 @@ async function planWorkbenchRoutes(fastify) {
   const needPlan = async (request, reply) => {
     const { id } = request.params
     if (!isUuid(id)) { reply.code(400).send({ success: false, error: 'bad_id' }); return null }
-    const { rows } = await pg.query('SELECT id, is_template, status FROM plan_instrument WHERE id = $1', [id])
+    const { rows } = await db(request).query('SELECT id, is_template, status FROM plan_instrument WHERE id = $1', [id])
     if (!rows[0]) { reply.code(404).send({ success: false, error: 'not_found' }); return null }
     return rows[0]
   }
 
   fastify.get('/workbench/plans', reader, async (request, reply) => {
     try {
-      const { rows } = await pg.query(`${PLAN_SQL} ORDER BY s.is_template DESC, s.authority_name NULLS FIRST, s.title, s.version`)
+      const { rows } = await db(request).query(`${PLAN_SQL} ORDER BY s.is_template DESC, s.authority_name NULLS FIRST, s.title, s.version`)
       return reply.send({ success: true, count: rows.length, data: rows })
     } catch (err) { return fail(request, reply, err, 'list workbench plans') }
   })
@@ -82,10 +86,10 @@ async function planWorkbenchRoutes(fastify) {
   fastify.get('/workbench/plans/:id', reader, async (request, reply) => {
     try {
       if (!(await needPlan(request, reply))) return
-      const { rows } = await pg.query(`${PLAN_SQL} WHERE i.id = $1`, [request.params.id])
+      const { rows } = await db(request).query(`${PLAN_SQL} WHERE i.id = $1`, [request.params.id])
       const plan = rows[0]
-      const next = plan.is_template ? [] : (await pg.query(NEXT_SQL, [plan.status])).rows.map((r) => r.to_status)
-      const events = (await pg.query(
+      const next = plan.is_template ? [] : (await db(request).query(NEXT_SQL, [plan.status])).rows.map((r) => r.to_status)
+      const events = (await db(request).query(
         `SELECT e.event_type, e.actor_role, e.detail, e.at, u.email AS actor_email
            FROM plan_event e LEFT JOIN users u ON u.id = e.actor_id
           WHERE e.plan_instrument_id = $1 ORDER BY e.at DESC LIMIT 100`, [request.params.id])).rows
@@ -93,7 +97,12 @@ async function planWorkbenchRoutes(fastify) {
     } catch (err) { return fail(request, reply, err, 'get workbench plan') }
   })
 
+  // Adding an authority is a platform decision, not an authority administrator's: authorities are shared
+  // and a council's own IT administrator must not be able to create or alter another's.
   fastify.post('/workbench/authorities', adminOnly, async (request, reply) => {
+    if (request.user.is_platform !== true) {
+      return reply.code(403).send({ success: false, error: 'platform_only', message: 'Adding an authority is for the platform operator.' })
+    }
     const b = request.body || {}
     const code = typeof b.code === 'string' ? b.code.trim().toUpperCase() : ''
     const members = Array.isArray(b.members) ? b.members.map((m) => String(m).trim().toUpperCase()) : []
@@ -132,14 +141,14 @@ async function planWorkbenchRoutes(fastify) {
     if (b.profile !== undefined && !['rural', 'urban'].includes(b.profile)) return reply.code(400).send({ success: false, error: 'bad_profile' })
     try {
       const { rows: t } = b.template_id
-        ? await pg.query('SELECT id FROM plan_instrument WHERE id = $1 AND is_template', [b.template_id])
-        : await pg.query(
+        ? await db(request).query('SELECT id FROM plan_instrument WHERE id = $1 AND is_template', [b.template_id])
+        : await db(request).query(
           `SELECT i.id FROM plan_instrument i JOIN plan_profile p ON p.id = i.profile_id
             WHERE i.is_default_template AND p.code = $1`, [b.profile || 'rural'])
       if (!t[0]) return reply.code(404).send({ success: false, error: 'template_not_found' })
-      const { rows: [{ id }] } = await pg.query('SELECT adopt_plan_template($1, $2, $3, $4, $5) AS id',
+      const { rows: [{ id }] } = await db(request).query('SELECT adopt_plan_template($1, $2, $3, $4, $5) AS id',
         [t[0].id, b.authority_id, b.title.trim(), planType, 'draft'])
-      await pg.query('SELECT log_plan_event($1, $2, $3, $4, $5::jsonb)',
+      await db(request).query('SELECT log_plan_event($1, $2, $3, $4, $5::jsonb)',
         [id, 'adopted', request.user.id, request.user.role, JSON.stringify({ template: t[0].id })])
       return reply.code(201).send({ success: true, data: { id } })
     } catch (err) { return fail(request, reply, err, 'adopt template') }
@@ -153,7 +162,7 @@ async function planWorkbenchRoutes(fastify) {
     if (b.csv.length > MAX_CSV_CHARS) return reply.code(413).send({ success: false, error: 'csv_too_large' })
     if (b.apply !== undefined && typeof b.apply !== 'boolean') return reply.code(400).send({ success: false, error: 'apply_must_be_boolean' })
     try {
-      const r = await importCsv(pg, request.params.id, b.csv, { apply: b.apply === true, actor: request.user })
+      const r = await importCsv(db(request), request.params.id, b.csv, { apply: b.apply === true, actor: request.user })
       return reply.send({
         success: true,
         data: { applied: r.applied, plan: r.plan, summary: r.summary, errors: r.errors, coverage: r.coverage },
@@ -167,7 +176,7 @@ async function planWorkbenchRoutes(fastify) {
     const a = actorOf(request)
     const comment = typeof (request.body || {}).comment === 'string' ? request.body.comment.slice(0, 2000) : null
     try {
-      const { rows } = await pg.query('SELECT sign_off_plan($1, $2, $3, $4, $5) AS id', [request.params.id, a.id, a.name, a.role, comment])
+      const { rows } = await db(request).query('SELECT sign_off_plan($1, $2, $3, $4, $5) AS id', [request.params.id, a.id, a.name, a.role, comment])
       return reply.code(201).send({ success: true, data: { id: rows[0].id } })
     } catch (err) { return fail(request, reply, err, 'sign off') }
   })
@@ -185,7 +194,7 @@ async function planWorkbenchRoutes(fastify) {
     }
     const a = actorOf(request)
     try {
-      const { rows } = await pg.query('SELECT set_plan_status($1, $2, $3, $4, $5, $6) AS status',
+      const { rows } = await db(request).query('SELECT set_plan_status($1, $2, $3, $4, $5, $6) AS status',
         [request.params.id, b.status, a.id, a.role, b.gazette_ref || null, b.effective_from || null])
       return reply.send({ success: true, data: { status: rows[0].status } })
     } catch (err) { return fail(request, reply, err, 'set plan status') }
@@ -196,7 +205,7 @@ async function planWorkbenchRoutes(fastify) {
     if (!plan) return
     const a = actorOf(request)
     try {
-      const { rows } = await pg.query('SELECT new_plan_version($1, $2, $3) AS id', [request.params.id, a.id, a.role])
+      const { rows } = await db(request).query('SELECT new_plan_version($1, $2, $3) AS id', [request.params.id, a.id, a.role])
       return reply.code(201).send({ success: true, data: { id: rows[0].id } })
     } catch (err) { return fail(request, reply, err, 'new plan version') }
   })

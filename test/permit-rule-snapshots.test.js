@@ -1,4 +1,5 @@
-jest.mock('../src/middleware/jwtAuth', () => ({ requireAuth: () => async () => {}, requireRole: () => async () => {} }))
+jest.mock('../src/middleware/jwtAuth', () => ({ requireAuth: () => async () => {}, requireRole: () => async () => {}, optionalAuth: () => async () => {} }))
+const { makePg } = require('./helpers/fakePg')
 
 const { developmentManagementRoutes } = require('../src/routes/development-management')
 
@@ -9,7 +10,8 @@ function makeServer(queryImpl) {
   const routes = {}
   const reg = (verb) => (path, ...rest) => { routes[`${verb} ${path}`] = rest[rest.length - 1] }
   const server = {
-    pg: { query: jest.fn(queryImpl) },
+    pg: makePg(queryImpl).pg,
+    addHook() {},
     log: { error() {}, info() {}, warn() {} },
     get: reg('GET'), post: reg('POST'), put: reg('PUT'), patch: reg('PATCH'), delete: reg('DELETE'),
   }

@@ -10,9 +10,14 @@
  * Where two plans cover a parcel both are returned; which one governs is not decided here.
  */
 const { parseParcelRef, parseUseCode, takeSnapshot, PARCEL_LAYERS } = require('../utils/ruleSnapshot')
+const { optionalAuth } = require('../middleware/jwtAuth')
+const { tenantPool } = require('../lib/tenancy')
 
 async function parcelZoningRoutes(fastify) {
-  fastify.get('/parcel-zoning/:layer/:id', async (request, reply) => {
+  // Public, but the zones a person's database view shows follow their authority (migration 154): the public
+  // sees gazetted plans only; staff also see their own authority's.
+  fastify.get('/parcel-zoning/:layer/:id', { preHandler: optionalAuth(fastify) }, async (request, reply) => {
+    const db = tenantPool(fastify.pg, request.user)
     const ref = parseParcelRef(request.params.layer, request.params.id)
     if (!ref) {
       return reply.code(400).send({ success: false, error: `layer must be one of ${PARCEL_LAYERS.join(', ')} and id a short plain identifier` })
@@ -21,13 +26,13 @@ async function parcelZoningRoutes(fastify) {
     const use = rawUse === undefined ? null : parseUseCode(rawUse)
     if (rawUse !== undefined && !use) return reply.code(400).send({ success: false, error: 'use must be a short land-use code' })
     try {
-      const { rows: parcel } = await fastify.pg.query('SELECT parcel_geometry($1, $2) IS NOT NULL AS found', [ref.layer, ref.id])
+      const { rows: parcel } = await db.query('SELECT parcel_geometry($1, $2) IS NOT NULL AS found', [ref.layer, ref.id])
       if (!parcel[0].found) return reply.code(404).send({ success: false, error: 'Unknown parcel' })
       if (use) {
-        const { snapshot } = await takeSnapshot(fastify.pg, ref, use)
+        const { snapshot } = await takeSnapshot(db, ref, use)
         return { success: true, data: snapshot }
       }
-      const { rows } = await fastify.pg.query(
+      const { rows } = await db.query(
         `SELECT pz.zone_id, pz.zone_name, pz.share_pct, pz.is_governing AS governing, pz.method,
                 i.id AS plan_id, i.title AS plan_title, i.status AS plan_status
            FROM parcel_zoning_for($1, $2) pz JOIN plan_instrument i ON i.id = pz.plan_instrument_id

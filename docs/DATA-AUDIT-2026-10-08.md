@@ -118,6 +118,11 @@ it by intersection: id 43 was in use as a zone when the assignments were made. T
 copy" reading above. It may be a real zone that was later dropped from the canonical table. Settling id 43
 (keep as a zone, or discard) settles those 13 farms.
 
+**Decision (2026-10-08): discard id 43.** Row 43 was deleted from `gweru_peri_urban_zone` (a restore script is in
+`backups/gweru_peri_urban_zone-id43-2026-10-08.sql`, outside version control). The 13 farms assigned to it stay
+unmapped (NULL) in the prepared remap, and their zone follows from where they lie (parcel zoning). The rehearsal
+still passes with 177 / 72 / 13.
+
 ## Decisions recorded (2026-10-08)
 
 1. **The boundary is interim.** It will be replaced by the Zimbabwe Electoral Commission's delimited

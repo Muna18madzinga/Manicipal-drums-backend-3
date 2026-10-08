@@ -13,11 +13,14 @@
  *   GET /api/plans/:id/crosswalk  each zone type and land use of a plan with the reference
  *                              (INSPIRE HILUCS) classes it is mapped to
  *
- * Public, like the zone and matrix endpoints: authorities and the plans they
+ * Public, like the zone and matrix endpoints (the database shows a signed-in person their own authority's plans too): authorities and the plans they
  * operate under are published planning information. Contact details are not
  * returned here. Writes arrive in a later phase.
  * See docs/architecture/02-data-model-proposal.md.
  */
+
+const { optionalAuth } = require('../middleware/jwtAuth')
+const { tenantPool } = require('../lib/tenancy')
 
 const AUTHORITIES_SQL = `
   SELECT a.id, a.code, a.authority_name AS name, a.kind, a.authority_type, a.province,
@@ -84,9 +87,14 @@ function plansQuery({ authority, profile, template }) {
 }
 
 async function planModelRoutes(fastify) {
-  fastify.get('/authorities', async (request, reply) => {
+  // Public routes, but a signed-in person's authority decides which plans the database shows them
+  // (migration 154): the public sees templates and gazetted plans; staff also see their own authority's.
+  const open = { preHandler: optionalAuth(fastify) }
+  const db = (request) => tenantPool(fastify.pg, request.user)
+
+  fastify.get('/authorities', open, async (request, reply) => {
     try {
-      const { rows } = await fastify.pg.query(AUTHORITIES_SQL)
+      const { rows } = await db(request).query(AUTHORITIES_SQL)
       return { success: true, count: rows.length, data: rows }
     } catch (err) {
       request.log.error({ err }, 'list authorities failed')
@@ -94,9 +102,9 @@ async function planModelRoutes(fastify) {
     }
   })
 
-  fastify.get('/plan-profiles', async (request, reply) => {
+  fastify.get('/plan-profiles', open, async (request, reply) => {
     try {
-      const { rows } = await fastify.pg.query(PROFILES_SQL)
+      const { rows } = await db(request).query(PROFILES_SQL)
       return { success: true, count: rows.length, data: rows }
     } catch (err) {
       request.log.error({ err }, 'list plan profiles failed')
@@ -106,7 +114,7 @@ async function planModelRoutes(fastify) {
 
   // A plan adopted from a template is a complete copy; this lists every cell where the copy
   // has since changed (changed / added / removed), so drift from the template is visible.
-  fastify.get('/plans/:id/diff', async (request, reply) => {
+  fastify.get('/plans/:id/diff', open, async (request, reply) => {
     const { id } = request.params
     if (!UUID_RE.test(id)) return reply.code(400).send({ success: false, error: 'plan id must be a uuid' })
     try {
@@ -114,7 +122,7 @@ async function planModelRoutes(fastify) {
       if (against !== undefined && against !== 'previous' && against !== 'template' && !UUID_RE.test(against)) {
         return reply.code(400).send({ success: false, error: 'against must be previous, template or a plan id' })
       }
-      const { rows: plan } = await fastify.pg.query(
+      const { rows: plan } = await db(request).query(
         'SELECT id, title, derived_from_id, supersedes_id FROM plan_instrument WHERE id = $1', [id])
       if (!plan.length) return reply.code(404).send({ success: false, error: 'Unknown plan' })
       const p = plan[0]
@@ -125,7 +133,7 @@ async function planModelRoutes(fastify) {
       if (against === undefined || against === 'template') { baseId = p.derived_from_id; kind = 'template' }
       if (against === 'previous' || (against === undefined && !baseId)) { baseId = p.supersedes_id; kind = 'previous' }
       if (against && UUID_RE.test(against)) {
-        const { rows: other } = await fastify.pg.query('SELECT id FROM plan_instrument WHERE id = $1', [against])
+        const { rows: other } = await db(request).query('SELECT id FROM plan_instrument WHERE id = $1', [against])
         if (!other.length) return reply.code(404).send({ success: false, error: 'Unknown plan to compare with' })
         baseId = against
         kind = 'plan'
@@ -134,8 +142,8 @@ async function planModelRoutes(fastify) {
         return { success: true, count: 0, data: { plan_id: id, title: p.title, template_id: p.derived_from_id, against_id: null, changes: [], note: 'This plan was not adopted from a template and has no previous version.' } }
       }
       const { rows } = kind === 'template'
-        ? await fastify.pg.query('SELECT * FROM plan_diff($1)', [id])
-        : await fastify.pg.query('SELECT * FROM plan_decision_diff($1, $2)', [baseId, id])
+        ? await db(request).query('SELECT * FROM plan_diff($1)', [id])
+        : await db(request).query('SELECT * FROM plan_decision_diff($1, $2)', [baseId, id])
       // Same field names whichever the comparison: from_/to_ always, template_/plan_ kept for older readers.
       const changes = rows.map((r) => ({
         zone_type_code: r.zone_type_code, land_use_code: r.land_use_code,
@@ -150,13 +158,13 @@ async function planModelRoutes(fastify) {
     }
   })
 
-  fastify.get('/plans/:id/crosswalk', async (request, reply) => {
+  fastify.get('/plans/:id/crosswalk', open, async (request, reply) => {
     const { id } = request.params
     if (!UUID_RE.test(id)) return reply.code(400).send({ success: false, error: 'plan id must be a uuid' })
     try {
-      const { rows: plan } = await fastify.pg.query('SELECT id, title FROM plan_instrument WHERE id = $1', [id])
+      const { rows: plan } = await db(request).query('SELECT id, title FROM plan_instrument WHERE id = $1', [id])
       if (!plan.length) return reply.code(404).send({ success: false, error: 'Unknown plan' })
-      const { rows } = await fastify.pg.query(CROSSWALK_SQL, [id])
+      const { rows } = await db(request).query(CROSSWALK_SQL, [id])
       return { success: true, count: rows.length, data: { plan_id: id, title: plan[0].title, rows } }
     } catch (err) {
       request.log.error({ err }, 'plan crosswalk failed')
@@ -164,13 +172,13 @@ async function planModelRoutes(fastify) {
     }
   })
 
-  fastify.get('/plans/:a/compare/:b', async (request, reply) => {
+  fastify.get('/plans/:a/compare/:b', open, async (request, reply) => {
     const { a, b } = request.params
     if (!UUID_RE.test(a) || !UUID_RE.test(b)) return reply.code(400).send({ success: false, error: 'plan ids must be uuids' })
     try {
-      const { rows: found } = await fastify.pg.query('SELECT id, title FROM plan_instrument WHERE id = ANY($1::uuid[])', [[a, b]])
+      const { rows: found } = await db(request).query('SELECT id, title FROM plan_instrument WHERE id = ANY($1::uuid[])', [[a, b]])
       if (found.length < (a === b ? 1 : 2)) return reply.code(404).send({ success: false, error: 'Unknown plan' })
-      const { rows } = await fastify.pg.query('SELECT * FROM plan_compare($1, $2)', [a, b])
+      const { rows } = await db(request).query('SELECT * FROM plan_compare($1, $2)', [a, b])
       const title = (id) => found.find((f) => f.id === id).title
       return { success: true, count: rows.length, data: { a: { id: a, title: title(a) }, b: { id: b, title: title(b) }, classes: rows } }
     } catch (err) {
@@ -179,10 +187,10 @@ async function planModelRoutes(fastify) {
     }
   })
 
-  fastify.get('/plans', async (request, reply) => {
+  fastify.get('/plans', open, async (request, reply) => {
     try {
       const { sql, params } = plansQuery(request.query || {})
-      const { rows } = await fastify.pg.query(sql, params)
+      const { rows } = await db(request).query(sql, params)
       return { success: true, count: rows.length, data: rows }
     } catch (err) {
       request.log.error({ err }, 'list plans failed')

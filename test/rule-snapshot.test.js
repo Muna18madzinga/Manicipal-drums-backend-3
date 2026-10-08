@@ -1,4 +1,5 @@
-jest.mock('../src/middleware/jwtAuth', () => ({ requireAuth: () => async () => {}, requireRole: () => async () => {} }))
+jest.mock('../src/middleware/jwtAuth', () => ({ requireAuth: () => async () => {}, requireRole: () => async () => {}, optionalAuth: () => async () => {} }))
+const { makePg } = require('./helpers/fakePg')
 
 const { parseParcelRef, parseUseCode, singlePlanId, takeSnapshot } = require('../src/utils/ruleSnapshot')
 const { parcelZoningRoutes } = require('../src/routes/parcelZoning')
@@ -7,8 +8,9 @@ const { developmentManagementRoutes } = require('../src/routes/development-manag
 function makeServer(queryImpl) {
   const routes = {}
   const server = {
-    pg: { query: jest.fn(queryImpl) },
+    pg: makePg(queryImpl).pg,
     log: { error() {} },
+    addHook() {},
     get: (path, ...rest) => { routes['GET ' + path] = rest[rest.length - 1] },
     post: (path, ...rest) => { routes['POST ' + path] = rest[rest.length - 1] },
     patch: (path, ...rest) => { routes['PATCH ' + path] = rest[rest.length - 1] },
