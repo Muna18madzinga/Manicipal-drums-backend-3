@@ -95,7 +95,13 @@ async function planWorkbenchRoutes(fastify) {
            FROM plan_event e LEFT JOIN users u ON u.id = e.actor_id
           WHERE e.plan_instrument_id = $1 ORDER BY e.at DESC LIMIT 100`, [request.params.id])).rows
       const zoneTypes = (await db(request).query(
-        `SELECT code, name, category, review_status, reviewed_by, reviewed_at FROM plan_zone_type WHERE plan_instrument_id = $1 ORDER BY display_no NULLS LAST, name`,
+        `SELECT t.code, t.name, t.category, t.review_status, t.reviewed_by, t.reviewed_at, n.permitted, n.special_consent, n.prohibited
+           FROM plan_zone_type t
+           LEFT JOIN LATERAL (SELECT COUNT(*) FILTER (WHERE c.control_type = 'permitted')::int AS permitted,
+                                     COUNT(*) FILTER (WHERE c.control_type = 'special_consent')::int AS special_consent,
+                                     COUNT(*) FILTER (WHERE c.control_type = 'prohibited')::int AS prohibited
+                                FROM zone_land_use_controls c WHERE c.plan_zone_type_id = t.id AND c.deleted_at IS NULL) n ON TRUE
+          WHERE t.plan_instrument_id = $1 ORDER BY t.display_no NULLS LAST, t.name`,
         [request.params.id])).rows
       return reply.send({ success: true, data: { plan, next_statuses: next, events, zone_types: zoneTypes } })
     } catch (err) { return fail(request, reply, err, 'get workbench plan') }
