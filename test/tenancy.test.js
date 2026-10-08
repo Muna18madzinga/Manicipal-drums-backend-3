@@ -85,7 +85,7 @@ describe('a permit addressed by id is invisible to someone whose authority does 
   async function hookFor(rowsFor) {
     let hook
     const { pg } = makePg(async () => ({ rows: rowsFor }))
-    const server = { pg, addHook: (_name, fn) => { hook = fn }, get() {}, post() {}, put() {}, patch() {}, delete() {} }
+    const server = { prefix: '/api', pg, addHook: (_name, fn) => { hook = fn }, get() {}, post() {}, put() {}, patch() {}, delete() {} }
     await developmentManagementRoutes(server)
     return { hook, pg }
   }
@@ -94,24 +94,37 @@ describe('a permit addressed by id is invisible to someone whose authority does 
   test('a signed-in person who cannot see the permit gets a 404, as if it did not exist', async () => {
     const { hook } = await hookFor([])
     const rep = reply()
-    await hook({ routeOptions: { url: '/permit-applications/:id/rule-snapshot' }, params: { id: ID }, __signedIn: { id: 'u1', authority_id: 2 } }, rep)
+    await hook({ routeOptions: { url: '/api/permit-applications/:id/rule-snapshot' }, params: { id: ID }, __signedIn: { id: 'u1', authority_id: 2 } }, rep)
     expect(rep.statusCode).toBe(404)
   })
 
   test('one who can see it passes through', async () => {
     const { hook } = await hookFor([{ '?column?': 1 }])
     const rep = reply()
-    await hook({ routeOptions: { url: '/permit-applications/:id' }, params: { id: ID }, __signedIn: { id: 'u1', authority_id: 1 } }, rep)
+    await hook({ routeOptions: { url: '/api/permit-applications/:id' }, params: { id: ID }, __signedIn: { id: 'u1', authority_id: 1 } }, rep)
     expect(rep.statusCode).toBe(200)
+  })
+
+  test('so is anything addressed by its own child id, looked up in its own table', async () => {
+    const cases = [['/consultations/:cid/response', { cid: ID }, 'application_consultation'], ['/objections/:oid/consideration', { oid: ID }, 'application_objection'],
+      ['/building-plans/:bpid/appraisal', { bpid: ID }, 'building_plan'], ['/stage-inspections/:sid/photos', { sid: ID }, 'stage_inspection'],
+      ['/generated-documents/:id', { id: ID }, 'generated_document']]
+    for (const [url, params, table] of cases) {
+      const { hook, pg } = await hookFor([])
+      const rep = reply()
+      await hook({ routeOptions: { url: '/api' + url }, params, __signedIn: { id: 'u1', authority_id: 2 } }, rep)
+      expect(rep.statusCode).toBe(404)
+      expect(pg.query.mock.calls.some(([sql]) => sql.includes('spatial_planning.' + table))).toBe(true)
+    }
   })
 
   test('anonymous requests, bad ids and other routes are left to the routes themselves', async () => {
     const { hook, pg } = await hookFor([])
     const rep = reply()
-    await hook({ routeOptions: { url: '/permit-applications/:id' }, params: { id: ID } }, rep)                       // no user: the route answers 401
-    await hook({ routeOptions: { url: '/permit-applications/:id' }, params: { id: 'nope' }, __signedIn: { id: 'u' } }, rep)   // the route validates the id
-    await hook({ routeOptions: { url: '/permit-applications' }, params: {}, __signedIn: { id: 'u' } }, rep)            // the list is scoped by the database
-    await hook({ routeOptions: { url: '/enforcement-orders/:id' }, params: { id: ID }, __signedIn: { id: 'u' } }, rep) // not a permit route
+    await hook({ routeOptions: { url: '/api/permit-applications/:id' }, params: { id: ID } }, rep)                       // no user: the route answers 401
+    await hook({ routeOptions: { url: '/api/permit-applications/:id' }, params: { id: 'nope' }, __signedIn: { id: 'u' } }, rep)   // the route validates the id
+    await hook({ routeOptions: { url: '/api/permit-applications' }, params: {}, __signedIn: { id: 'u' } }, rep)            // the list is scoped by the database
+    await hook({ routeOptions: { url: '/api/enforcement-orders/:id' }, params: { id: ID }, __signedIn: { id: 'u' } }, rep) // not a permit route
     expect(rep.statusCode).toBe(200)
     expect(pg.query).not.toHaveBeenCalled()
   })

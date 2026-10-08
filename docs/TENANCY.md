@@ -1,6 +1,6 @@
 # Tenancy: one authority cannot see or change another's data
 
-Phase 4, slice 1 (migration 154, `src/lib/tenancy.js`). The rule is enforced **by the database**, not by
+Phase 4, slices 1 and 2 (migrations 154 and 155, `src/lib/tenancy.js`). The rule is enforced **by the database**, not by
 each route, so a route that forgets a filter cannot leak another authority's rows.
 
 ## How it works
@@ -32,18 +32,34 @@ each route, so a route that forgets a filter cannot leak another authority's row
 **Enforced by row-level security:** `plan_instrument` and everything that hangs off a plan
 (`plan_zone_type`, `land_use_groups`, `zone_land_use_controls`, `plan_zone_standard`, the two crosswalk tables,
 `plan_event`, `plan_signoff`, `parcel_zoning`, `proposed_peri_urban_zones`), `permit_application` and
-`permit_rule_snapshot`. The views `plan_instrument_summary`, `zone_effective_controls` and
-`v_application_summary` run with the caller's rights (`security_invoker`).
+everything that hangs off a permit (migration 155): `permit_rule_snapshot`, `permit_event`, consultations,
+objections, appeals, building plans and their annotations, stage inspections with their checklist results,
+photos, flags and field events, occupation certificates, public notices, case messages, documents, document
+requests, generated documents, EO hand-off packages, statutory clock events and agenda items. A child is
+readable when its permit is, and writable when the permit is the caller's own (or the caller lodged it).
+The views `plan_instrument_summary`, `zone_effective_controls`, `v_application_summary`,
+`v_inspector_queue`, `v_eo_decision_queue`, `v_specialist_findings`, `v_inspection_progress`,
+`stage_inspection_scoring`, `stage_inspection_flag_summary` and `v_survey_task` run with the caller's rights.
 
-**Routes that opt in (and so are enforced):** the plan model routes, the workbench, parcel zoning, and the
-permit routes for create, list, read, rule snapshots and parcel. In addition, **any** route addressed
-`/permit-applications/:id…` answers 404 to a signed-in person whose authority does not own the permit.
+**Routes that opt in (and so are enforced):** the plan model routes, the workbench, parcel zoning, and every
+permit route in `development-management.js` (create, list, read, status, case, consultations, objections,
+public notice, EO decision, return and request-for-information, messages, building plans, stage inspections,
+occupation certificates, documents, work queues). Anything addressed `/permit-applications/:id…`, or by a
+child's own id (`/consultations/:cid`, `/objections/:oid`, `/building-plans/:bpid`,
+`/stage-inspections/:sid`, `/generated-documents/:id`), answers 404 to a signed-in person whose authority
+does not own the permit, before the route runs. Kept on the owner connection on purpose: the audit-trail
+insert (`logEvent`) and the lodgement-time zoning snapshot, which are system actions on a row the request has
+just been allowed to create.
 
 **Not yet enforced (be clear about this):**
-- Code that still uses the plain pool connects as the owner and bypasses the policies. The remaining
-  permit routes (status, consultations, objections, building plans, inspections, certificates) are
-  guarded only by the id hook, and routes addressed by a child id (`/consultations/:cid`, `/objections/:oid`,
-  `/building-plans/:bpid`, `/stage-inspections/:sid`) are **not** covered by it.
+- **Enforcement and prohibition orders, committee meetings and members, survey tasks, planning projects, building
+  complaints, health premises and spatial analysis results.** Their link to a permit is optional or absent,
+  so there is no owner to follow; they need an `authority_id` of their own. Their routes still use the
+  owner connection.
+- **Other route files** (appeals, payments, planning clerk, inspector GIS, notifications, protected uploads) still
+  use the plain pool and so bypass the policies. They are not yet converted.
+- **A combination authority's member who tries to write** to a combination's permit is refused by the database,
+  but most permit routes report that as a 500 rather than a readable 403. Nothing is written.
 - **Spatial datasets** (farms, parcels, rivers, chiefdoms, stands, the national layers) have no owner yet.
   They need an authority column or a jurisdiction, which waits for the authority-ward relation and the
   Zimbabwe Electoral Commission wards (docs/ADMIN-DATA-CUSTODIANS-ZIMBABWE.md). Views and analytics are to be

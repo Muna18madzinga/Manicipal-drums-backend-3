@@ -284,14 +284,31 @@ async function developmentManagementRoutes(fastify) {
   // Any permit addressed by id (/permit-applications/:id and what hangs off it) is invisible to a
   // signed-in person whose authority does not own it: 404, as if it did not exist. Converted routes get
   // the same from the database; this closes the routes that are not converted yet.
+  // The same for what is addressed by a child's own id: its row is looked up through the database's policy
+  // (which follows the permit), so it is also a 404 across authorities.
+  const CHILD_ROUTES = [
+    ['/consultations/:cid', 'application_consultation', 'cid'],
+    ['/objections/:oid', 'application_objection', 'oid'],
+    ['/building-plans/:bpid', 'building_plan', 'bpid'],
+    ['/stage-inspections/:sid', 'stage_inspection', 'sid'],
+    ['/generated-documents/:id', 'generated_document', 'id'],
+  ]
   fastify.addHook('preHandler', async (request, reply) => {
-    const url = (request.routeOptions && request.routeOptions.url) || ''
-    if (!url.startsWith('/permit-applications/:id')) return
-    const id = request.params && request.params.id
+    // the plugin is registered under /api: match on the route as this plugin declares it
+    const full = (request.routeOptions && request.routeOptions.url) || ''
+    const url = fastify.prefix && full.startsWith(fastify.prefix) ? full.slice(fastify.prefix.length) : full
+    let table = 'permit_application'
+    let param = 'id'
+    if (!url.startsWith('/permit-applications/:id')) {
+      const child = CHILD_ROUTES.find(([prefix]) => url === prefix || url.startsWith(prefix + '/'))
+      if (!child) return
+      ;[, table, param] = child
+    }
+    const id = request.params && request.params[param]
     if (!isUuid(id)) return // the route's own validation answers
     await optionalAuth(fastify)(request)
     if (!request.user) return // the route's own authentication answers 401
-    const { rows } = await db(request).query('SELECT 1 FROM spatial_planning.permit_application WHERE id = $1', [id])
+    const { rows } = await db(request).query(`SELECT 1 FROM spatial_planning.${table} WHERE id = $1`, [id])
     if (!rows.length) return reply.code(404).send({ success: false, error: 'not_found' })
   })
 
@@ -320,7 +337,7 @@ async function developmentManagementRoutes(fastify) {
     const { clause, params } = buildQueueFilters(request.query, request.user)
     try {
       const [rows, count] = await Promise.all([
-        pg.query(
+        db(request).query(
           `SELECT ${QUEUE_COLS}
            FROM spatial_planning.v_inspector_queue q
            ${clause}
@@ -328,7 +345,7 @@ async function developmentManagementRoutes(fastify) {
            LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
           [...params, limit, offset],
         ),
-        pg.query(`SELECT COUNT(*)::int AS total FROM spatial_planning.v_inspector_queue q ${clause}`, params),
+        db(request).query(`SELECT COUNT(*)::int AS total FROM spatial_planning.v_inspector_queue q ${clause}`, params),
       ])
       return { success: true, data: rows.rows, total: count.rows[0].total, limit, offset }
     } catch (err) {
@@ -344,7 +361,7 @@ async function developmentManagementRoutes(fastify) {
       .map(([name, pred]) => `COUNT(*) FILTER (WHERE ${pred})::int AS ${name}`)
       .join(', ')
     try {
-      const r = await pg.query(`SELECT ${parts}, COUNT(*)::int AS total FROM spatial_planning.v_inspector_queue q`)
+      const r = await db(request).query(`SELECT ${parts}, COUNT(*)::int AS total FROM spatial_planning.v_inspector_queue q`)
       return { success: true, data: r.rows[0] }
     } catch (err) {
       request.log.error({ err }, '[dm] queue summary failed')
@@ -669,13 +686,13 @@ async function developmentManagementRoutes(fastify) {
     }
 
     try {
-      const before = await pg.query(
+      const before = await db(request).query(
         'SELECT assigned_to, revision FROM spatial_planning.permit_application WHERE id = $1',
         [request.params.id],
       )
       if (!before.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
       if (before.rows[0].revision !== expectedRevision) {
-        const current = await pg.query(
+        const current = await db(request).query(
           'SELECT *, ST_X(location) AS lng, ST_Y(location) AS lat FROM spatial_planning.permit_application WHERE id = $1',
           [request.params.id],
         )
@@ -688,7 +705,7 @@ async function developmentManagementRoutes(fastify) {
 
       const revisionIdx = vals.length + 1
       vals.push(expectedRevision)
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `UPDATE spatial_planning.permit_application
             SET ${sets.join(', ')}, revision = revision + 1, updated_at = NOW()
           WHERE id = $1 AND revision = $${revisionIdx}
@@ -697,7 +714,7 @@ async function developmentManagementRoutes(fastify) {
       )
       if (!rows[0]) {
         // Lost the race between the check above and this write.
-        const current = await pg.query(
+        const current = await db(request).query(
           'SELECT *, ST_X(location) AS lng, ST_Y(location) AS lat FROM spatial_planning.permit_application WHERE id = $1',
           [request.params.id],
         )
@@ -729,7 +746,7 @@ async function developmentManagementRoutes(fastify) {
     preHandler: requireRole(fastify, PERMIT_READERS),
   }, async (request, reply) => {
     if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
-    const ownRow = await pg.query(
+    const ownRow = await db(request).query(
       'SELECT created_by FROM spatial_planning.permit_application WHERE id = $1',
       [request.params.id])
     if (!ownRow.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
@@ -737,7 +754,7 @@ async function developmentManagementRoutes(fastify) {
     if (!isStaff && ownRow.rows[0].created_by !== request.user.id) {
       return reply.code(404).send({ success: false, error: 'not_found' })
     }
-    const { rows } = await pg.query(
+    const { rows } = await db(request).query(
       `SELECT e.id, e.event_type, e.actor_id, e.actor_role, e.detail, e.created_at,
               COALESCE(u.full_name, u.name) AS actor_name
          FROM spatial_planning.permit_event e
@@ -771,7 +788,7 @@ async function developmentManagementRoutes(fastify) {
     try {
       // Statutory gate: read the current status and check the transition is
       // lawful before writing anything (config/permitWorkflow.js).
-      const cur = await pg.query(
+      const cur = await db(request).query(
         'SELECT status FROM spatial_planning.permit_application WHERE id = $1',
         [request.params.id],
       )
@@ -795,7 +812,7 @@ async function developmentManagementRoutes(fastify) {
 
       if (rejectUnlawfulTransition(reply, request, fromStatus, status)) return
 
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `UPDATE spatial_planning.permit_application
             SET status              = $2,
                 decision_conditions = COALESCE($3, decision_conditions),
@@ -814,7 +831,7 @@ async function developmentManagementRoutes(fastify) {
          expectedRevision, fromStatus],
       )
       if (!rows[0]) {
-        const current = await pg.query(
+        const current = await db(request).query(
           'SELECT * FROM spatial_planning.permit_application WHERE id = $1', [request.params.id])
         if (!current.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
         return reply.code(409).send({
@@ -857,7 +874,7 @@ async function developmentManagementRoutes(fastify) {
     }
     try {
       const PRI = ['low', 'normal', 'high', 'urgent']
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `INSERT INTO spatial_planning.application_consultation
            (permit_app_id, body_name, body_type, contact_name, contact_email,
             circulated_at, response_due_at, assigned_to, response_notes,
@@ -891,7 +908,7 @@ async function developmentManagementRoutes(fastify) {
     preHandler: requireRole(fastify, PERMIT_READERS),
   }, async (request, reply) => {
     if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
-    const ownRow = await pg.query(
+    const ownRow = await db(request).query(
       'SELECT created_by FROM spatial_planning.permit_application WHERE id = $1',
       [request.params.id])
     if (!ownRow.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
@@ -899,7 +916,7 @@ async function developmentManagementRoutes(fastify) {
     if (!isStaff && ownRow.rows[0].created_by !== request.user.id) {
       return reply.code(404).send({ success: false, error: 'not_found' })
     }
-    const { rows } = await pg.query(
+    const { rows } = await db(request).query(
       `SELECT * FROM spatial_planning.application_consultation
        WHERE permit_app_id = $1 ORDER BY created_at ASC`,
       [request.params.id],
@@ -921,7 +938,7 @@ async function developmentManagementRoutes(fastify) {
       return reply.code(400).send({ success: false, error: 'bad_response_status' })
     }
     try {
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `UPDATE spatial_planning.application_consultation
             SET response_status       = $2,
                 response_received_at  = COALESCE($3::date, response_received_at),
@@ -969,7 +986,7 @@ async function developmentManagementRoutes(fastify) {
     if (b.escalate === true) { sets.push('escalated_at = NOW()') }
     if (!sets.length) return reply.code(400).send({ success: false, error: 'no_fields' })
     try {
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `UPDATE spatial_planning.application_consultation
             SET ${sets.join(', ')}, updated_at = NOW()
           WHERE id = $1
@@ -1002,7 +1019,7 @@ async function developmentManagementRoutes(fastify) {
       return reply.code(400).send({ success: false, error: 'objector_name required' })
     }
     try {
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `INSERT INTO spatial_planning.application_objection
            (permit_app_id, objector_name, objector_address, objector_id_number,
             grounds, grounds_detail, received_at, document_url)
@@ -1027,7 +1044,7 @@ async function developmentManagementRoutes(fastify) {
     preHandler: requireRole(fastify, PERMIT_READERS),
   }, async (request, reply) => {
     if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
-    const ownRow = await pg.query(
+    const ownRow = await db(request).query(
       'SELECT created_by FROM spatial_planning.permit_application WHERE id = $1',
       [request.params.id])
     if (!ownRow.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
@@ -1035,7 +1052,7 @@ async function developmentManagementRoutes(fastify) {
     if (!isStaff && ownRow.rows[0].created_by !== request.user.id) {
       return reply.code(404).send({ success: false, error: 'not_found' })
     }
-    const { rows } = await pg.query(
+    const { rows } = await db(request).query(
       `SELECT * FROM spatial_planning.application_objection
        WHERE permit_app_id = $1 ORDER BY received_at ASC`,
       [request.params.id],
@@ -1054,7 +1071,7 @@ async function developmentManagementRoutes(fastify) {
       return reply.code(400).send({ success: false, error: 'sustained (boolean) required' })
     }
     try {
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `UPDATE spatial_planning.application_objection
             SET sustained               = $2,
                 consideration_notes     = COALESCE($3, consideration_notes),
@@ -1085,14 +1102,14 @@ async function developmentManagementRoutes(fastify) {
     preHandler: requireRole(fastify, PERMIT_READERS),
   }, async (request, reply) => {
     if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
-    const ownRow = await pg.query(
+    const ownRow = await db(request).query(
       'SELECT created_by FROM spatial_planning.permit_application WHERE id = $1', [request.params.id])
     if (!ownRow.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
     const isStaff = STAFF_ROLES.includes(request.user.role)
     if (!isStaff && ownRow.rows[0].created_by !== request.user.id) {
       return reply.code(404).send({ success: false, error: 'not_found' })
     }
-    const { rows } = await pg.query(
+    const { rows } = await db(request).query(
       'SELECT * FROM spatial_planning.public_notice WHERE permit_app_id = $1', [request.params.id])
     return reply.send({ success: true, data: rows[0] || null })
   })
@@ -1112,9 +1129,9 @@ async function developmentManagementRoutes(fastify) {
     const verified = b.verified !== false   // default true
     const uid = request.user.id
     try {
-      const own = await pg.query('SELECT id FROM spatial_planning.permit_application WHERE id=$1', [id])
+      const own = await db(request).query('SELECT id FROM spatial_planning.permit_application WHERE id=$1', [id])
       if (!own.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
-      await pg.query(
+      await db(request).query(
         `INSERT INTO spatial_planning.public_notice (permit_app_id)
          VALUES ($1) ON CONFLICT (permit_app_id) DO NOTHING`, [id])
 
@@ -1164,7 +1181,7 @@ async function developmentManagementRoutes(fastify) {
           params = [id, isStr(b.notes, 4096) ? b.notes : null]
           break
       }
-      const { rows } = await pg.query(sql, params)
+      const { rows } = await db(request).query(sql, params)
       await logEvent(id, 'public_notice_verified', request, { step: STEP, verified })
       return reply.send({ success: true, data: rows[0] })
     } catch (err) {
@@ -1188,7 +1205,7 @@ async function developmentManagementRoutes(fastify) {
     preHandler: requireRole(fastify, ['eo', 'planner', 'planning_clerk', 'admin']),
   }, async (request, reply) => {
     try {
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `SELECT * FROM spatial_planning.v_eo_decision_queue
           ORDER BY days_to_deemed ASC NULLS LAST, received_at ASC
           LIMIT 200`,
@@ -1206,7 +1223,7 @@ async function developmentManagementRoutes(fastify) {
   }, async (request, reply) => {
     if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
     try {
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `SELECT vf.*, COALESCE(u.full_name, u.name) AS specialist_name
            FROM spatial_planning.v_specialist_findings vf
            LEFT JOIN public.users u ON u.id = vf.specialist_id
@@ -1228,7 +1245,7 @@ async function developmentManagementRoutes(fastify) {
     const id = request.params.id
     if (!isUuid(id)) return reply.code(400).send({ success: false, error: 'bad_id' })
     try {
-      const permitRes = await pg.query(
+      const permitRes = await db(request).query(
         `SELECT *, ST_X(location) AS lng, ST_Y(location) AS lat
            FROM spatial_planning.permit_application WHERE id = $1`,
         [id],
@@ -1239,7 +1256,7 @@ async function developmentManagementRoutes(fastify) {
       // A failed sub-query (e.g. a view not yet migrated) must degrade to [] —
       // the decision package should still render with whatever is available.
       const safe = async (q, params) => {
-        try { return (await pg.query(q, params)).rows }
+        try { return (await db(request).query(q, params)).rows }
         catch (err) { request.log.error({ err }, 'decision-package sub-query failed'); return [] }
       }
 
@@ -1307,7 +1324,7 @@ async function developmentManagementRoutes(fastify) {
     preHandler: requireRole(fastify, PERMIT_READERS),
   }, async (request, reply) => {
     if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
-    const ownRow = await pg.query(
+    const ownRow = await db(request).query(
       'SELECT created_by FROM spatial_planning.permit_application WHERE id = $1',
       [request.params.id])
     if (!ownRow.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
@@ -1317,7 +1334,7 @@ async function developmentManagementRoutes(fastify) {
     }
     // Citizens (non-staff) only see messages addressed to them or made public.
     const visClause = isStaff ? '' : "AND m.visibility IN ('citizen','public')"
-    const { rows } = await pg.query(
+    const { rows } = await db(request).query(
       `SELECT m.*, COALESCE(u.full_name, u.name) AS author_name
          FROM spatial_planning.case_message m
          LEFT JOIN public.users u ON u.id = m.author_id
@@ -1339,7 +1356,7 @@ async function developmentManagementRoutes(fastify) {
     const messageType = MSG_TYPES.includes(b.message_type) ? b.message_type : 'internal_note'
     const visibility = VIS.includes(b.visibility) ? b.visibility : 'internal'
     try {
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `INSERT INTO spatial_planning.case_message
            (permit_app_id, author_id, author_role, message_type, visibility, body)
          VALUES ($1,$2,$3,$4,$5,$6)
@@ -1375,7 +1392,7 @@ async function developmentManagementRoutes(fastify) {
     try {
       // Statutory gate: a determination is only lawful from a review stage —
       // never from intake, and never re-deciding an already-decided case.
-      const cur = await pg.query(
+      const cur = await db(request).query(
         'SELECT status FROM spatial_planning.permit_application WHERE id = $1', [id])
       if (!cur.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
       const fromStatus = cur.rows[0].status
@@ -1388,7 +1405,7 @@ async function developmentManagementRoutes(fastify) {
       // allowing lawful delegated decisions for minor applications.
       const delegated = isStr(b.delegated_authority, 2000) ? b.delegated_authority : null
       const adminOverride = request.user.role === 'admin' && b.override === true
-      if (!delegated && !adminOverride && !(await hasCommitteeResolution(pg, id))) {
+      if (!delegated && !adminOverride && !(await hasCommitteeResolution(db(request), id))) {
         return reply.code(409).send({
           success: false,
           error: 'committee_resolution_required',
@@ -1398,7 +1415,7 @@ async function developmentManagementRoutes(fastify) {
         })
       }
 
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `UPDATE spatial_planning.permit_application
             SET status              = $2,
                 decision_conditions = COALESCE($3, decision_conditions),
@@ -1418,7 +1435,7 @@ async function developmentManagementRoutes(fastify) {
       }
       // Close the latest open handoff package as decided (best-effort).
       try {
-        await pg.query(
+        await db(request).query(
           `UPDATE spatial_planning.eo_handoff_package
               SET status='decided', eo_decision=$2, eo_notes=COALESCE($3, eo_notes),
                   decided_by=$4, decided_at=NOW(), updated_at=NOW()
@@ -1432,7 +1449,7 @@ async function developmentManagementRoutes(fastify) {
       // here must not undo the determination, which is already committed).
       let generatedDoc = null
       try {
-        const offRow = await pg.query(
+        const offRow = await db(request).query(
           'SELECT COALESCE(full_name, name) AS n FROM public.users WHERE id=$1', [request.user.id])
         const { title, html } = renderDecisionLetter({
           decision: b.decision, permit: rows[0],
@@ -1441,10 +1458,10 @@ async function developmentManagementRoutes(fastify) {
         const docType = b.decision === 'refuse' ? 'refusal_letter' : 'outcome_letter'
         const bytes = Buffer.byteLength(html, 'utf8')
         const sha = crypto.createHash('sha256').update(html).digest('hex')
-        const verRow = await pg.query(
+        const verRow = await db(request).query(
           `SELECT COALESCE(MAX(version),0)+1 AS v FROM spatial_planning.generated_document
             WHERE permit_app_id=$1 AND doc_type=$2`, [id, docType])
-        const ins = await pg.query(
+        const ins = await db(request).query(
           `INSERT INTO spatial_planning.generated_document
              (permit_app_id, doc_type, title, content, mime_type, bytes, sha256_hex, version, payload, generated_by)
            VALUES ($1,$2,$3,$4,'text/html',$5,$6,$7,$8::jsonb,$9)
@@ -1490,13 +1507,13 @@ async function developmentManagementRoutes(fastify) {
     try {
       // Statutory gate: a decided case cannot be quietly reopened by a return —
       // reopening a determination is an appeal (or an audited admin override).
-      const cur = await pg.query(
+      const cur = await db(request).query(
         'SELECT status FROM spatial_planning.permit_application WHERE id = $1', [id])
       if (!cur.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
       const fromStatus = cur.rows[0].status
       if (rejectUnlawfulTransition(reply, request, fromStatus, status)) return
 
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `UPDATE spatial_planning.permit_application
             SET status=$2, updated_at=NOW() WHERE id=$1 AND status=$3 RETURNING *`,
         [id, status, fromStatus],
@@ -1509,7 +1526,7 @@ async function developmentManagementRoutes(fastify) {
       }
       // Mark the latest open handoff returned (best-effort).
       try {
-        await pg.query(
+        await db(request).query(
           `UPDATE spatial_planning.eo_handoff_package
               SET status='returned', returned_to_role=$2,
                   return_reason=COALESCE($3, return_reason), updated_at=NOW()
@@ -1522,7 +1539,7 @@ async function developmentManagementRoutes(fastify) {
       // Record the return as a decision comment in the thread (best-effort).
       if (reason) {
         try {
-          await pg.query(
+          await db(request).query(
             `INSERT INTO spatial_planning.case_message
                (permit_app_id, author_id, author_role, message_type, visibility, body)
              VALUES ($1,$2,$3,'decision_comment','specialist',$4)`,
@@ -1547,9 +1564,9 @@ async function developmentManagementRoutes(fastify) {
     const b = request.body || {}
     if (!isStr(b.message, 8000)) return reply.code(400).send({ success: false, error: 'message required' })
     try {
-      const own = await pg.query('SELECT id FROM spatial_planning.permit_application WHERE id=$1', [id])
+      const own = await db(request).query('SELECT id FROM spatial_planning.permit_application WHERE id=$1', [id])
       if (!own.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `INSERT INTO spatial_planning.case_message
            (permit_app_id, author_id, author_role, message_type, visibility, body)
          VALUES ($1,$2,$3,'citizen_message','citizen',$4)
@@ -1560,7 +1577,7 @@ async function developmentManagementRoutes(fastify) {
       let docRequest = null
       if (isStr(b.doc_kind, 40)) {
         try {
-          const dr = await pg.query(
+          const dr = await db(request).query(
             `INSERT INTO spatial_planning.document_request
                (permit_app_id, requested_by, doc_kind, reason, due_at)
              VALUES ($1,$2,$3,$4,$5) RETURNING *`,
@@ -1582,7 +1599,7 @@ async function developmentManagementRoutes(fastify) {
     preHandler: requireRole(fastify, PERMIT_READERS),
   }, async (request, reply) => {
     if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
-    const ownRow = await pg.query(
+    const ownRow = await db(request).query(
       'SELECT created_by FROM spatial_planning.permit_application WHERE id = $1',
       [request.params.id])
     if (!ownRow.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
@@ -1590,7 +1607,7 @@ async function developmentManagementRoutes(fastify) {
     if (!isStaff && ownRow.rows[0].created_by !== request.user.id) {
       return reply.code(404).send({ success: false, error: 'not_found' })
     }
-    const { rows } = await pg.query(
+    const { rows } = await db(request).query(
       `SELECT d.id, d.doc_type, d.title, d.mime_type, d.version, d.storage_url, d.created_at,
               COALESCE(u.full_name, u.name) AS generated_by_name
          FROM spatial_planning.generated_document d
@@ -1608,7 +1625,7 @@ async function developmentManagementRoutes(fastify) {
     preHandler: requireRole(fastify, PERMIT_READERS),
   }, async (request, reply) => {
     if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
-    const { rows } = await pg.query(
+    const { rows } = await db(request).query(
       `SELECT d.*, pa.created_by AS permit_created_by
          FROM spatial_planning.generated_document d
          JOIN spatial_planning.permit_application pa ON pa.id = d.permit_app_id
@@ -1641,15 +1658,15 @@ async function developmentManagementRoutes(fastify) {
     }
     if (image.length > 8_000_000) return reply.code(413).send({ success: false, error: 'image too large' })
     try {
-      const own = await pg.query('SELECT id FROM spatial_planning.permit_application WHERE id=$1', [id])
+      const own = await db(request).query('SELECT id FROM spatial_planning.permit_application WHERE id=$1', [id])
       if (!own.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
       const base64 = image.split(',')[1] || ''
       const bytes = Buffer.byteLength(base64, 'base64')
       const sha = crypto.createHash('sha256').update(image).digest('hex')
-      const verRow = await pg.query(
+      const verRow = await db(request).query(
         `SELECT COALESCE(MAX(version),0)+1 AS v FROM spatial_planning.generated_document
           WHERE permit_app_id=$1 AND doc_type='map_evidence'`, [id])
-      const ins = await pg.query(
+      const ins = await db(request).query(
         `INSERT INTO spatial_planning.generated_document
            (permit_app_id, doc_type, title, content, mime_type, bytes, sha256_hex, version, payload, generated_by)
          VALUES ($1,'map_evidence',$2,$3,'image/png',$4,$5,$6,$7::jsonb,$8)
@@ -1860,13 +1877,13 @@ async function developmentManagementRoutes(fastify) {
       return reply.code(400).send({ success: false, error: 'plan_document_url required' })
     }
     try {
-      const { rows: revRows } = await pg.query(
+      const { rows: revRows } = await db(request).query(
         `SELECT COALESCE(MAX(revision), 0) + 1 AS next_rev
          FROM spatial_planning.building_plan WHERE permit_app_id = $1`,
         [request.params.id],
       )
       const revision = revRows[0].next_rev
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `INSERT INTO spatial_planning.building_plan
            (permit_app_id, revision, revision_label, plan_document_url, site_plan_url,
             structural_drawings_url, services_drawings_url, architect_name, architect_reg_no,
@@ -1899,7 +1916,7 @@ async function developmentManagementRoutes(fastify) {
     preHandler: requireRole(fastify, PERMIT_READERS),
   }, async (request, reply) => {
     if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
-    const ownRow = await pg.query(
+    const ownRow = await db(request).query(
       'SELECT created_by FROM spatial_planning.permit_application WHERE id = $1',
       [request.params.id])
     if (!ownRow.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
@@ -1907,7 +1924,7 @@ async function developmentManagementRoutes(fastify) {
     if (!isStaff && ownRow.rows[0].created_by !== request.user.id) {
       return reply.code(404).send({ success: false, error: 'not_found' })
     }
-    const { rows } = await pg.query(
+    const { rows } = await db(request).query(
       `SELECT * FROM spatial_planning.building_plan WHERE permit_app_id = $1 ORDER BY revision ASC`,
       [request.params.id],
     )
@@ -1924,7 +1941,7 @@ async function developmentManagementRoutes(fastify) {
       return reply.code(400).send({ success: false, error: 'bad_status' })
     }
     try {
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `UPDATE spatial_planning.building_plan
             SET status          = $2,
                 appraised_by    = $3,
@@ -1952,7 +1969,7 @@ async function developmentManagementRoutes(fastify) {
       return reply.code(400).send({ success: false, error: 'severity and message required' })
     }
     try {
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `INSERT INTO spatial_planning.building_plan_annotation
            (building_plan_id, page_number, severity, code, message, bbox, created_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7)
@@ -2004,14 +2021,14 @@ async function developmentManagementRoutes(fastify) {
       return reply.code(400).send({ success: false, error: 'bad_stage_number' })
     }
     try {
-      const { rows: attemptRows } = await pg.query(
+      const { rows: attemptRows } = await db(request).query(
         `SELECT COALESCE(MAX(attempt), 0) + 1 AS next_attempt
          FROM spatial_planning.stage_inspection
          WHERE permit_app_id = $1 AND stage_number = $2`,
         [request.params.id, stageNumber],
       )
       const attempt = attemptRows[0].next_attempt
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `INSERT INTO spatial_planning.stage_inspection
            (permit_app_id, building_plan_id, stage_number, attempt, inspector_id,
             scheduled_at, stamp_reference, weather_conditions, site_ready)
@@ -2039,7 +2056,7 @@ async function developmentManagementRoutes(fastify) {
     preHandler: requireRole(fastify, PERMIT_READERS),
   }, async (request, reply) => {
     if (!isUuid(request.params.id)) return reply.code(400).send({ success: false, error: 'bad_id' })
-    const ownRow = await pg.query(
+    const ownRow = await db(request).query(
       'SELECT created_by FROM spatial_planning.permit_application WHERE id = $1',
       [request.params.id])
     if (!ownRow.rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
@@ -2047,7 +2064,7 @@ async function developmentManagementRoutes(fastify) {
     if (!isStaff && ownRow.rows[0].created_by !== request.user.id) {
       return reply.code(404).send({ success: false, error: 'not_found' })
     }
-    const { rows } = await pg.query(
+    const { rows } = await db(request).query(
       `SELECT * FROM spatial_planning.v_inspection_progress
        WHERE permit_app_id = $1 ORDER BY stage_number, attempt`,
       [request.params.id],
@@ -2059,7 +2076,7 @@ async function developmentManagementRoutes(fastify) {
     preHandler: requireAuth(fastify),
   }, async (request, reply) => {
     if (!isUuid(request.params.sid)) return reply.code(400).send({ success: false, error: 'bad_id' })
-    const { rows } = await pg.query(
+    const { rows } = await db(request).query(
       `SELECT si.*, ist.stage_name, ist.prerequisites
        FROM spatial_planning.stage_inspection si
        JOIN spatial_planning.inspection_stage ist ON ist.stage_number = si.stage_number
@@ -2067,7 +2084,7 @@ async function developmentManagementRoutes(fastify) {
       [request.params.sid],
     )
     if (!rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
-    const { rows: checklistRows } = await pg.query(
+    const { rows: checklistRows } = await db(request).query(
       `SELECT icr.*, ci.code, ci.description, ci.is_mandatory,
               cc.code AS category_code, cc.label AS category_label
        FROM spatial_planning.inspection_checklist_result icr
@@ -2110,7 +2127,7 @@ async function developmentManagementRoutes(fastify) {
     }
     try {
       for (const r of b.results) {
-        await pg.query(
+        await db(request).query(
           `INSERT INTO spatial_planning.inspection_checklist_result
              (stage_inspection_id, checklist_item_id, result, notes, score, photo_id)
            VALUES ($1,$2,$3,$4,$5,$6)
@@ -2130,7 +2147,7 @@ async function developmentManagementRoutes(fastify) {
 
       // Ask the database to compute the overall result from the per-item
       // scores. The inspector cannot override this — anti-corruption.
-      const { rows: scoreRows } = await pg.query(
+      const { rows: scoreRows } = await db(request).query(
         `SELECT item_count, scored_count, photo_count,
                 avg_score, min_score, max_score, computed_result
          FROM spatial_planning.stage_inspection_scoring
@@ -2143,7 +2160,7 @@ async function developmentManagementRoutes(fastify) {
       }
 
       if (summary.computed_result) {
-        await pg.query(
+        await db(request).query(
           `UPDATE spatial_planning.stage_inspection
               SET result        = $2,
                   inspected_at  = NOW(),
@@ -2170,7 +2187,7 @@ async function developmentManagementRoutes(fastify) {
     if (!isUuid(request.params.sid)) {
       return reply.code(400).send({ success: false, error: 'bad_id' })
     }
-    const { rows } = await pg.query(
+    const { rows } = await db(request).query(
       `SELECT * FROM spatial_planning.stage_inspection_scoring WHERE stage_inspection_id = $1`,
       [request.params.sid],
     )
@@ -2190,7 +2207,7 @@ async function developmentManagementRoutes(fastify) {
       return reply.code(400).send({ success: false, error: 'certificate_no required' })
     }
     // Guard: all 8 construction stages must have passed.
-    const { rows: stageRows } = await pg.query(
+    const { rows: stageRows } = await db(request).query(
       `SELECT stage_number, result FROM spatial_planning.stage_inspection
        WHERE permit_app_id = $1 AND stage_number < 9
        ORDER BY stage_number, attempt DESC`,
@@ -2213,7 +2230,7 @@ async function developmentManagementRoutes(fastify) {
       })
     }
     try {
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `INSERT INTO spatial_planning.occupation_certificate
            (permit_app_id, certificate_no, issued_at, occupant_name, building_use,
             gross_floor_area_sqm, issued_by, countersigned_by, certificate_pdf_url, notes)
@@ -2230,7 +2247,7 @@ async function developmentManagementRoutes(fastify) {
         ],
       )
       // Mark the application as approved.
-      await pg.query(
+      await db(request).query(
         `UPDATE spatial_planning.permit_application
             SET status = 'approved', decision_at = CURRENT_DATE, decision_officer = $2
           WHERE id = $1 AND status NOT IN ('approved','approved_with_conditions')`,
@@ -2258,7 +2275,7 @@ async function developmentManagementRoutes(fastify) {
       // error: it answers 200 with data: null. A 404 here means the PERMIT does
       // not exist (or is not yours), so a missing route and a building still
       // under construction no longer look identical to the caller.
-      const permit = await pg.query(
+      const permit = await db(request).query(
         'SELECT id, created_by FROM spatial_planning.permit_application WHERE id = $1',
         [request.params.id],
       )
@@ -2270,7 +2287,7 @@ async function developmentManagementRoutes(fastify) {
       if (!isStaff && permit.rows[0].created_by !== request.user.id) {
         return reply.code(404).send({ success: false, error: 'not_found' })
       }
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `SELECT * FROM spatial_planning.occupation_certificate WHERE permit_app_id = $1`,
         [request.params.id],
       )
@@ -2300,7 +2317,7 @@ async function developmentManagementRoutes(fastify) {
       reply.code(400).send({ success: false, error: 'bad_id' })
       return null
     }
-    const { rows } = await pg.query(
+    const { rows } = await db(request).query(
       'SELECT id, created_by, status FROM spatial_planning.permit_application WHERE id = $1',
       [request.params.id],
     )
@@ -2327,7 +2344,7 @@ async function developmentManagementRoutes(fastify) {
       // that link a citizen document resolve theirs from citizen_documents.
       // file_name falls back to the stored file's basename so the list never
       // shows a blank name.
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `SELECT pd.id,
                 pd.permit_app_id AS permit_application_id,
                 COALESCE(pd.doc_role, cd.doc_kind, 'other') AS doc_type,
@@ -2448,7 +2465,7 @@ async function developmentManagementRoutes(fastify) {
       // The uploaded file is its own source row: document_id is this record's
       // id, source 'external'. ON CONFLICT makes a re-upload of the same file
       // idempotent rather than a second entry in the register.
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `INSERT INTO spatial_planning.permit_document
            (id, permit_app_id, document_id, source, doc_role, storage_url,
             file_name, mime_type, bytes, sha256_hex, added_by)
@@ -2492,7 +2509,7 @@ async function developmentManagementRoutes(fastify) {
     }
 
     // Confirm the parent inspection exists (FK errors would otherwise be opaque).
-    const { rows: inspRows } = await pg.query(
+    const { rows: inspRows } = await db(request).query(
       `SELECT id FROM spatial_planning.stage_inspection WHERE id = $1`,
       [request.params.sid],
     )
@@ -2550,7 +2567,7 @@ async function developmentManagementRoutes(fastify) {
     try {
       await ensureDir(dir)
       await fs.writeFile(diskPath, file.buffer)
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `INSERT INTO spatial_planning.stage_inspection_photo
            (id, stage_inspection_id, storage_url, mime_type, bytes, sha256_hex,
             caption, taken_at, taken_lng, taken_lat, uploaded_by)
@@ -2569,7 +2586,7 @@ async function developmentManagementRoutes(fastify) {
       )
       // Mirror into the legacy JSONB array on stage_inspection so existing
       // callers that read photo_urls keep working.
-      await pg.query(
+      await db(request).query(
         `UPDATE spatial_planning.stage_inspection
             SET photo_urls = photo_urls || to_jsonb($2::text)
           WHERE id = $1 AND NOT (photo_urls ? $2)`,
@@ -2587,7 +2604,7 @@ async function developmentManagementRoutes(fastify) {
     if (!isUuid(request.params.sid)) {
       return reply.code(400).send({ success: false, error: 'bad_id' })
     }
-    const { rows } = await pg.query(
+    const { rows } = await db(request).query(
       `SELECT id, stage_inspection_id, storage_url, mime_type, bytes, sha256_hex,
               caption, taken_at, taken_lng, taken_lat, uploaded_by, created_at
        FROM spatial_planning.stage_inspection_photo
@@ -2628,7 +2645,7 @@ async function developmentManagementRoutes(fastify) {
 
     try {
       // Forbid flagging your own inspection — prevents weaponising the flag system.
-      const { rows: ownRows } = await pg.query(
+      const { rows: ownRows } = await db(request).query(
         `SELECT inspector_id FROM spatial_planning.stage_inspection WHERE id = $1`,
         [request.params.sid],
       )
@@ -2639,7 +2656,7 @@ async function developmentManagementRoutes(fastify) {
         return reply.code(409).send({ success: false, error: 'cannot_flag_own_inspection' })
       }
 
-      const { rows } = await pg.query(
+      const { rows } = await db(request).query(
         `INSERT INTO spatial_planning.stage_inspection_flag
            (stage_inspection_id, reason_code, description, evidence_photo_ids,
             flagged_by, flagged_by_role)
@@ -2665,7 +2682,7 @@ async function developmentManagementRoutes(fastify) {
     if (!isUuid(request.params.sid)) {
       return reply.code(400).send({ success: false, error: 'bad_id' })
     }
-    const { rows } = await pg.query(
+    const { rows } = await db(request).query(
       `SELECT f.*, u.name AS flagged_by_name
        FROM spatial_planning.stage_inspection_flag f
        LEFT JOIN public.users u ON u.id = f.flagged_by
@@ -2683,7 +2700,7 @@ async function developmentManagementRoutes(fastify) {
     if (!isUuid(request.params.id)) {
       return reply.code(400).send({ success: false, error: 'bad_id' })
     }
-    const { rows } = await pg.query(
+    const { rows } = await db(request).query(
       `SELECT f.*, si.stage_number, u.name AS flagged_by_name
        FROM spatial_planning.stage_inspection_flag f
        JOIN spatial_planning.stage_inspection si ON si.id = f.stage_inspection_id
