@@ -133,14 +133,6 @@ const MIGRATIONS = [
   // A value source for proposed_peri_urban_zones.id, without which drawing a new
   // zone in QGIS Desktop fails the NOT NULL constraint on insert.
   '136_zones_id_sequence.sql',
-  // Corrects the datum on the four Zimbabwe Lo belts in gis_ops.crs_registry,
-  // which migration 132 declared to be Arc 1950. Zimbabwean cadastral work is
-  // on the Cape datum. Depends on 132 (crs_registry) and land.parcel.
-  //
-  // This migration UPDATEs spatial_ref_sys, and PostGIS caches that table per
-  // backend, so the application must be restarted or its pool recycled after
-  // it runs. See docs/dsg-crs-technical-report.md.
-  '137_crs_cape_reconciliation.sql',
   // 138: district development control matrix. Zone-type keyed controls, the
   // coded land-use vocabulary, and the zone_effective_controls view.
   '138_district_development_matrix.sql',

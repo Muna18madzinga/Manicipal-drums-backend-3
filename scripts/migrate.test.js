@@ -91,7 +91,6 @@ describe('migration plan', () => {
       '134_zones_single_source.sql',
       '135_zones_area_ha.sql',
       '136_zones_id_sequence.sql',
-      '137_crs_cape_reconciliation.sql',
       '138_district_development_matrix.sql',
       '139_plan_model_foundation.sql',
       '140_plan_scoped_matrix.sql',
