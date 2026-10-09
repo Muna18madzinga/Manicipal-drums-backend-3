@@ -102,6 +102,26 @@ Decided 2026-10-09, after reading SI 727 (the scan) and the Land Survey Act [Cha
 
 Still to check with a surveyor against the paper regulations: SurveyPro's tolerance kernel applies para 5 style distance factors (0.04 and 0.06) when comparing found beacons, and its comment cites a "para 7(5)" that the scan does not show. Section 15(1)(ii) ties acceptance of previous-survey coordinates to para 7, whose limits are 0.01 (class B) and 0.02 (class C) times the distance. The scan's OCR of paras 5 and 7 was not clean enough to settle it.
 
+## Checking the two systems together
+
+`scripts/cross-system/run.js` (`npm run test:cross-system`) runs both systems against each other on a throw-away database, so a change on either side of the seam can be re-checked in one go. For each scenario it builds a scratch SurveyPro database (`surveypro_scratch_xs`, on the same Postgres server) from a read-only schema dump of a SurveyPro development database plus SurveyPro's own migrations 096 onward, starts a real SurveyPro server on it, drives both through their APIs, and removes the database and the cluster-wide roles afterwards.
+
+| scenario | what it proves |
+|---|---|
+| `launch` | VunGIS issues a launch token for a real job; SurveyPro opens the project and refuses forged, replayed, expired, wrong-key, unappointed, unknown and ended-appointment variants; appointments through the head surveyor's API; adoption keeps the job link |
+| `class` | the surveyor declares the SI 727 class; it reaches the council's view and `land.parcel.survey_class`; class A and a missing class are refused |
+| `deliver` | delivery, return with a note, redelivery replacing the snapshot, acceptance, a decision made once, then the importer |
+| `shared` | `SURVEY_STORE=shared`: private practice and council projects, who sees and changes what, the freeze, delivery in place, the importer |
+| `cutover` | per-surveyor schemas moved onto the shared tables, counts verified, then served through the shared store |
+
+```
+SURVEYPRO_REPO=<SurveyPro checkout or worktree, on the branch under test>
+SURVEYPRO_SCHEMA_ENV=<env file holding DATABASE_URL of a SurveyPro development database; used read-only>
+npm run test:cross-system [launch] [class] [deliver] [shared] [cutover]      # no names = all
+```
+
+It refuses to run unless VunGIS's `DATABASE_URL` is local: the importer scenarios write parcels into VunGIS and remove them again, and `launch` adds and removes one survey job. SurveyPro's development database is only ever dumped (schema only).
+
 ## The embedded copy is gone
 
 The copy of SurveyPro that was embedded in VunGIS (the Survey Task Manager at `/api/survey` and the `/surveyor-workspace` screens) has been removed, so surveying has one source of truth. What stays is VunGIS's own job module: `survey_task` and the `/surveyor` console with its job queue (`/surveyor/jobs`). Old `/surveyor-workspace` bookmarks go to the console.
