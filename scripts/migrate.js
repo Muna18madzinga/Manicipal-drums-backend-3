@@ -177,6 +177,9 @@ const MIGRATIONS = [
   '160_plan_matrix_audit.sql',
   // 161: provisional rules: review status per zone column, and the provisional flag in every rule snapshot.
   '161_provisional_rules.sql',
+  // 162: the spatial concept registry (generic layer ids and the sources behind them) and the spatial tests each
+  // development activity needs.
+  '162_spatial_concepts.sql',
 ]
 
 function createPool(env = process.env) {

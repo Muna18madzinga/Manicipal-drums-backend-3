@@ -518,6 +518,30 @@ async function main() {
     check((await client.query("SELECT COUNT(*)::int n FROM plan_matrix_audit WHERE plan_instrument_id = (SELECT id FROM plan_instrument WHERE is_default_template AND profile_id = (SELECT id FROM plan_profile WHERE code = 'urban'))")).rows[0].n === 0,
       'the audit reports nothing for the urban starter palette (it has no decisions, and does not use the lettered schedule)')
 
+    console.log('== spatial concepts and the spatial tests of each activity (migration 162)')
+    const sc = (await client.query('SELECT status, COUNT(*)::int n FROM spatial_concept GROUP BY 1')).rows.reduce((a, r) => ({ ...a, [r.status]: r.n }), {})
+    check((sc.available || 0) > 0 && (sc.partial || 0) > 0 && (sc.missing || 0) > 0, 'concepts are recorded as available, partial or missing')
+    await expectError(client, 'a concept needs a generic code (no spaces, no capitals)', "INSERT INTO spatial_concept (code, name, domain, geometry_kind, status) VALUES ('Vungu Parcels', 'x', 'land', 'polygon', 'available')", [], /check constraint/)
+    await expectError(client, 'a source must name a concept that exists', "INSERT INTO spatial_concept_source (relation, concept_code, role) VALUES ('public.x', 'no_such_concept', 'source')", [], /foreign key/)
+    await expectError(client, 'a source needs a known role', "INSERT INTO spatial_concept_source (relation, concept_code, role) VALUES ('public.x', 'road', 'mystery')", [], /check constraint/)
+    check((await client.query(`SELECT COUNT(*)::int n FROM (SELECT concept_code FROM spatial_concept_source WHERE role = 'canonical' GROUP BY 1 HAVING COUNT(*) > 1) x`)).rows[0].n === 0,
+      'no concept has two canonical sources')
+    check((await client.query(`SELECT COUNT(*)::int n FROM spatial_concept c WHERE c.status = 'missing' AND EXISTS (SELECT 1 FROM spatial_concept_source s WHERE s.concept_code = c.code)`)).rows[0].n === 0,
+      'a concept marked missing has no source')
+    check((await client.query(`SELECT COUNT(*)::int n FROM spatial_concept WHERE code ~ '(vungu|gweru|harare|bulawayo)'`)).rows[0].n === 0,
+      'no concept code names an authority')
+    const gaps = (await client.query('SELECT activity_code, test_code, gap FROM activity_spatial_gaps')).rows
+    check(gaps.length > 20, `the activities carry ${gaps.length} spatial tests`)
+    check(gaps.some((g) => g.gap === 'done') && gaps.some((g) => g.gap === 'no data') && gaps.some((g) => g.gap === 'data is partial'),
+      'the gap view tells apart a test that is done, one with no data and one with partial data')
+    check(gaps.filter((g) => g.activity_code === 'new_building' && g.test_code === 'flood_risk')[0].gap === 'no data', 'a test on a concept nobody holds is "no data"')
+    check(gaps.filter((g) => g.activity_code === 'new_building' && g.test_code === 'locate_zone')[0].gap === 'done', 'the zone lookup is recorded as done')
+    const act2 = (await client.query('SELECT code FROM development_activity WHERE tests <> \'manual\' AND code <> \'rezoning\' AND NOT EXISTS (SELECT 1 FROM activity_spatial_test t WHERE t.activity_code = development_activity.code)')).rows
+    check(act2.length === 0, 'every activity that is assessed automatically has at least one spatial test')
+    check((await client.query('SELECT COUNT(*)::int n FROM activity_spatial_test WHERE distance_m IS NOT NULL')).rows[0].n === 0,
+      'no spatial test carries a distance: the numbers are statutory or the council\'s to state')
+    await expectError(client, 'a spatial test needs a development activity that exists', "INSERT INTO activity_spatial_test (activity_code, test_code, concept_code, kind, severity, description) VALUES ('teleport', 't', 'road', 'locate', 'flags', 'x')", [], /foreign key/)
+
     await client.query('ROLLBACK')
   } catch (err) {
     await client.query('ROLLBACK')
