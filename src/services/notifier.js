@@ -19,6 +19,7 @@
  * follow-ups when a designer wants HTML emails.
  */
 
+const { systemOf } = require('../lib/dbContext')
 const aiClient = require('./aiClient')
 const { COUNCIL: IDENTITY, emailLetterhead } = require('../config/council')
 
@@ -252,7 +253,7 @@ async function enqueue(pg, {
   // in_app rows stay plain — HTML would be rendered as-is in the UI feed.
   if (channel === 'email') html = html || textToHtml(text)
 
-  const { rows } = await pg.query(
+  const { rows } = await systemOf(pg).query(
     `INSERT INTO notifications_outbox (user_id, email, channel, kind, subject, body_text, body_html, payload)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8::JSONB)
      RETURNING id`,
@@ -356,7 +357,7 @@ async function recordApplicationStatusChange(pg, {
   citizenUserId, citizenEmail, citizenName,
   notes,
 }) {
-  await pg.query(
+  await systemOf(pg).query(
     `INSERT INTO application_status_history
        (application_id, from_status, to_status, changed_by, notes)
      VALUES ($1, $2, $3, $4, $5)`,

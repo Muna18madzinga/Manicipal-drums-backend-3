@@ -39,6 +39,7 @@
  * traffic.
  */
 
+const { systemOf } = require('../lib/dbContext')
 const fp = require('fastify-plugin')
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
@@ -151,7 +152,7 @@ async function auditLog(fastify) {
       // table is the whole point of pruning it here.
       const path = url.split('?')[0].slice(0, 400)
 
-      await fastify.pg.query(
+      await systemOf(fastify.pg).query(
         `INSERT INTO public.admin_audit_event
            (actor_id, actor_email, actor_role, event, severity,
             method, path, status, duration_ms, entity_type, entity_id,

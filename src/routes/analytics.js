@@ -15,11 +15,12 @@
  * is fire-and-forget and learns nothing about the server's settings from the response. A request
  * that is malformed gets a 400 with a short code.
  */
+const { systemOf } = require('../lib/dbContext')
 const { getSetting } = require('../services/adminSettings')
 const { parsePageView, doNotTrack, recordPageView, makePruner } = require('../services/usageAnalytics')
 
 async function analyticsRoutes(fastify) {
-  const pg = fastify.pg
+  const pg = systemOf(fastify.pg)
   const prune = makePruner(pg, () => getSetting(fastify, 'analytics.retention_days'), fastify.log)
 
   fastify.post('/analytics/pageview', {

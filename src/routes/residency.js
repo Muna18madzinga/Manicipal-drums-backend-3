@@ -21,6 +21,7 @@
  *   GET  /lands-registry/stats            Ministry dashboard: headline figures
  */
 
+const { systemOf } = require('../lib/dbContext')
 const { requireAuth, requireRole } = require('../middleware/jwtAuth')
 
 /** Document kinds that count as residency evidence once verified. */
@@ -99,7 +100,7 @@ async function residencyRoutes(fastify) {
   // ── My residency status ──────────────────────────────────────────────
   fastify.get('/residency/status', { preHandler: requireAuth(fastify) }, async (request, reply) => {
     try {
-      const { rows: urows } = await fastify.pg.query(
+      const { rows: urows } = await systemOf(fastify.pg).query(
         `SELECT residency_status, residency_method, residency_verified_at
          FROM users WHERE id = $1`,
         [request.user.id],
@@ -107,7 +108,7 @@ async function residencyRoutes(fastify) {
       const u = urows[0]
       if (!u) return reply.code(404).send({ success: false, error: 'not_found' })
 
-      const { rows: docs } = await fastify.pg.query(
+      const { rows: docs } = await systemOf(fastify.pg).query(
         `SELECT id, doc_kind, verification_status, verification_notes, created_at, verified_at
          FROM citizen_documents
          WHERE user_id = $1 AND deleted_at IS NULL AND doc_kind = ANY($2)
@@ -145,7 +146,7 @@ async function residencyRoutes(fastify) {
         return reply.code(400).send({ success: false, error: 'deed_number_required' })
       }
 
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `SELECT * FROM lands_registry_deeds
          WHERE REPLACE(REPLACE(UPPER(deed_number), '-', ''), ' ', '')
              = REPLACE(REPLACE(UPPER($1), '-', ''), ' ', '')`,
@@ -160,7 +161,7 @@ async function residencyRoutes(fastify) {
         deed && deed.status === 'active' && userNid && norm(deed.holder_national_id) === userNid,
       )
 
-      await fastify.pg.query(
+      await systemOf(fastify.pg).query(
         `INSERT INTO lands_registry_checks
            (deed_number, requested_by, requester_name, matched, holder_match, result_status)
          VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -171,7 +172,7 @@ async function residencyRoutes(fastify) {
       )
 
       if (holderMatch) {
-        await fastify.pg.query(
+        await systemOf(fastify.pg).query(
           `UPDATE users SET residency_status = 'verified',
                             residency_method = 'deeds_registry',
                             residency_verified_at = NOW()
@@ -229,7 +230,7 @@ async function residencyRoutes(fastify) {
         params.push(status)
         where.push(`status = $${params.length}`)
       }
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `SELECT * FROM lands_registry_deeds
          ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
          ORDER BY registered_at DESC
@@ -249,7 +250,7 @@ async function residencyRoutes(fastify) {
       if (!isString(b.deedNumber, 32) || !isString(b.holderName, 160)) {
         return reply.code(400).send({ success: false, error: 'deed_number_and_holder_required' })
       }
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `INSERT INTO lands_registry_deeds
            (deed_number, holder_name, holder_national_id, stand_no, property_description, district, hectares, status)
          VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'Vungu'), $7, COALESCE($8, 'active'))
@@ -275,7 +276,7 @@ async function residencyRoutes(fastify) {
 
   fastify.get('/lands-registry/checks', { preHandler: requireRole(fastify, MINISTRY_ROLES) }, async (request, reply) => {
     try {
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `SELECT c.*, u.email AS requester_email
          FROM lands_registry_checks c
          LEFT JOIN users u ON u.id = c.requested_by
@@ -303,7 +304,7 @@ async function residencyRoutes(fastify) {
 
   fastify.get('/lands-registry/stats', { preHandler: requireRole(fastify, MINISTRY_ROLES) }, async (request, reply) => {
     try {
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `SELECT
            (SELECT COUNT(*) FROM lands_registry_deeds)                               AS total_deeds,
            (SELECT COUNT(*) FROM lands_registry_deeds WHERE status = 'active')       AS active_deeds,

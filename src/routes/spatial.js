@@ -1,4 +1,5 @@
 // Spatial routes for the unified backend
+const { systemOf } = require('../lib/dbContext')
 const { requireAuth, requireRole } = require('../middleware/jwtAuth')
 
 // Who may create/edit layers, insert features, or upload QML styles.
@@ -39,7 +40,7 @@ async function spatialRoutes(fastify) {
       query += ` LIMIT $${params.length + 1}`
       params.push(limit)
       
-      const { rows } = await fastify.pg.query(query, params)
+      const { rows } = await systemOf(fastify.pg).query(query, params)
       
       return {
         success: true,
@@ -63,7 +64,7 @@ async function spatialRoutes(fastify) {
     try {
       const { id } = request.params
       
-      const { rows } = await fastify.pg.query(`
+      const { rows } = await systemOf(fastify.pg).query(`
         SELECT 
           l.id,
           l.name,
@@ -100,7 +101,7 @@ async function spatialRoutes(fastify) {
     try {
       const { id, name, description, type, style, published = false } = request.body
       
-      const { rows } = await fastify.pg.query(`
+      const { rows } = await systemOf(fastify.pg).query(`
         INSERT INTO layers (id, name, description, type, style, published)
         VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT (id) DO UPDATE SET
@@ -130,7 +131,7 @@ async function spatialRoutes(fastify) {
       }
       
       // Start transaction
-      const client = await fastify.pg.connect()
+      const client = await systemOf(fastify.pg).connect()
       
       try {
         await client.query('BEGIN')
@@ -168,7 +169,7 @@ async function spatialRoutes(fastify) {
       }
       
       // Initialize QML parser service
-      const qmlParserService = new QmlParserService(fastify.pg)
+      const qmlParserService = new QmlParserService(systemOf(fastify.pg))
       
       // Parse QML content
       const parsedConfig = await qmlParserService.parseQmlContent(qml_content)
@@ -177,7 +178,7 @@ async function spatialRoutes(fastify) {
       const webStyle = await qmlParserService.convertToWebStyle(id)
       
       // Update layer with parsed style
-      const { rows } = await fastify.pg.query(`
+      const { rows } = await systemOf(fastify.pg).query(`
         UPDATE layers 
         SET style = $1, updated_at = NOW()
         WHERE id = $2
@@ -216,7 +217,7 @@ async function spatialRoutes(fastify) {
     try {
       const { project_id } = request.query
       
-      const { rows } = await fastify.pg.query(`
+      const { rows } = await systemOf(fastify.pg).query(`
         SELECT 
           id,
           name,

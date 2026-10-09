@@ -15,6 +15,7 @@
 // Role lists: src/services/gms/roles.js.
 // ─────────────────────────────────────────────────────────────────────────
 
+const { systemOf } = require('../lib/dbContext')
 const { requireRole } = require('../middleware/jwtAuth')
 const { GMS, SURVEY_ATTR_EDITORS } = require('../services/gms/roles')
 const { importGeneralPlan } = require('../services/gms/parcelImport')
@@ -38,7 +39,7 @@ const GEOMETRY_KEYS = ['geometry', 'geom', 'geom_source', 'geom_wgs84', 'coordin
 const SURVEY_ATTRS = ['sg_ref', 'ward_code']
 
 async function gmsRoutes(fastify) {
-  const pg = fastify.pg
+  const pg = systemOf(fastify.pg)
   const view = { preHandler: requireRole(fastify, GMS.viewInternal) }
 
   fastify.get('/parcels', { ...view, schema: { tags, summary: 'Find parcels by stand, township, ERP account or ward' } }, async (request) => {
@@ -54,7 +55,7 @@ async function gmsRoutes(fastify) {
     if (account) add('EXISTS (SELECT 1 FROM revenue_link.account_link a WHERE a.parcel_id = p.parcel_id AND a.erp_account_no = ?)', String(account))
     if (q) add('(p.parcel_id ILIKE ? OR p.stand_no ILIKE ? OR p.sg_ref ILIKE ?)', `%${q}%`)
     args.push(limit)
-    const { rows } = await pg.query(
+    const { rows } = await systemOf(pg).query(
       `SELECT p.parcel_id, p.stand_no, p.township_code, p.ward_code, p.area_m2, p.accuracy_class,
               p.status, p.allocation_status, p.sg_ref,
               array_remove(array_agg(DISTINCT s.status_band), NULL) AS bands,
@@ -78,7 +79,7 @@ async function gmsRoutes(fastify) {
 
   fastify.get('/parcels/:parcel_id', { ...view, schema: { tags, summary: 'Parcel profile' } }, async (request, reply) => {
     const id = String(request.params.parcel_id)
-    const { rows: [p] } = await pg.query(
+    const { rows: [p] } = await systemOf(pg).query(
       `SELECT p.parcel_id, p.stand_no, p.township_code, p.ward_code, w.name AS ward_name,
               p.area_m2, round(p.area_m2 / 10000, 4) AS area_ha, p.sg_ref, p.accuracy_class,
               p.source, p.custodian_dept, p.status, p.allocation_status, p.valid_from, p.valid_to,
@@ -95,16 +96,16 @@ async function gmsRoutes(fastify) {
     if (!p) return reply.code(404).send({ success: false, error: 'not_found' })
 
     const [accounts, buildings, parents, children] = await Promise.all([
-      pg.query(
+      systemOf(pg).query(
         `SELECT a.erp_account_no, a.link_type, a.linked_on, s.status_band, s.as_at
            FROM revenue_link.account_link a
            LEFT JOIN revenue_link.billing_status s ON s.erp_account_no = a.erp_account_no
           WHERE a.parcel_id = $1 ORDER BY a.linked_on`, [id]),
-      pg.query(
+      systemOf(pg).query(
         `SELECT building_id, use, storeys, completion_date, source, accuracy_class
            FROM land.building WHERE parcel_id = $1 ORDER BY building_id`, [id]),
-      pg.query(`SELECT parent_id AS parcel_id, event, event_date FROM land.parcel_lineage WHERE child_id = $1`, [id]),
-      pg.query(`SELECT child_id AS parcel_id, event, event_date FROM land.parcel_lineage WHERE parent_id = $1`, [id]),
+      systemOf(pg).query(`SELECT parent_id AS parcel_id, event, event_date FROM land.parcel_lineage WHERE child_id = $1`, [id]),
+      systemOf(pg).query(`SELECT child_id AS parcel_id, event, event_date FROM land.parcel_lineage WHERE parent_id = $1`, [id]),
     ])
 
     return {
@@ -146,7 +147,7 @@ async function gmsRoutes(fastify) {
     }
     const sets = fields.map((k, i) => `${k} = $${i + 2}`)
     try {
-      const { rows } = await pg.query(
+      const { rows } = await systemOf(pg).query(
         `UPDATE land.parcel SET ${sets.join(', ')} WHERE parcel_id = $1 RETURNING parcel_id, sg_ref, ward_code`,
         [request.params.parcel_id, ...fields.map((k) => (body[k] == null ? null : String(body[k])))],
       )
@@ -160,7 +161,7 @@ async function gmsRoutes(fastify) {
 
   fastify.get('/wards/:ward_code/summary', { ...view, schema: { tags, summary: 'Ward summary' } }, async (request, reply) => {
     const code = String(request.params.ward_code)
-    const { rows: [w] } = await pg.query(
+    const { rows: [w] } = await systemOf(pg).query(
       `SELECT w.ward_code, w.name,
               count(p.parcel_id) FILTER (WHERE p.status = 'current')::int AS parcels,
               count(p.parcel_id) FILTER (WHERE p.status = 'current' AND p.allocation_status = 'allocated')::int AS allocated,
@@ -201,7 +202,7 @@ async function gmsRoutes(fastify) {
   // Public portal identify. Everything selected here is public by nature;
   // accounts, bands and names are not selected at all, so they cannot leak.
   fastify.get('/gms/public/parcels/:parcel_id', { schema: { tags, summary: 'Public parcel identify' } }, async (request, reply) => {
-    const { rows: [p] } = await pg.query(
+    const { rows: [p] } = await systemOf(pg).query(
       `SELECT p.parcel_id, p.stand_no, p.township_code, w.name AS ward_name,
               p.area_m2, p.accuracy_class, ST_AsGeoJSON(p.geom_wgs84, 6)::json AS geometry
          FROM land.parcel p LEFT JOIN admin.ward w ON w.ward_code = p.ward_code
@@ -214,7 +215,7 @@ async function gmsRoutes(fastify) {
 
   fastify.get('/gms/key-registry', { ...view, schema: { tags, summary: 'Parcel to ERP account key registry' } }, async (request) => {
     const q = request.query?.q ? `%${request.query.q}%` : null
-    const { rows } = await pg.query(
+    const { rows } = await systemOf(pg).query(
       `SELECT * FROM integration.key_registry
         WHERE $1::text IS NULL OR parcel_id ILIKE $1 OR stand_no ILIKE $1 OR erp_account_no ILIKE $1
         ORDER BY township_code, stand_no, erp_account_no LIMIT 500`,
@@ -224,7 +225,7 @@ async function gmsRoutes(fastify) {
   })
 
   fastify.get('/gms/dashboard', { ...view, schema: { tags, summary: 'GIS Branch dashboard KPIs' } }, async () => {
-    const { rows: [k] } = await pg.query(`
+    const { rows: [k] } = await systemOf(pg).query(`
       SELECT
         (SELECT count(*) FROM land.parcel WHERE status = 'current')::int AS parcels,
         (SELECT count(DISTINCT a.parcel_id) FROM revenue_link.account_link a

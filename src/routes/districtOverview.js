@@ -1,3 +1,4 @@
+const { systemOf } = require('../lib/dbContext')
 
 // ── Live district overview for the public landing page ────────────────────
 //
@@ -60,7 +61,8 @@ function registerDistrictOverview(fastify) {
       Object.entries(FIGURES).map(async ([key, sql]) => {
         try {
           const params = NEEDS_DISTRICT.has(key) ? [VUNGU_DISTRICT_PCODE] : []
-          const { rows } = await fastify.pg.query(sql, params)
+          // a cached figure for everyone, computed in the background: system work, not a person's request
+          const { rows } = await systemOf(fastify.pg).query(sql, params)
           const raw = rows[0] && rows[0].v
           // count()/round() come back as strings from node-postgres (bigint).
           const value = raw == null ? null : Number(raw)

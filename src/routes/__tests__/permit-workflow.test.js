@@ -6,6 +6,7 @@
  * any other (registered → approved), skipping the statutory chain.
  */
 const { canTransition, allowedTransitions, PERMIT_STATUSES } = require('../../config/permitWorkflow')
+const { systemOf } = require('../../lib/dbContext')   // fixtures use the system connection (TENANCY_MODE=strict has no request context)
 const { buildAppForTest } = require('../../../test/helpers/buildApp')
 const { loginAs } = require('../../../test/helpers/auth')
 
@@ -69,7 +70,7 @@ describe('PATCH /permit-applications/:id/status enforcement', () => {
   }, 30000)
 
   afterAll(async () => {
-    const client = await app.pg.connect()
+    const client = await systemOf(app.pg).connect()
     try {
       await client.query(`DELETE FROM spatial_planning.permit_event WHERE permit_app_id = $1`, [id])
       await client.query(`DELETE FROM spatial_planning.permit_application WHERE id = $1`, [id])
@@ -97,7 +98,7 @@ describe('PATCH /permit-applications/:id/status enforcement', () => {
     // The refusal must be actionable: it has to name the endpoint that can.
     expect(body.message).toContain('/eo-decision')
     // A refused write must not have moved the case.
-    const current = await app.pg.query(
+    const current = await systemOf(app.pg).query(
       'SELECT status, revision FROM spatial_planning.permit_application WHERE id = $1', [id],
     )
     expect(current.rows[0].status).toBe('registered')
@@ -115,7 +116,7 @@ describe('PATCH /permit-applications/:id/status enforcement', () => {
     expect(body.from).toBe('registered')
     expect(body.allowed).toContain('acknowledged')
     expect(body.allowed).not.toContain('awaiting_eo_decision')
-    const current = await app.pg.query(
+    const current = await systemOf(app.pg).query(
       'SELECT status, revision FROM spatial_planning.permit_application WHERE id = $1', [id],
     )
     expect(current.rows[0].status).toBe('registered')

@@ -8,6 +8,7 @@
  * visitor id and a bare host are accepted, and everything else in the request is ignored.
  */
 
+const { systemOf } = require('../lib/dbContext')
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 // Route patterns look like /applications/:id or /admin/plan-workbench. No query, no fragment.
 const PATH_RE = /^\/[A-Za-z0-9/_:.-]{0,198}$/
@@ -47,7 +48,7 @@ function parsePageView(body) {
 const doNotTrack = (headers) => headers && (headers.dnt === '1' || headers['sec-gpc'] === '1')
 
 async function recordPageView(pg, v) {
-  await pg.query(
+  await systemOf(pg).query(
     'INSERT INTO public.page_view (path, visitor_id, referrer_host) VALUES ($1, $2, $3)',
     [v.path, v.visitorId, v.referrerHost])
 }
@@ -66,7 +67,7 @@ function makePruner(pg, getRetentionDays, log) {
     try {
       const days = Number(await getRetentionDays())
       if (!Number.isFinite(days) || days < 30) return 0
-      const { rowCount } = await pg.query(
+      const { rowCount } = await systemOf(pg).query(
         "DELETE FROM public.page_view WHERE occurred_at < now() - ($1 || ' days')::interval",
         [String(Math.floor(days))])
       if (rowCount) log?.info?.({ rowCount, days }, 'page views pruned to retention period')
@@ -91,11 +92,11 @@ function parseWindow(value) {
 async function usageReport(pg, days) {
   const win = parseWindow(days)
   const params = [win, COUNCIL_TZ]
-  const { rows: [totals] } = await pg.query(
+  const { rows: [totals] } = await systemOf(pg).query(
     `SELECT COUNT(*)::int AS views, COUNT(DISTINCT visitor_id)::int AS visitors
        FROM public.page_view
       WHERE occurred_at >= (date_trunc('day', now() AT TIME ZONE $2) - ($1::int - 1) * interval '1 day') AT TIME ZONE $2`, params)
-  const { rows: daily } = await pg.query(
+  const { rows: daily } = await systemOf(pg).query(
     `WITH d AS (
        SELECT generate_series(
                 date_trunc('day', now() AT TIME ZONE $2) - ($1::int - 1) * interval '1 day',
@@ -106,7 +107,7 @@ async function usageReport(pg, days) {
        FROM d LEFT JOIN public.page_view p
          ON date_trunc('day', p.occurred_at AT TIME ZONE $2) = d.day
       GROUP BY d.day ORDER BY d.day`, params)
-  const { rows: topPaths } = await pg.query(
+  const { rows: topPaths } = await systemOf(pg).query(
     `SELECT path, COUNT(*)::int AS views, COUNT(DISTINCT visitor_id)::int AS visitors
        FROM public.page_view
       WHERE occurred_at >= (date_trunc('day', now() AT TIME ZONE $2) - ($1::int - 1) * interval '1 day') AT TIME ZONE $2

@@ -17,6 +17,7 @@
  * plugin is registered; this file does not need to set them itself.
  */
 
+const { systemOf } = require('../lib/dbContext')
 const bcrypt = require('bcryptjs')
 const crypto = require('crypto')
 const { v4: uuidv4 } = require('uuid')
@@ -149,7 +150,7 @@ async function authRoutes(fastify) {
         : null
       const role = applicantType === 'visitor' ? 'public' : 'registered'
 
-      const existing = await fastify.pg.query('SELECT id FROM users WHERE email = $1', [email])
+      const existing = await systemOf(fastify.pg).query('SELECT id FROM users WHERE email = $1', [email])
       if (existing.rows.length > 0) {
         return reply.code(409).send({ success: false, message: 'An account with this email already exists' })
       }
@@ -160,7 +161,7 @@ async function authRoutes(fastify) {
       const nationalId = isString(body.national_id, 64) ? body.national_id : null
       const address    = isString(body.address, 500) ? body.address : null
 
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `INSERT INTO users (
            email, name, full_name, role, organization, phone,
            applicant_type, national_id, physical_address,
@@ -247,7 +248,7 @@ async function authRoutes(fastify) {
         })
       }
 
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `SELECT id, email, COALESCE(full_name, name) AS name, role, organization,
                 job_title, department, applicant_type, phone,
                 national_id, physical_address, password_hash, active, status,
@@ -316,7 +317,7 @@ async function authRoutes(fastify) {
         return reply.send({ success: true, data: { mfaRequired: true, mfaToken } })
       }
 
-      await fastify.pg.query(
+      await systemOf(fastify.pg).query(
         'UPDATE users SET last_login_at = NOW(), last_login = NOW() WHERE id = $1',
         [user.id],
       )
@@ -391,7 +392,7 @@ async function authRoutes(fastify) {
         return reply.code(401).send({ success: false, error: 'session_revoked' })
       }
       {
-        const { rows: sessionRows } = await fastify.pg.query(
+        const { rows: sessionRows } = await systemOf(fastify.pg).query(
           'SELECT revoked_at, expires_at FROM public.user_session WHERE id = $1', [claims.sid])
         const session = sessionRows[0]
         if (!session || session.revoked_at || new Date(session.expires_at) < new Date()) {
@@ -400,7 +401,7 @@ async function authRoutes(fastify) {
         }
       }
 
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `SELECT id, email, role, active, status FROM users WHERE id = $1`,
         [claims.sub],
       )
@@ -476,7 +477,7 @@ async function authRoutes(fastify) {
       // Everything below this line ends in the same answer. Failures are
       // logged, never returned.
       try {
-        const { rows } = await fastify.pg.query(
+        const { rows } = await systemOf(fastify.pg).query(
           `SELECT id, email, COALESCE(full_name, name) AS name, active, status
              FROM users WHERE lower(email) = lower($1)`,
           [email],
@@ -486,7 +487,7 @@ async function authRoutes(fastify) {
         // A suspended or deleted account gets no link. Restoring it is the IT
         // desk's decision, not a password's.
         if (user && user.active && user.status !== 'suspended') {
-          const { rows: recent } = await fastify.pg.query(
+          const { rows: recent } = await systemOf(fastify.pg).query(
             `SELECT 1 FROM public.password_reset_token
               WHERE user_id = $1 AND used_at IS NULL AND expires_at > NOW()
                 AND created_at > NOW() - ($2 || ' seconds')::interval
@@ -497,14 +498,14 @@ async function authRoutes(fastify) {
           if (recent.length === 0) {
             // A live token from an earlier request is spent the moment a new
             // one is asked for, so only the newest email ever works.
-            await fastify.pg.query(
+            await systemOf(fastify.pg).query(
               `UPDATE public.password_reset_token SET used_at = NOW()
                 WHERE user_id = $1 AND used_at IS NULL`,
               [user.id],
             )
 
             const raw = crypto.randomBytes(32).toString('base64url')
-            await fastify.pg.query(
+            await systemOf(fastify.pg).query(
               `INSERT INTO public.password_reset_token
                  (user_id, token_hash, expires_at, requested_ip, requested_ua)
                VALUES ($1, $2, NOW() + ($3 || ' minutes')::interval, $4, $5)`,
@@ -519,7 +520,7 @@ async function authRoutes(fastify) {
 
             const appBase = process.env.FRONTEND_URL || 'http://localhost:5174'
             const resetUrl = `${appBase}/reset-password?token=${raw}`
-            await notifier.enqueue(fastify.pg, {
+            await notifier.enqueue(systemOf(fastify.pg), {
               userId: user.id,
               email:  user.email,
               kind:   'password_reset',
@@ -558,7 +559,7 @@ async function authRoutes(fastify) {
       if (!isString(token, 200)) {
         return reply.code(400).send({ success: false, valid: false, error: 'token_required' })
       }
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `SELECT t.used_at, t.expires_at, u.email, u.active, u.status
            FROM public.password_reset_token t
            JOIN users u ON u.id = t.user_id
@@ -608,7 +609,7 @@ async function authRoutes(fastify) {
       // Claim the token and read the account in one statement: the UPDATE only
       // matches a token that is unused and unexpired, so two tabs submitting
       // the same link cannot both succeed.
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `WITH claimed AS (
            UPDATE public.password_reset_token
               SET used_at = NOW()
@@ -633,14 +634,14 @@ async function authRoutes(fastify) {
       }
 
       const passwordHash = await bcrypt.hash(password, 10)
-      await fastify.pg.query(
+      await systemOf(fastify.pg).query(
         'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
         [passwordHash, user.id],
       )
 
       // A reset is how someone recovers an account they think was taken, so
       // every existing session goes with the old password.
-      await fastify.pg.query(
+      await systemOf(fastify.pg).query(
         'UPDATE public.user_session SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL',
         [user.id],
       )
@@ -677,7 +678,7 @@ async function authRoutes(fastify) {
         return reply.code(401).send({ success: false, error: 'invalid_or_expired_mfa_token' })
       }
 
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `SELECT id, email, COALESCE(full_name, name) AS name, role, organization,
                 job_title, department, applicant_type, phone,
                 national_id, physical_address, active, status,
@@ -696,7 +697,7 @@ async function authRoutes(fastify) {
           if (await bcrypt.compare(code, user.mfa_backup_codes[i])) {
             ok = true
             const remaining = user.mfa_backup_codes.filter((_, idx) => idx !== i)
-            await fastify.pg.query(
+            await systemOf(fastify.pg).query(
               'UPDATE users SET mfa_backup_codes = $1::jsonb WHERE id = $2',
               [JSON.stringify(remaining), user.id],
             )
@@ -715,7 +716,7 @@ async function authRoutes(fastify) {
         return reply.code(401).send({ success: false, error: 'invalid_mfa_code' })
       }
 
-      await fastify.pg.query(
+      await systemOf(fastify.pg).query(
         'UPDATE users SET last_login_at = NOW(), last_login = NOW() WHERE id = $1', [user.id])
       await loginSecurity.record(fastify, request, { email: user.email, userId: user.id, succeeded: true })
 
@@ -731,20 +732,20 @@ async function authRoutes(fastify) {
   // ── MFA enrolment (self-service, staff/admin) ─────────────────────────
   fastify.post('/auth/mfa/setup', { preHandler: requireAuth(fastify) }, async (request, reply) => {
     const { secret, otpauthUrl } = generateMfaSecret(request.user.email)
-    await fastify.pg.query('UPDATE users SET mfa_secret = $1 WHERE id = $2', [secret, request.user.id])
+    await systemOf(fastify.pg).query('UPDATE users SET mfa_secret = $1 WHERE id = $2', [secret, request.user.id])
     return reply.send({ success: true, data: { secret, otpauthUrl } })
   })
 
   fastify.post('/auth/mfa/verify-setup', { preHandler: requireAuth(fastify) }, async (request, reply) => {
     const { code } = request.body || {}
-    const { rows } = await fastify.pg.query('SELECT mfa_secret FROM users WHERE id = $1', [request.user.id])
+    const { rows } = await systemOf(fastify.pg).query('SELECT mfa_secret FROM users WHERE id = $1', [request.user.id])
     const secret = rows[0]?.mfa_secret
     if (!secret || !verifyMfaToken(secret, code)) {
       return reply.code(400).send({ success: false, error: 'invalid_code' })
     }
     const backupCodes = generateBackupCodes()
     const hashed = await Promise.all(backupCodes.map((c) => bcrypt.hash(c, 10)))
-    await fastify.pg.query(
+    await systemOf(fastify.pg).query(
       'UPDATE users SET mfa_enabled = true, mfa_backup_codes = $1::jsonb WHERE id = $2',
       [JSON.stringify(hashed), request.user.id],
     )
@@ -753,10 +754,10 @@ async function authRoutes(fastify) {
 
   fastify.post('/auth/mfa/disable', { preHandler: requireAuth(fastify) }, async (request, reply) => {
     const { password } = request.body || {}
-    const { rows } = await fastify.pg.query('SELECT password_hash FROM users WHERE id = $1', [request.user.id])
+    const { rows } = await systemOf(fastify.pg).query('SELECT password_hash FROM users WHERE id = $1', [request.user.id])
     const ok = rows[0]?.password_hash && await bcrypt.compare(password || '', rows[0].password_hash)
     if (!ok) return reply.code(401).send({ success: false, error: 'invalid_credentials' })
-    await fastify.pg.query(
+    await systemOf(fastify.pg).query(
       'UPDATE users SET mfa_enabled = false, mfa_secret = NULL, mfa_backup_codes = NULL WHERE id = $1',
       [request.user.id],
     )
@@ -774,7 +775,7 @@ async function authRoutes(fastify) {
 
   fastify.delete('/auth/sessions/:id', { preHandler: requireAuth(fastify) }, async (request, reply) => {
     // Scope the revoke to the caller's own sessions — no cross-user reach.
-    const { rows } = await fastify.pg.query(
+    const { rows } = await systemOf(fastify.pg).query(
       'SELECT id FROM public.user_session WHERE id = $1 AND user_id = $2',
       [request.params.id, request.user.id],
     )
@@ -789,7 +790,7 @@ async function authRoutes(fastify) {
       const userId = request.user.id
       const { name, organization, jobTitle, department, phone, nationalId, address } = request.body || {}
 
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `UPDATE users SET
            name             = COALESCE($1, name),
            full_name        = COALESCE($1, full_name),
@@ -838,7 +839,7 @@ async function authRoutes(fastify) {
         return reply.code(400).send({ success: false, message: `Password must be at least ${minLength} characters` })
       }
 
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `SELECT password_hash FROM users WHERE id = $1`,
         [request.user.id],
       )
@@ -852,7 +853,7 @@ async function authRoutes(fastify) {
       }
 
       const newHash = await bcrypt.hash(newPassword, 10)
-      await fastify.pg.query(
+      await systemOf(fastify.pg).query(
         `UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`,
         [newHash, request.user.id],
       )
@@ -879,19 +880,19 @@ async function authRoutes(fastify) {
         return reply.code(400).send({ success: false, message: 'Invalid role for invite' })
       }
 
-      const existing = await fastify.pg.query('SELECT id FROM users WHERE email = $1', [email])
+      const existing = await systemOf(fastify.pg).query('SELECT id FROM users WHERE email = $1', [email])
       if (existing.rows.length > 0) {
         return reply.code(409).send({ success: false, message: 'A user with this email already exists' })
       }
 
       // Invalidate any pending invites for this email.
-      await fastify.pg.query(
+      await systemOf(fastify.pg).query(
         'UPDATE invites SET used = true, used_at = NOW() WHERE email = $1 AND used = false',
         [email],
       )
 
       const token = uuidv4()
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `INSERT INTO invites (token, email, role, job_title, department, invited_by, expires_at)
          VALUES ($1, $2, $3, $4, $5, $6, NOW() + INTERVAL '7 days')
          RETURNING id, token, email, role, job_title, department, expires_at, created_at`,
@@ -906,7 +907,7 @@ async function authRoutes(fastify) {
       const absoluteUrl = `${appBase}/invite?token=${invite.token}`
       let emailQueued = false
       try {
-        await notifier.enqueueStaffInvite(fastify.pg, {
+        await notifier.enqueueStaffInvite(systemOf(fastify.pg), {
           email:         invite.email,
           inviteUrl:     absoluteUrl,
           role:          invite.role,
@@ -945,7 +946,7 @@ async function authRoutes(fastify) {
       if (!isString(token)) {
         return reply.code(400).send({ success: false, error: 'token_required', valid: false })
       }
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `SELECT token, email, role, job_title, department, expires_at, used
          FROM invites WHERE token = $1`,
         [token],
@@ -988,7 +989,7 @@ async function authRoutes(fastify) {
         return reply.code(400).send({ success: false, message: `Password must be at least ${minLength} characters` })
       }
 
-      const { rows: inviteRows } = await fastify.pg.query(
+      const { rows: inviteRows } = await systemOf(fastify.pg).query(
         'SELECT * FROM invites WHERE token = $1 AND used = false AND expires_at > NOW()',
         [token],
       )
@@ -997,7 +998,7 @@ async function authRoutes(fastify) {
       }
       const invite = inviteRows[0]
 
-      const existing = await fastify.pg.query('SELECT id FROM users WHERE email = $1', [invite.email])
+      const existing = await systemOf(fastify.pg).query('SELECT id FROM users WHERE email = $1', [invite.email])
       if (existing.rows.length > 0) {
         return reply.code(409).send({ success: false, message: 'Account already exists' })
       }
@@ -1005,7 +1006,7 @@ async function authRoutes(fastify) {
       // FIX: previously `'hashed_' + password` was stored, defeating bcrypt.
       const passwordHash = await bcrypt.hash(password, 10)
 
-      const { rows: userRows } = await fastify.pg.query(
+      const { rows: userRows } = await systemOf(fastify.pg).query(
         `INSERT INTO users (
            email, name, full_name, role, job_title, department,
            password_hash, status, active, created_at
@@ -1019,7 +1020,7 @@ async function authRoutes(fastify) {
         ],
       )
 
-      await fastify.pg.query('UPDATE invites SET used = true, used_at = NOW() WHERE id = $1', [invite.id])
+      await systemOf(fastify.pg).query('UPDATE invites SET used = true, used_at = NOW() WHERE id = $1', [invite.id])
 
       const user = userRows[0]
       const { accessToken, refreshToken } = await createSession(fastify, user, request)
@@ -1057,7 +1058,7 @@ async function authRoutes(fastify) {
       }
       const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
 
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `SELECT id, email, COALESCE(full_name, name) AS name, role, organization,
                 job_title, department, applicant_type, active, status,
                 created_at, last_login_at
@@ -1099,7 +1100,7 @@ async function authRoutes(fastify) {
         return reply.code(400).send({ success: false, message: 'Invalid status' })
       }
 
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `UPDATE users SET
            role       = COALESCE($1, role),
            status     = COALESCE($2, status),
@@ -1137,7 +1138,7 @@ async function authRoutes(fastify) {
       const { id } = request.params
       const { suspended } = request.body || {}
       const newStatus = suspended ? 'suspended' : 'active'
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `UPDATE users SET status = $1, active = $2, updated_at = NOW() WHERE id = $3
          RETURNING id, email, status, active`,
         [newStatus, !suspended, id],
@@ -1160,7 +1161,7 @@ async function authRoutes(fastify) {
       // recovery; active=false + status='deleted' lock the account out of login
       // and authenticate(). The email stays reserved until an admin restores or
       // a DBA anonymises the row.
-      const { rowCount } = await fastify.pg.query(
+      const { rowCount } = await systemOf(fastify.pg).query(
         `UPDATE users
             SET active = false, status = 'deleted',
                 deleted_at = NOW(), deleted_by = $2, updated_at = NOW()
@@ -1186,7 +1187,7 @@ async function authRoutes(fastify) {
         return reply.code(400).send({ success: false, message: `New password must be at least ${minLength} characters` })
       }
       const passwordHash = await bcrypt.hash(newPassword, 10)
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2 RETURNING id',
         [passwordHash, id],
       )
@@ -1200,7 +1201,7 @@ async function authRoutes(fastify) {
 
   fastify.get('/admin/invites', { preHandler: requireAdmin(fastify) }, async (_request, reply) => {
     try {
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `SELECT i.id, i.token, i.email, i.role, i.job_title, i.department,
                 i.used, i.used_at, i.expires_at, i.created_at,
                 COALESCE(u.full_name, u.name) AS invited_by_name
@@ -1234,7 +1235,7 @@ async function authRoutes(fastify) {
   fastify.delete('/admin/invites/:id', { preHandler: requireAdmin(fastify) }, async (request, reply) => {
     try {
       const { id } = request.params
-      await fastify.pg.query('DELETE FROM invites WHERE id = $1 AND used = false', [id])
+      await systemOf(fastify.pg).query('DELETE FROM invites WHERE id = $1 AND used = false', [id])
       return reply.send({ success: true })
     } catch (err) {
       request.log.error({ err }, 'revoke invite failed')
@@ -1251,7 +1252,7 @@ async function authRoutes(fastify) {
   fastify.post('/auth/generate-api-token', { preHandler: requireAdmin(fastify) }, async (request, reply) => {
     const pluginName = isString(request.body?.pluginName, 100) ? request.body.pluginName : 'vungu-qgis-plugin'
     const { token, jti, expiresAt } = signApiToken({ id: request.user.id, pluginName })
-    await fastify.pg.query(
+    await systemOf(fastify.pg).query(
       'INSERT INTO public.api_token (jti, user_id, plugin, expires_at) VALUES ($1, $2, $3, $4)',
       [jti, request.user.id, pluginName, expiresAt],
     )
@@ -1263,7 +1264,7 @@ async function authRoutes(fastify) {
 
   // Every issued token (never the token itself), newest first, for the admin console.
   fastify.get('/auth/api-tokens', { preHandler: requireAdmin(fastify) }, async (_request, reply) => {
-    const { rows } = await fastify.pg.query(
+    const { rows } = await systemOf(fastify.pg).query(
       `SELECT t.jti AS id, t.plugin, t.issued_at, t.expires_at, t.last_used_at, t.revoked_at,
               u.email AS issued_to
          FROM public.api_token t JOIN users u ON u.id = t.user_id
@@ -1275,7 +1276,7 @@ async function authRoutes(fastify) {
   fastify.post('/auth/api-tokens/:id/revoke', { preHandler: requireAdmin(fastify) }, async (request, reply) => {
     const id = String(request.params.id)
     if (!/^[0-9a-f-]{36}$/i.test(id)) return reply.code(404).send({ success: false, error: 'not_found' })
-    const { rowCount } = await fastify.pg.query(
+    const { rowCount } = await systemOf(fastify.pg).query(
       `UPDATE public.api_token SET revoked_at = COALESCE(revoked_at, NOW()), revoked_by = COALESCE(revoked_by, $2)
         WHERE jti = $1::uuid`, [id, request.user.id])
     if (!rowCount) return reply.code(404).send({ success: false, error: 'not_found' })
@@ -1289,7 +1290,7 @@ async function authRoutes(fastify) {
     // short-string default.
     if (!isString(token, 4096)) return reply.code(400).send({ success: false, error: 'token_required', valid: false })
     const out = {}
-    const claims = await verifyApiTokenClaims(fastify.pg, token, out)
+    const claims = await verifyApiTokenClaims(systemOf(fastify.pg), token, out)
     if (!claims) {
       return reply.code(401).send({ success: false, error: out.reason, valid: false })
     }

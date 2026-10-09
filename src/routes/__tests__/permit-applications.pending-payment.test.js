@@ -1,4 +1,5 @@
 const { buildAppForTest } = require('../../../test/helpers/buildApp')
+const { systemOf } = require('../../lib/dbContext')   // fixtures use the system connection (TENANCY_MODE=strict has no request context)
 const { loginAs }         = require('../../../test/helpers/auth')
 
 describe('permit-applications pending_payment gating', () => {
@@ -25,13 +26,13 @@ describe('permit-applications pending_payment gating', () => {
     const row = res.json().data
     expect(row.status).toBe('pending_payment')
 
-    const client = await app.pg.connect()
+    const client = await systemOf(app.pg).connect()
     try { await client.query(`DELETE FROM spatial_planning.permit_application WHERE id = $1`, [row.id]) }
     finally { client.release() }
   })
 
   it('planner GET excludes pending_payment by default and opt-in surfaces it', async () => {
-    const client = await app.pg.connect()
+    const client = await systemOf(app.pg).connect()
     let id
     try {
       const r = await client.query(

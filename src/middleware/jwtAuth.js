@@ -21,6 +21,7 @@
  * different type and is checked by verifyApiTokenClaims instead.
  */
 
+const { systemOf, setUser } = require('../lib/dbContext')
 const jwt = require('jsonwebtoken')
 const crypto = require('crypto')
 
@@ -95,7 +96,7 @@ async function createSession(fastify, user, request) {
   // Placeholder hash reserves the row so we have a sid to embed in the real
   // tokens; overwritten below with the actual refresh token's hash.
   const placeholder = crypto.randomBytes(32).toString('hex')
-  const { rows } = await fastify.pg.query(
+  const { rows } = await systemOf(fastify.pg).query(
     `INSERT INTO public.user_session (user_id, refresh_token_hash, user_agent, ip, expires_at)
      VALUES ($1, $2, $3, $4, NOW() + ($5 || ' hours')::interval)
      RETURNING id`,
@@ -105,7 +106,7 @@ async function createSession(fastify, user, request) {
   )
   const sid = rows[0].id
   const refreshToken = signRefreshToken({ id: user.id, sid })
-  await fastify.pg.query(
+  await systemOf(fastify.pg).query(
     'UPDATE public.user_session SET refresh_token_hash = $1 WHERE id = $2',
     [hashToken(refreshToken), sid],
   )
@@ -115,7 +116,7 @@ async function createSession(fastify, user, request) {
 
 /** Revoke one session row (logout, or admin/self "revoke this device"). */
 async function revokeSession(fastify, sessionId) {
-  await fastify.pg.query(
+  await systemOf(fastify.pg).query(
     'UPDATE public.user_session SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL',
     [sessionId],
   )
@@ -123,7 +124,7 @@ async function revokeSession(fastify, sessionId) {
 
 /** List a user's own active (non-revoked, non-expired) sessions. */
 async function listSessions(fastify, userId) {
-  const { rows } = await fastify.pg.query(
+  const { rows } = await systemOf(fastify.pg).query(
     `SELECT id, user_agent, ip, created_at, last_used_at, expires_at
        FROM public.user_session
       WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()
@@ -237,7 +238,7 @@ async function authenticate(fastify, request, reply) {
     return null
   }
   {
-    const { rows: sessionRows } = await fastify.pg.query(
+    const { rows: sessionRows } = await systemOf(fastify.pg).query(
       `SELECT id, revoked_at, expires_at, last_used_at FROM public.user_session WHERE id = $1`,
       [claims.sid],
     )
@@ -256,12 +257,12 @@ async function authenticate(fastify, request, reply) {
       return null
     }
     // Best-effort activity ping; a failure here must not block the request.
-    fastify.pg.query('UPDATE public.user_session SET last_used_at = NOW() WHERE id = $1', [claims.sid])
+    systemOf(fastify.pg).query('UPDATE public.user_session SET last_used_at = NOW() WHERE id = $1', [claims.sid])
       .catch((err) => request.log.error({ err }, 'session activity update failed'))
   }
 
   // Re-validate against DB: catches suspension, deletion, role changes.
-  const { rows } = await fastify.pg.query(
+  const { rows } = await systemOf(fastify.pg).query(
     `SELECT id, email, COALESCE(full_name, name) AS name, role, organization,
             job_title, department, phone, applicant_type,
             national_id, physical_address, active, status, residency_status,
@@ -280,6 +281,7 @@ async function authenticate(fastify, request, reply) {
   }
 
   request.user = user
+  setUser(user) // the database connection now follows this person (src/lib/dbContext.js)
   request.sessionId = claims.sid || null
   return user
 }

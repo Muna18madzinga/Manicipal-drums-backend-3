@@ -12,6 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 const { requireAuth, requireRole } = require('../middleware/jwtAuth')
+const { portalAuthorityId } = require('../lib/portal')
 
 const STAFF_ROLES = [
   'planning_clerk', 'env_officer', 'admin', 'planner',
@@ -80,11 +81,13 @@ async function serviceDeskRoutes(fastify) {
     const locationText = orNull(b.location_text, 500)
 
     try {
+      // a ticket belongs to an authority: staff's own, else the one this portal serves (a citizen has none)
+      const authorityId = await portalAuthorityId(pg)
       const { rows } = await pg.query(
         `INSERT INTO council_ops.service_desk_ticket
            (service_id, department, title, requester_user_id, requester_name,
-            contact_phone, contact_email, location_text, details)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+            contact_phone, contact_email, location_text, details, authority_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, COALESCE(app.authority_id(), $10))
          RETURNING *`,
         [
           b.service_id.trim(),
@@ -96,6 +99,7 @@ async function serviceDeskRoutes(fastify) {
           contactEmail,
           locationText,
           b.details.trim(),
+          authorityId,
         ],
       )
       return reply.code(201).send({ success: true, data: ticketDto(rows[0]) })

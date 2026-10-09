@@ -326,6 +326,14 @@ async function build() {
     max: 30,
   })
 
+  // The database connection follows the person asking (TENANCY_MODE: off | warn | strict; docs/TENANCY.md). In 'off', the default,
+  // nothing changes. Installed here, before any route, so every route gets the same decoration; work that is the system's own
+  // (sign-in, the audit log, notifications, jobs) says so with systemOf(fastify.pg).
+  const dbContext = require('./src/lib/dbContext')
+  const tenancy = dbContext.install(server)
+  server.addHook('onRequest', (_request, _reply, done) => dbContext.runWithRequest(done))
+  server.log.info({ mode: tenancy.mode }, 'tenancy mode')
+
   // Register Redis when REDIS_URL is set. Used by the MVT tile route as the
   // L2 cache behind its in-process LRU; survives restarts and is shared
   // across replicas. Without REDIS_URL the tile cache silently degrades to
@@ -841,7 +849,7 @@ async function start() {
     if (process.env.MAIL_WORKER_INPROC === '1') {
       try {
         const { startEmailWorker } = require('./src/workers/emailWorker')
-        startEmailWorker(server.pg.pool || server.pg, { log: server.log })
+        startEmailWorker(require('./src/lib/dbContext').systemOf(server.pg).pool || server.pg, { log: server.log })
       } catch (err) {
         server.log.warn({ err }, 'Failed to start in-process email worker')
       }

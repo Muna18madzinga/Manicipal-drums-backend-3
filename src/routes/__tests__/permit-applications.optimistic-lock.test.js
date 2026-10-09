@@ -1,4 +1,5 @@
 const { buildAppForTest } = require('../../../test/helpers/buildApp')
+const { systemOf } = require('../../lib/dbContext')   // fixtures use the system connection (TENANCY_MODE=strict has no request context)
 const { loginAs }         = require('../../../test/helpers/auth')
 
 // Regression tests for migration 097: PATCH /permit-applications/:id/case and
@@ -15,7 +16,7 @@ describe('permit-applications optimistic locking (migration 097)', () => {
   afterAll(async () => { await app.close() })
 
   async function seedPermit() {
-    const client = await app.pg.connect()
+    const client = await systemOf(app.pg).connect()
     try {
       const r = await client.query(
         `INSERT INTO spatial_planning.permit_application
@@ -31,7 +32,7 @@ describe('permit-applications optimistic locking (migration 097)', () => {
   }
 
   async function cleanup(id) {
-    const client = await app.pg.connect()
+    const client = await systemOf(app.pg).connect()
     try { await client.query(`DELETE FROM spatial_planning.permit_application WHERE id = $1`, [id]) }
     finally { client.release() }
   }

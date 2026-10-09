@@ -26,6 +26,7 @@
 // trail records the sign-in either way.
 // ─────────────────────────────────────────────────────────────────────────
 
+const { systemOf } = require('../lib/dbContext')
 const { getSettings } = require('./adminSettings')
 
 /** The reasons admin_login_attempt.reason permits. */
@@ -50,7 +51,7 @@ function clientIp(request) {
  */
 async function record(fastify, request, { email, userId = null, succeeded, reason = null }) {
   try {
-    await fastify.pg.query(
+    await systemOf(fastify.pg).query(
       `INSERT INTO public.admin_login_attempt (email, user_id, ip, user_agent, succeeded, reason)
        VALUES ($1, $2, $3::inet, $4, $5, $6)`,
       [
@@ -81,7 +82,7 @@ async function lockoutState(fastify, email) {
 
     if (!max || max <= 0) return { locked: false, failures: 0, until: null, max: 0 }
 
-    const { rows } = await fastify.pg.query(
+    const { rows } = await systemOf(fastify.pg).query(
       `WITH last_ok AS (
          SELECT max(attempted_at) AS at
            FROM public.admin_login_attempt
@@ -122,7 +123,7 @@ async function ipBlock(fastify, request) {
   const ip = clientIp(request)
   if (!ip) return null
   try {
-    const { rows } = await fastify.pg.query(
+    const { rows } = await systemOf(fastify.pg).query(
       `SELECT id, cidr::text AS cidr, reason, expires_at
          FROM public.admin_ip_block
         WHERE released_at IS NULL

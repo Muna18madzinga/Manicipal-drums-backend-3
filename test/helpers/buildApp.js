@@ -13,6 +13,11 @@ const { appealRoutes } = require('../../src/routes/appeals')
 async function buildAppForTest() {
   const app = Fastify({ logger: false })
   await app.register(fastifyPostgres, { connectionString: process.env.DATABASE_URL })
+  // The same connection context as server.js, in whatever TENANCY_MODE says (default off): run these suites with
+  // TENANCY_MODE=strict to prove the write paths too.
+  const dbContext = require('../../src/lib/dbContext')
+  dbContext.install(app)
+  app.addHook('onRequest', (_req, _reply, done) => dbContext.runWithRequest(done))
   await app.register(fastifyCookie, { secret: process.env.COOKIE_SECRET || process.env.JWT_SECRET })
   // Same registration as server.js: upload routes (permit documents, stage
   // photos) need request.isMultipart()/request.parts().

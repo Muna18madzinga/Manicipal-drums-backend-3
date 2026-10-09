@@ -1,4 +1,5 @@
 // Public routes for the unified backend
+const { systemOf } = require('../lib/dbContext')
 const { registerDistrictOverview } = require('./districtOverview')
 
 async function publicRoutes(fastify) {
@@ -8,7 +9,7 @@ async function publicRoutes(fastify) {
   // Get available layers (cached)
   fastify.get('/layers', async (request, reply) => {
     try {
-      const { rows } = await fastify.pg.query(`
+      const { rows } = await systemOf(fastify.pg).query(`
         SELECT 
           id,
           name,
@@ -58,7 +59,7 @@ async function publicRoutes(fastify) {
       query += ` LIMIT $${params.length + 1}`
       params.push(limit)
       
-      const { rows } = await fastify.pg.query(query, params)
+      const { rows } = await systemOf(fastify.pg).query(query, params)
       
       return {
         type: 'FeatureCollection',
@@ -79,7 +80,7 @@ async function publicRoutes(fastify) {
     try {
       const { q, limit = 10 } = request.query
       
-      const { rows } = await fastify.pg.query(`
+      const { rows } = await systemOf(fastify.pg).query(`
         SELECT 
           id,
           name,
@@ -106,9 +107,9 @@ async function publicRoutes(fastify) {
   fastify.get('/stats', async (request, reply) => {
     try {
       const [layers, places, users] = await Promise.all([
-        fastify.pg.query('SELECT COUNT(*) as count FROM layers WHERE published = true'),
-        fastify.pg.query('SELECT COUNT(*) as count FROM places'),
-        fastify.pg.query('SELECT COUNT(*) as count FROM users WHERE active = true')
+        systemOf(fastify.pg).query('SELECT COUNT(*) as count FROM layers WHERE published = true'),
+        systemOf(fastify.pg).query('SELECT COUNT(*) as count FROM places'),
+        systemOf(fastify.pg).query('SELECT COUNT(*) as count FROM users WHERE active = true')
       ])
       
       return {
@@ -131,7 +132,7 @@ async function publicRoutes(fastify) {
   fastify.get('/admin/analytics', async (_request, reply) => {
     const count = async (sql) => {
       try {
-        const { rows } = await fastify.pg.query(sql)
+        const { rows } = await systemOf(fastify.pg).query(sql)
         return parseInt(rows[0].count, 10) || 0
       } catch {
         return 0

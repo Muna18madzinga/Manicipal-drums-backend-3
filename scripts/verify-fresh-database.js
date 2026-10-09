@@ -81,6 +81,11 @@ async function main() {
     check(rls.code === 0 && /ALL CHECKS PASSED/.test(rls.out), 'authorities cannot see or change one another\'s permits and plans')
     if (rls.code !== 0) console.log(rls.out.split('\n').filter((l) => /FAIL/.test(l)).join('\n'))
 
+    console.log('== the tenancy contract (verify-tenancy.js): every relation classified, default deny, secrets closed')
+    const ten = run(path.join(__dirname, 'verify-tenancy.js'), [])
+    check(ten.code === 0 && /ALL CHECKS PASSED/.test(ten.out), 'every relation is classified and none departs from its class')
+    if (ten.code !== 0) console.log(ten.out.split('\n').filter((l) => /FAIL|^\s{8}\S/.test(l)).slice(0, 80).join('\n'))
+
     console.log('== load the sample matrix with the real loader')
     const csv = path.join(ROOT, 'docs', 'district-development-control-matrix.csv')
     const load = run(path.join(__dirname, 'load-zoning-matrix.js'), ['--file', csv, '--apply'])

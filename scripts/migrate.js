@@ -180,6 +180,18 @@ const MIGRATIONS = [
   // 162: the spatial concept registry (generic layer ids and the sources behind them) and the spatial tests each
   // development activity needs.
   '162_spatial_concepts.sql',
+  // 163: admin.ward is the canonical ward table (public.wards becomes a view); the authority-to-ward relation and an
+  // authority's area as the union of its wards; reference data read-only for the application role.
+  '163_admin_ward_authority_area.sql',
+  // 164: land.parcel can hold farms as well as surveyed stands, and records where each row came from.
+  '164_land_parcel_kinds.sql',
+  // 165: the tenancy contract: every relation classified, a guard view of any departure, default-deny for new objects,
+  // secrets closed to the application role, reference and national data read only.
+  '165_tenancy_contract.sql',
+  // 166: least-privilege login roles for direct clients (QGIS, the tile server), bound to an authority by the role itself.
+  '166_direct_client_roles.sql',
+  // 167: tenancy.make_tenant / make_tenant_child (one call turns authority-owned data into tenant data); council_ops converted.
+  '167_make_tenant.sql',
 ]
 
 function createPool(env = process.env) {

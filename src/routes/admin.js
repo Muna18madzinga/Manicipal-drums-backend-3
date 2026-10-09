@@ -1,11 +1,12 @@
 // Admin routes for the unified backend
+const { systemOf } = require('../lib/dbContext')
 const bcrypt = require('bcryptjs')
 
 async function adminRoutes(fastify) {
   // Get all projects
   fastify.get('/projects', async (request, reply) => {
     try {
-      const { rows } = await fastify.pg.query(`
+      const { rows } = await systemOf(fastify.pg).query(`
         SELECT 
           id,
           name,
@@ -31,7 +32,7 @@ async function adminRoutes(fastify) {
     try {
       const { id } = request.params
       
-      const { rows } = await fastify.pg.query(`
+      const { rows } = await systemOf(fastify.pg).query(`
         SELECT 
           p.*,
           u.name as surveyor_name,
@@ -57,7 +58,7 @@ async function adminRoutes(fastify) {
     try {
       const { name, description, surveyor_id } = request.body
       
-      const { rows } = await fastify.pg.query(`
+      const { rows } = await systemOf(fastify.pg).query(`
         INSERT INTO survey_projects (name, description, surveyor_id, status, created_at, updated_at)
         VALUES ($1, $2, $3, 'active', NOW(), NOW())
         RETURNING *
@@ -75,7 +76,7 @@ async function adminRoutes(fastify) {
     try {
       const { id } = request.params
       
-      const { rows } = await fastify.pg.query(`
+      const { rows } = await systemOf(fastify.pg).query(`
         SELECT 
           id,
           stand,
@@ -102,7 +103,7 @@ async function adminRoutes(fastify) {
   // Get users
   fastify.get('/users', async (request, reply) => {
     try {
-      const { rows } = await fastify.pg.query(`
+      const { rows } = await systemOf(fastify.pg).query(`
         SELECT 
           id,
           email,
@@ -131,7 +132,7 @@ async function adminRoutes(fastify) {
       // Hash the password before storing; never persist plaintext.
       const passwordHash = await bcrypt.hash(password || '', 10)
       
-      const { rows } = await fastify.pg.query(`
+      const { rows } = await systemOf(fastify.pg).query(`
         INSERT INTO users (email, name, role, organization, password_hash, active, created_at)
         VALUES ($1, $2, $3, $4, $5, true, NOW())
         RETURNING id, email, name, role, organization, active, created_at
@@ -151,10 +152,10 @@ async function adminRoutes(fastify) {
   fastify.get('/stats', async (request, reply) => {
     try {
       const [projects, parcels, users, layers] = await Promise.all([
-        fastify.pg.query('SELECT COUNT(*) as count FROM survey_projects'),
-        fastify.pg.query('SELECT COUNT(*) as count FROM land_parcels'),
-        fastify.pg.query('SELECT COUNT(*) as count FROM users'),
-        fastify.pg.query('SELECT COUNT(*) as count FROM layers')
+        systemOf(fastify.pg).query('SELECT COUNT(*) as count FROM survey_projects'),
+        systemOf(fastify.pg).query('SELECT COUNT(*) as count FROM land_parcels'),
+        systemOf(fastify.pg).query('SELECT COUNT(*) as count FROM users'),
+        systemOf(fastify.pg).query('SELECT COUNT(*) as count FROM layers')
       ])
       
       return {
@@ -176,7 +177,7 @@ async function adminRoutes(fastify) {
       const { projectId } = request.body
       
       // Remove duplicate parcels
-      const { rows } = await fastify.pg.query(`
+      const { rows } = await systemOf(fastify.pg).query(`
         DELETE FROM land_parcels 
         WHERE id IN (
           SELECT id FROM (
@@ -209,7 +210,7 @@ async function adminRoutes(fastify) {
       for (const projectId of projectIds) {
         try {
           if (operation === 'validate') {
-            const { rows } = await fastify.pg.query(`
+            const { rows } = await systemOf(fastify.pg).query(`
               SELECT COUNT(*) as parcel_count,
                      SUM(area_m2) as total_area
               FROM land_parcels 

@@ -25,6 +25,7 @@ const TEST_PROJECT_ID = 'jesttest-soft-proj'
 
 let app
 let auth
+let sid
 
 beforeAll(async () => {
   // Minimal app, same pattern as test/helpers/buildApp.js — server.js itself
@@ -44,11 +45,22 @@ beforeAll(async () => {
      ON CONFLICT (id) DO NOTHING`,
     [TEST_USER_ID, `jesttest-soft-${TEST_USER_ID}@example.test`],
   )
-  auth = { authorization: `Bearer ${signAccessToken({ id: TEST_USER_ID, role: 'planner', email: 'jesttest@example.test' })}` }
+  // A real session, not a bare signed token: authenticate() refuses any access
+  // token without a `sid` (jwtAuth.js) because a session-less token could never
+  // be revoked or timed out. createSession mints the user_session row and signs
+  // a token carrying its id, exactly as the login route does.
+  const { accessToken, sid: sessionId } = await createSession(
+    app,
+    { id: TEST_USER_ID, role: 'planner', email: `jesttest-soft-${TEST_USER_ID}@example.test` },
+    null,
+  )
+  sid = sessionId
+  auth = { authorization: `Bearer ${accessToken}` }
 }, 30000)
 
 afterAll(async () => {
   // Test-data cleanup is legitimately a hard delete.
+  await app.pg.query(`DELETE FROM public.user_session WHERE id = $1`, [sid])
   await app.pg.query(`DELETE FROM spatial_planning.gis_feature WHERE layer = $1`, [TEST_LAYER])
   await app.pg.query(`DELETE FROM spatial_planning.gis_feature_history WHERE layer = $1`, [TEST_LAYER])
   await app.pg.query(`DELETE FROM spatial_planning.planning_revision WHERE project_id = $1`, [TEST_PROJECT_ID])

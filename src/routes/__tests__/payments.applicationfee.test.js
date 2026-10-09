@@ -1,4 +1,5 @@
 const nock = require('nock')
+const { systemOf } = require('../../lib/dbContext')   // fixtures use the system connection (TENANCY_MODE=strict has no request context)
 const crypto = require('crypto')
 const { buildAppForTest } = require('../../../test/helpers/buildApp')
 const { loginAs }         = require('../../../test/helpers/auth')
@@ -19,7 +20,7 @@ describe('application fee payment lifecycle', () => {
   afterEach(() => nock.cleanAll())
 
   async function setupPaidFlow() {
-    const client = await app.pg.connect()
+    const client = await systemOf(app.pg).connect()
     let permitId, paymentId, pollUrl, rawBody
     try {
       const created = await client.query(
@@ -66,7 +67,7 @@ describe('application fee payment lifecycle', () => {
 
   it('webhook flips permit pending_payment → registered and stamps fee_paid_at', async () => {
     const { permitId, paymentId, rawBody } = await setupPaidFlow()
-    const client = await app.pg.connect()
+    const client = await systemOf(app.pg).connect()
     try {
       const hookRes = await app.inject({
         method:  'POST', url: '/api/payments/webhook/paynow',
@@ -94,7 +95,7 @@ describe('application fee payment lifecycle', () => {
 
   it('replaying the same webhook does not double-stamp', async () => {
     const { permitId, paymentId, rawBody } = await setupPaidFlow()
-    const client = await app.pg.connect()
+    const client = await systemOf(app.pg).connect()
     try {
       await app.inject({
         method:  'POST', url: '/api/payments/webhook/paynow',

@@ -83,10 +83,38 @@ No new tables and no new names. The authority gets: a row in `local_authorities`
 relation (which defines `authority_area`); its parcels, zones and assets as rows with its `authority_id`; layer rows in the
 registry that point at the same concepts. What it cannot do, and never needed to, is create `<authority>_parcels`.
 
-## Open questions
+## Decisions (9 October 2026)
 
-- One QGIS project per authority, or one shared project with layers filtered by authority? The project is the declaration, so
-  this decides how a council's map is authored.
-- Where the imported national datasets live when a council is outside the area the current basemap was clipped to (see the
-  audit): a national extract, or an extract per authority loaded on joining.
-- Whether `survey` keeps its own working CRS permanently or converts on load, once the Surveyor-General confirms the datum.
+1. **Each authority has its own QGIS project.** The project is the authority's declaration of what its map shows. A layer in
+   any project is identified by its data source, which the registry maps to a concept (`spatial_concept_source`), so a layer's
+   name inside a project is the authority's own title and never has to match anything. The catalogue service still reads one
+   project; reading the project of the authority a request belongs to is the next change there.
+2. **The basemap is extracted per authority when it joins**, not held nationally. The extract is cut to the authority's area
+   (`admin.authority_area`), loaded as rows of the same `basemap.*` concepts, and the authority is recorded on what it brought.
+   The clip that exists today is the Gweru and Vungu one, made by hand.
+3. **First concepts: `cadastral_parcel`, `admin_ward` and `authority_area`.** Status below.
+4. Still open: whether `survey` keeps its own working CRS or converts on load, once the Surveyor-General confirms the datum.
+
+## Progress on the first three concepts
+
+| Concept | Done | Not yet done |
+|---|---|---|
+| `admin_ward` | `admin.ward` is canonical (1,961 wards with their old ids, a parent code, a delimitation and validity dates). `public.wards` is now a read-only view over it, so tiles, routes and QGIS are unaffected; the stands foreign key moved too. | Replace the COD-AB wards with the ZEC delimitation (1,970) when the data arrives. |
+| `authority_area` | `admin.authority_ward` (versioned: a ward belongs to one authority at a time, with the instrument that fixed it) and the view `admin.authority_area` (the union of an authority's current wards, a combination's from its members', provisional while any ward is interim). `scripts/set-authority-wards.js` records memberships. Vungu has the 19 Gweru-district wards, marked **interim**. | The council's real ward list and the proclamation reference. The interim set is the Gweru district, which is not Vungu RDC. |
+| `cadastral_parcel` | `land.parcel` can hold farms (kind, cadastre reference, tenure class, authority, origin, source and key). 731 of the 733 `vungu_parcels` are loaded by `scripts/load-parcels-into-land.js`, with the area computed from the geometry, a ward and an authority. `--verify` shows every parcel falls in the same zone through either table. | Switch the readers (tiles, search, the engine's functions, the frontend) to `land.parcel`, then make `vungu_parcels` a view and retire `vungu_farm_cadastre` and `gweru_rural_farms`. `stands` follows later. |
+
+## Can an authority's data update the national dataset?
+
+Not directly, by design. Who may change a dataset is decided by who is its custodian, and the application records where every
+change came from and offers it back; it never lets one authority's edit overwrite the copy every other authority reads.
+
+| Kind of data | Who changes it | How |
+|---|---|---|
+| **The authority's own** (zones and plans, council assets, the locations of its cases, the allocation status of its stands) | The authority | Edited directly, through an edit session and a QA step inside the authority (`gis_ops.edit_session`, migration 133: an edit is invisible until approved, and a stale edit stops with a conflict). |
+| **National data with a custodian** (wards and the council-to-ward list; parcels and boundary surveys; the national boundary) | The custodian only: ZEC for wards, the Surveyor-General for surveyed parcels, the Ministry for a council's area | An authority may hold a **local correction** (`land.parcel.origin = 'authority'`; never overwritten by a reload) and may **submit it** to the custodian with its evidence. The custodian publishes a new version (`valid_from` and `valid_to`, `land.parcel_lineage`), which flows to every authority. A submission the custodian accepts becomes a custodian row; one it rejects stays local and is flagged as such. |
+| **Open basemap data** (roads, buildings, water from OpenStreetMap) | Anyone, upstream | Corrections are contributed to OpenStreetMap itself and arrive in the next extract. Not edited in our copy. |
+
+What is in place: the `origin`, `source_relation`, `custodian_dept` and validity columns, the lineage table, edit sessions with
+conflict detection, and the Surveyor-General platform as the intended custodian (per-dataset API keys and an audit log). What
+is missing is the **submission and reconciliation path**: a record of a proposed change to custodian data, its evidence and its
+outcome. It should be built with the Surveyor-General platform, because that is where a submission would be received.

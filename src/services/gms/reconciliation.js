@@ -6,6 +6,7 @@
 // cleared" in the monthly report is a count, not a guess.
 // ─────────────────────────────────────────────────────────────────────────
 
+const { systemOf } = require('../../lib/dbContext')
 const CHECKS = {
   structure_no_account: `
     SELECT p.parcel_id AS ref_key,
@@ -47,7 +48,7 @@ const CHECKS = {
 }
 
 async function runReconciliation(pg) {
-  const client = await pg.connect()
+  const client = await systemOf(pg).connect()
   const counts = {}
   try {
     await client.query('BEGIN')

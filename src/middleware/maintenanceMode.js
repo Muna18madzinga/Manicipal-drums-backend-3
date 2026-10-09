@@ -25,6 +25,7 @@
 // a worse outcome than a write landing during a window.
 // ─────────────────────────────────────────────────────────────────────────
 
+const { systemOf } = require('../lib/dbContext')
 const { getSettings } = require('../services/adminSettings')
 const { verifyToken } = require('./jwtAuth')
 const fp = require('fastify-plugin')
@@ -100,7 +101,7 @@ async function isAdmin(fastify, request) {
     const claims = verifyToken(token)
     if (claims.type !== 'access' || !claims.sub) return false
 
-    const { rows } = await fastify.pg.query(
+    const { rows } = await systemOf(fastify.pg).query(
       'SELECT role FROM public.users WHERE id = $1 AND deleted_at IS NULL AND active',
       [claims.sub],
     )

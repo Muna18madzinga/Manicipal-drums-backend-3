@@ -12,12 +12,12 @@ const fastifyPostgres = require('@fastify/postgres')
 const fastifyCookie = require('@fastify/cookie')
 const { gisRoutes } = require('../gis')
 const { standsRoutes } = require('../stands')
-const { signAccessToken } = require('../../middleware/jwtAuth')
+const { createSession } = require('../../middleware/jwtAuth')
 
 const TEST_USER_ID = randomUUID()
 const TEST_WARD = `jesttest-geom-${TEST_USER_ID.slice(0, 8)}`
 const TEST_LAYER = 'jesttest-geom'
-let app, auth
+let app, auth, sid
 
 // Deliberately far from other suites' test stands — the topology trigger
 // (migration 107) rejects overlapping stands globally, so distinct suites must
@@ -40,10 +40,20 @@ beforeAll(async () => {
      ON CONFLICT (id) DO NOTHING`,
     [TEST_USER_ID, `jesttest-geom-${TEST_USER_ID}@example.test`],
   )
-  auth = { authorization: `Bearer ${signAccessToken({ id: TEST_USER_ID, role: 'planner', email: 'x@example.test' })}` }
+  // A real session, not a bare signed token: authenticate() refuses any access
+  // token without a `sid` (jwtAuth.js) because a session-less token could never
+  // be revoked or timed out.
+  const { accessToken, sid: sessionId } = await createSession(
+    app,
+    { id: TEST_USER_ID, role: 'planner', email: `jesttest-geom-${TEST_USER_ID}@example.test` },
+    null,
+  )
+  sid = sessionId
+  auth = { authorization: `Bearer ${accessToken}` }
 }, 30000)
 
 afterAll(async () => {
+  await app.pg.query(`DELETE FROM public.user_session WHERE id = $1`, [sid])
   await app.pg.query(`DELETE FROM spatial_planning.gis_feature WHERE layer = $1`, [TEST_LAYER])
   await app.pg.query(`DELETE FROM spatial_planning.gis_feature_history WHERE layer = $1`, [TEST_LAYER])
   await app.pg.query(`DELETE FROM stands WHERE ward = $1`, [TEST_WARD])

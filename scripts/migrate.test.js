@@ -115,6 +115,11 @@ describe('migration plan', () => {
       '160_plan_matrix_audit.sql',
       '161_provisional_rules.sql',
       '162_spatial_concepts.sql',
+      '163_admin_ward_authority_area.sql',
+      '164_land_parcel_kinds.sql',
+      '165_tenancy_contract.sql',
+      '166_direct_client_roles.sql',
+      '167_make_tenant.sql',
     ])
 
     for (const filename of MIGRATIONS) {

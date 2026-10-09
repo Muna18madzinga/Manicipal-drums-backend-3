@@ -5,6 +5,7 @@
 // turns a redelivery into a no-op.
 // ─────────────────────────────────────────────────────────────────────────
 
+const { systemOf } = require('../../lib/dbContext')
 const crypto = require('node:crypto')
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -89,7 +90,7 @@ const HANDLERS = {
  */
 async function handleInbound(pg, raw) {
   const ev = { ...raw, payload: stripMoney(raw.payload) }
-  const client = await pg.connect()
+  const client = await systemOf(pg).connect()
   try {
     await client.query('BEGIN')
     const inserted = await client.query(

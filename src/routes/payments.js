@@ -22,6 +22,7 @@
  * stored as DB NUMERIC; the client must NOT do its own multiplication.
  */
 
+const { systemOf } = require('../lib/dbContext')
 const { requireAuth, requireRole } = require('../middleware/jwtAuth')
 const exchangeRate = require('../services/exchangeRate')
 const driverModule = require('../services/paymentDriver')
@@ -346,7 +347,7 @@ async function paymentRoutes(fastify) {
       const driver = driverModule.getDriver(row.driver)
       const verdict = await driver.pollPayment({ payment: row })
 
-      await fastify.pg.query(
+      await sys.pg.query(
         `UPDATE payments SET provider_status = $2, updated_at = NOW() WHERE id = $1`,
         [row.id, verdict.providerStatus || null],
       )
@@ -403,7 +404,10 @@ async function paymentRoutes(fastify) {
       if (!verdict.ok) {
         return reply.code(400).send({ success: false, error: 'bad_webhook' })
       }
-      const { rows } = await fastify.pg.query(
+      // A provider's callback is the system's, not a signed-in person's: it is trusted by its signature, and it
+      // settles a payment (and so a permit) whichever authority it belongs to.
+      const sys = { ...fastify, pg: systemOf(fastify.pg) }
+      const { rows } = await sys.pg.query(
         `SELECT * FROM payments WHERE provider_ref = $1`,
         [verdict.providerRef],
       )
@@ -411,12 +415,12 @@ async function paymentRoutes(fastify) {
       if (!row) return reply.code(404).send({ success: false, error: 'not_found' })
 
       // Update raw provider_status regardless.
-      await fastify.pg.query(
+      await sys.pg.query(
         `UPDATE payments SET provider_status = $2, updated_at = NOW() WHERE id = $1`,
         [row.id, verdict.providerStatus || null],
       )
       if (verdict.paid) {
-        await applyPaid(fastify, row, null)
+        await applyPaid(sys, row, null)
       }
       return reply.send({ success: true })
     } catch (err) {

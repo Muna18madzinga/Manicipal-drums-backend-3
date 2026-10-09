@@ -21,6 +21,7 @@
 // over the raw body, so this scope's JSON parser keeps request.rawBody.
 // ─────────────────────────────────────────────────────────────────────────
 
+const { systemOf } = require('../lib/dbContext')
 const { requireRole } = require('../middleware/jwtAuth')
 const { GMS } = require('../services/gms/roles')
 const { createErpAdapter } = require('../services/gms/erpAdapter')
@@ -36,7 +37,7 @@ const STATUSES = new Set(['pending', 'sent', 'acknowledged', 'failed', 'cancelle
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 async function gmsIntegrationRoutes(fastify, opts = {}) {
-  const pg = fastify.pg
+  const pg = systemOf(fastify.pg)
   const adapter = opts.erpAdapter || createErpAdapter()
   const viewer = { preHandler: requireRole(fastify, GMS.integrationView) }
   const operator = { preHandler: requireRole(fastify, GMS.integration) }
@@ -68,7 +69,7 @@ async function gmsIntegrationRoutes(fastify, opts = {}) {
   })
 
   fastify.get('/integration/status', { ...viewer, schema: { tags, summary: 'Integration health' } }, async () => {
-    const { rows: [s] } = await pg.query(`
+    const { rows: [s] } = await systemOf(pg).query(`
       SELECT
         (SELECT max(acknowledged_at) FROM integration.outbox_event) AS last_acknowledged_at,
         (SELECT max(received_at) FROM integration.inbound_event) AS last_inbound_at,
@@ -79,7 +80,7 @@ async function gmsIntegrationRoutes(fastify, opts = {}) {
         (SELECT count(*) FROM integration.outbox_event
           WHERE occurred_at > now() - interval '24 hours' AND status = 'failed')::int AS failed_24h,
         (SELECT max(last_seen_at) FROM integration.reconciliation_item) AS last_reconciliation_at`)
-    const { rows: recon } = await pg.query(
+    const { rows: recon } = await systemOf(pg).query(
       `SELECT kind, count(*)::int AS open FROM integration.reconciliation_item
         WHERE status = 'open' GROUP BY kind ORDER BY kind`)
     return {
@@ -98,7 +99,7 @@ async function gmsIntegrationRoutes(fastify, opts = {}) {
     if (status && !STATUSES.has(status)) return reply.code(400).send({ success: false, error: 'bad_status' })
     const limit = Math.min(Number(request.query?.limit) || 100, 500)
     const offset = Math.max(Number(request.query?.offset) || 0, 0)
-    const { rows } = await pg.query(
+    const { rows } = await systemOf(pg).query(
       `SELECT event_id, type, version, occurred_at, source, idempotency_key, status,
               attempts, next_attempt_at, last_error, acknowledged_at
          FROM integration.outbox_event
@@ -111,14 +112,14 @@ async function gmsIntegrationRoutes(fastify, opts = {}) {
 
   fastify.get('/integration/events/:id', { ...viewer, schema: { tags, summary: 'One event with its payload' } }, async (request, reply) => {
     if (!UUID.test(request.params.id)) return reply.code(404).send({ success: false, error: 'not_found' })
-    const { rows: [ev] } = await pg.query('SELECT * FROM integration.outbox_event WHERE event_id = $1', [request.params.id])
+    const { rows: [ev] } = await systemOf(pg).query('SELECT * FROM integration.outbox_event WHERE event_id = $1', [request.params.id])
     if (!ev) return reply.code(404).send({ success: false, error: 'not_found' })
     return { success: true, data: ev }
   })
 
   fastify.post('/integration/events/:id/retry', { ...operator, schema: { tags, summary: 'Retry a failed event now' } }, async (request, reply) => {
     if (!UUID.test(request.params.id)) return reply.code(404).send({ success: false, error: 'not_found' })
-    const { rowCount } = await pg.query(
+    const { rowCount } = await systemOf(pg).query(
       `UPDATE integration.outbox_event SET status = 'pending', next_attempt_at = now()
         WHERE event_id = $1 AND status IN ('failed', 'pending')`,
       [request.params.id],
@@ -130,7 +131,7 @@ async function gmsIntegrationRoutes(fastify, opts = {}) {
 
   fastify.post('/integration/events/:id/cancel', { ...operator, schema: { tags, summary: 'Cancel an undelivered event' } }, async (request, reply) => {
     if (!UUID.test(request.params.id)) return reply.code(404).send({ success: false, error: 'not_found' })
-    const { rowCount } = await pg.query(
+    const { rowCount } = await systemOf(pg).query(
       `UPDATE integration.outbox_event SET status = 'cancelled'
         WHERE event_id = $1 AND status IN ('failed', 'pending')`,
       [request.params.id],
@@ -141,7 +142,7 @@ async function gmsIntegrationRoutes(fastify, opts = {}) {
 
   fastify.get('/integration/reconciliation', { ...viewer, schema: { tags, summary: 'Reconciliation queues' } }, async (request) => {
     const { kind, status } = request.query || {}
-    const { rows } = await pg.query(
+    const { rows } = await systemOf(pg).query(
       `SELECT r.*, u.email AS resolved_by_email
          FROM integration.reconciliation_item r
          LEFT JOIN public.users u ON u.id = r.resolved_by
@@ -159,7 +160,7 @@ async function gmsIntegrationRoutes(fastify, opts = {}) {
   fastify.post('/integration/reconciliation/:id/assign', { ...operator, schema: { tags, summary: 'Assign a reconciliation item' } }, async (request, reply) => {
     const to = typeof request.body?.assigned_to === 'string' ? request.body.assigned_to.trim().slice(0, 120) : ''
     if (!to) return reply.code(400).send({ success: false, error: 'missing_field', field: 'assigned_to' })
-    const { rows: [r] } = await pg.query(
+    const { rows: [r] } = await systemOf(pg).query(
       `UPDATE integration.reconciliation_item SET assigned_to = $2
         WHERE id = $1 AND status = 'open' RETURNING *`,
       [Number(request.params.id) || 0, to],
@@ -171,7 +172,7 @@ async function gmsIntegrationRoutes(fastify, opts = {}) {
   fastify.post('/integration/reconciliation/:id/resolve', { ...operator, schema: { tags, summary: 'Resolve a reconciliation item with a note' } }, async (request, reply) => {
     const note = typeof request.body?.note === 'string' ? request.body.note.trim().slice(0, 2000) : ''
     if (!note) return reply.code(400).send({ success: false, error: 'missing_field', field: 'note' })
-    const { rows: [r] } = await pg.query(
+    const { rows: [r] } = await systemOf(pg).query(
       `UPDATE integration.reconciliation_item
           SET status = 'resolved', resolution_note = $2, resolved_by = $3, resolved_at = now()
         WHERE id = $1 AND status = 'open' RETURNING *`,

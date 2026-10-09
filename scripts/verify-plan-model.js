@@ -542,6 +542,48 @@ async function main() {
       'no spatial test carries a distance: the numbers are statutory or the council\'s to state')
     await expectError(client, 'a spatial test needs a development activity that exists', "INSERT INTO activity_spatial_test (activity_code, test_code, concept_code, kind, severity, description) VALUES ('teleport', 't', 'road', 'locate', 'flags', 'x')", [], /foreign key/)
 
+    console.log('== wards, authority areas and the parcel model (migrations 163 and 164)')
+    const sq = (x, y, s = 0.01) => `ST_Multi(ST_GeomFromText('POLYGON((${x} ${y}, ${x + s} ${y}, ${x + s} ${y + s}, ${x} ${y + s}, ${x} ${y}))', 4326))`
+    await client.query(`INSERT INTO admin.ward (ward_code, name, source, parent_pcode, geom) VALUES ('ZZ0001', '1', 'verify', 'ZZ00', ${sq(30, -20)}), ('ZZ0002', '2', 'verify', 'ZZ00', ${sq(30.01, -20)}), ('ZZ0003', '3', 'verify', 'ZZ00', ${sq(31, -20)})`)
+    check((await client.query("SELECT relkind FROM pg_class WHERE oid = 'public.wards'::regclass")).rows[0].relkind === 'v', 'public.wards is a view over admin.ward')
+    const wv = (await client.query("SELECT fid, pcode, name_en, parent_pcode, level FROM public.wards WHERE pcode = 'ZZ0001'")).rows[0]
+    check(wv && wv.fid !== null && wv.name_en === '1' && wv.parent_pcode === 'ZZ00' && Number(wv.level) === 3, 'a ward appears in the old view with its old columns, and gets an id')
+    await client.query("UPDATE admin.ward SET valid_to = CURRENT_DATE - 1, valid_from = CURRENT_DATE - 30 WHERE ward_code = 'ZZ0003'")
+    check((await client.query("SELECT COUNT(*)::int n FROM public.wards WHERE pcode = 'ZZ0003'")).rows[0].n === 0, 'a ward whose validity has ended leaves the current view')
+    check((await client.query("SELECT has_table_privilege('vungu_app', 'public.wards', 'SELECT') AS r, has_table_privilege('vungu_app', 'public.wards', 'UPDATE') AS w")).rows[0].r === true &&
+          (await client.query("SELECT has_table_privilege('vungu_app', 'public.wards', 'UPDATE') AS w")).rows[0].w === false, 'the application role can read wards and cannot change them')
+    const refTables = ['public.development_activity', 'public.spatial_concept', 'public.spatial_concept_source', 'public.activity_spatial_test', 'admin.ward', 'admin.authority_ward']
+    const writable = []
+    for (const t of refTables) if ((await client.query("SELECT has_table_privilege('vungu_app', $1, 'INSERT') OR has_table_privilege('vungu_app', $1, 'UPDATE') OR has_table_privilege('vungu_app', $1, 'DELETE') AS w", [t])).rows[0].w) writable.push(t)
+    check(writable.length === 0, writable.length ? `the application role can still write: ${writable.join(', ')}` : 'reference and registry tables are read only for the application role')
+
+    const aw = (code, ward, extra = '') => client.query(`INSERT INTO admin.authority_ward (authority_id, ward_code, valid_from, basis ${extra ? ', ' + extra.cols : ''}) VALUES ($1, $2, CURRENT_DATE - 1, $3 ${extra ? ', ' + extra.vals : ''})`, [code, ward, extra.basis || 'interim'])
+    await aw(vungu.id, 'ZZ0001'); await aw(vungu.id, 'ZZ0002')
+    const ar = (await client.query('SELECT wards, basis, provisional, ST_Area(geom) AS a, ST_NumGeometries(geom) AS parts FROM admin.authority_area WHERE authority_id = $1', [vungu.id])).rows[0]
+    check(ar && ar.wards === 2 && ar.provisional === true && ar.basis === 'interim' && Math.abs(ar.a - 0.0002) < 1e-9 && ar.parts === 1,
+      "an authority's area is the union of its wards (two touching squares make one polygon), provisional while interim")
+    await expectError(client, 'a ward cannot belong to two authorities at once', "INSERT INTO admin.authority_ward (authority_id, ward_code, valid_from, basis) VALUES ($1, 'ZZ0001', CURRENT_DATE, 'interim')", [other], /already belongs/)
+    await expectError(client, 'a combination authority has no wards of its own', "INSERT INTO admin.authority_ward (authority_id, ward_code, valid_from, basis) VALUES ($1, 'ZZ0002', CURRENT_DATE - 100, 'interim')", [combo], /no wards of its own/)
+    await expectError(client, 'a membership needs a known basis', "INSERT INTO admin.authority_ward (authority_id, ward_code, valid_from, basis) VALUES ($1, 'ZZ0003', CURRENT_DATE - 50, 'guess')", [other], /check constraint/)
+    await expectError(client, 'a membership cannot end before it begins', "INSERT INTO admin.authority_ward (authority_id, ward_code, valid_from, valid_to, basis) VALUES ($1, 'ZZ0003', CURRENT_DATE, CURRENT_DATE - 5, 'interim')", [other], /must end after it begins/)
+    await client.query("UPDATE admin.ward SET valid_to = NULL WHERE ward_code = 'ZZ0003'")
+    await client.query("INSERT INTO admin.authority_ward (authority_id, ward_code, valid_from, basis) VALUES ($1, 'ZZ0003', CURRENT_DATE - 1, 'delimitation')", [other])
+    const co = (await client.query('SELECT wards, provisional, ST_NumGeometries(geom) AS parts FROM admin.authority_area WHERE authority_id = $1', [combo])).rows[0]
+    check(co && co.wards === 3 && co.parts === 2, "a combination's area is the union of its members' wards")
+    check((await client.query('SELECT provisional FROM admin.authority_area WHERE authority_id = $1', [other])).rows[0].provisional === false, 'an area made only of delimited wards is not provisional')
+    await client.query("UPDATE admin.authority_ward SET valid_to = CURRENT_DATE WHERE authority_id = $1", [vungu.id])
+    check((await client.query('SELECT COUNT(*)::int n FROM admin.authority_area WHERE authority_id = $1', [vungu.id])).rows[0].n === 0, 'ending every membership today leaves the authority with no area')
+
+    const parcel = (id, extra) => `INSERT INTO land.parcel (parcel_id, stand_no, geom_source, source_srid, geom_wgs84, area_m2, accuracy_class, source, custodian_dept, status, allocation_status, valid_from ${extra.cols || ''})
+                                    VALUES ('${id}', 'S1', ${sq(30, -20)}, 4326, ${sq(30, -20)}, 1000, 'D', 'verify', 'verify', 'current', 'unallocated', CURRENT_DATE ${extra.vals || ''})`
+    await client.query(parcel('VF-1', { cols: ", parcel_kind, source_relation, source_key", vals: ", 'farm', 'public.x', '1'" }))
+    check((await client.query("SELECT township_code IS NULL AS t FROM land.parcel WHERE parcel_id = 'VF-1'")).rows[0].t === true, 'a farm needs no township')
+    await expectError(client, 'a stand still needs a township', parcel('VS-1', {}), [], /parcel_stand_needs_township/)
+    await expectError(client, 'a parcel loaded from a source must have the same source twice refused', parcel('VF-2', { cols: ", parcel_kind, source_relation, source_key", vals: ", 'farm', 'public.x', '1'" }), [], /unique|duplicate/)
+    await expectError(client, 'a source needs both its table and its key', parcel('VF-3', { cols: ", parcel_kind, source_relation", vals: ", 'farm', 'public.x'" }), [], /parcel_source_pair/)
+    await expectError(client, 'a parcel kind must be one the model knows', parcel('VF-4', { cols: ", parcel_kind", vals: ", 'castle'" }), [], /parcel_kind_check/)
+    check((await client.query("SELECT origin FROM land.parcel WHERE parcel_id = 'VF-1'")).rows[0].origin === 'custodian', 'a parcel is as received from the custodian unless an authority edits it')
+
     await client.query('ROLLBACK')
   } catch (err) {
     await client.query('ROLLBACK')

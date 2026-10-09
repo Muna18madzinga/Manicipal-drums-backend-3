@@ -5,6 +5,7 @@
 // Delivery happens later and never blocks editing (business rule 10).
 // ─────────────────────────────────────────────────────────────────────────
 
+const { systemOf } = require('../../lib/dbContext')
 const MAX_ATTEMPTS = 5
 
 /** Minutes to wait after the n-th failed attempt: 1, 2, 4, 8 ... capped at 60. */
@@ -41,7 +42,7 @@ const envelope = (r) => ({
  * if the queue ever needs parallel workers.
  */
 async function deliverOne(pg, adapter, eventId) {
-  const client = await pg.connect()
+  const client = await systemOf(pg).connect()
   try {
     await client.query('BEGIN')
     const { rows } = await client.query(
@@ -91,7 +92,7 @@ async function deliverOne(pg, adapter, eventId) {
 
 /** One worker tick: deliver whatever is due, oldest first. */
 async function deliverDue(pg, adapter, limit = 50) {
-  const { rows } = await pg.query(
+  const { rows } = await systemOf(pg).query(
     `SELECT event_id FROM integration.outbox_event
       WHERE status = 'pending' AND next_attempt_at <= now()
       ORDER BY occurred_at LIMIT $1`,

@@ -12,11 +12,11 @@ const Fastify = require('fastify')
 const fastifyPostgres = require('@fastify/postgres')
 const fastifyCookie = require('@fastify/cookie')
 const { standsRoutes } = require('../stands')
-const { signAccessToken } = require('../../middleware/jwtAuth')
+const { createSession } = require('../../middleware/jwtAuth')
 
 const TEST_USER_ID = randomUUID()
 const TEST_WARD = `jesttest-ward-${TEST_USER_ID.slice(0, 8)}`
-let app, auth, standId, allocId
+let app, auth, standId, allocId, sid
 
 // Small valid polygon (a ~few-hundred-m² box near Gweru).
 const poly = {
@@ -37,7 +37,16 @@ beforeAll(async () => {
      ON CONFLICT (id) DO NOTHING`,
     [TEST_USER_ID, `jesttest-alloc-${TEST_USER_ID}@example.test`],
   )
-  auth = { authorization: `Bearer ${signAccessToken({ id: TEST_USER_ID, role: 'planner', email: 'x@example.test' })}` }
+  // A real session, not a bare signed token: authenticate() refuses any access
+  // token without a `sid` (jwtAuth.js) because a session-less token could never
+  // be revoked or timed out.
+  const { accessToken, sid: sessionId } = await createSession(
+    app,
+    { id: TEST_USER_ID, role: 'planner', email: `jesttest-alloc-${TEST_USER_ID}@example.test` },
+    null,
+  )
+  sid = sessionId
+  auth = { authorization: `Bearer ${accessToken}` }
 
   const created = await app.inject({
     method: 'POST', url: '/api/stands', headers: auth,
@@ -48,6 +57,7 @@ beforeAll(async () => {
 }, 30000)
 
 afterAll(async () => {
+  await app.pg.query(`DELETE FROM public.user_session WHERE id = $1`, [sid])
   await app.pg.query(`DELETE FROM stand_allocation WHERE stand_id = $1`, [standId])
   await app.pg.query(`DELETE FROM stands WHERE ward = $1`, [TEST_WARD])
   await app.pg.query(`DELETE FROM users WHERE id = $1`, [TEST_USER_ID])

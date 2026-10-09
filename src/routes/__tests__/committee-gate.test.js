@@ -5,6 +5,7 @@
  *   2. A resolution cannot be recorded for a meeting that was not quorate.
  */
 const { buildAppForTest } = require('../../../test/helpers/buildApp')
+const { systemOf } = require('../../lib/dbContext')   // fixtures use the system connection (TENANCY_MODE=strict has no request context)
 const { loginAs } = require('../../../test/helpers/auth')
 
 describe('committee gates on eo-decision + resolution recording', () => {
@@ -20,7 +21,7 @@ describe('committee gates on eo-decision + resolution recording', () => {
   }, 30000)
 
   afterAll(async () => {
-    const c = await app.pg.connect()
+    const c = await systemOf(app.pg).connect()
     try {
       for (const id of meetings) await c.query(`DELETE FROM spatial_planning.committee_meeting WHERE id = $1`, [id])
       for (const id of members) await c.query(`DELETE FROM spatial_planning.committee_member WHERE id = $1`, [id])

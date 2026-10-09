@@ -64,8 +64,11 @@ just been allowed to create.
   They need an authority column or a jurisdiction, which waits for the authority-ward relation and the
   Zimbabwe Electoral Commission wards (docs/ADMIN-DATA-CUSTODIANS-ZIMBABWE.md). Views and analytics are to be
   clipped to the authority's boundary; the data itself is kept whole.
-- **`vungu_app` can read every table**, including `users` (password hashes). Narrowing its grants is a
-  separate step.
+- **`vungu_app` can read every table**, including `users` (password hashes), and **can write most of them**: migration 154's
+  default privileges give it INSERT, UPDATE and DELETE on every table or view created afterwards in `public`, `land`,
+  `spatial_planning` and `gis_ops`. Migration 163 takes the write grants away from the reference and registry tables added since
+  (and from `public.wards`, which is now a view), but narrowing the role properly (read-only by default, write only where a route
+  needs it) is still to do. `scripts/verify-plan-model.js` fails if those reference tables become writable again.
 - **QGIS Desktop and the tile server** connect to the database directly and are not scoped.
 
 ## Transitional, and to be removed

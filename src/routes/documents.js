@@ -17,6 +17,7 @@
  *   - Once verified, downstream code can trust extracted_id_number etc.
  */
 
+const { systemOf } = require('../lib/dbContext')
 const path = require('node:path')
 const fs   = require('node:fs/promises')
 const fsSync = require('node:fs')
@@ -154,7 +155,7 @@ async function documentRoutes(fastify) {
       const sha256 = crypto.createHash('sha256').update(file.buffer).digest('hex')
 
       // Reject duplicate for same user.
-      const dupRes = await fastify.pg.query(
+      const dupRes = await systemOf(fastify.pg).query(
         `SELECT id, verification_status FROM citizen_documents
          WHERE user_id = $1 AND sha256_hex = $2 AND deleted_at IS NULL`,
         [userId, sha256],
@@ -180,7 +181,7 @@ async function documentRoutes(fastify) {
       await fs.writeFile(diskPath, file.buffer)
 
       // Insert in 'pending'. The verifier flips to under_review/verified/rejected.
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `INSERT INTO citizen_documents
            (id, user_id, doc_kind, storage_url, mime_type, bytes, sha256_hex)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -212,7 +213,7 @@ async function documentRoutes(fastify) {
         // pass/fail), stamp verified_at so the timeline reads correctly even
         // though no staff member touched it.
         const autoDecided = result.status === 'verified' || result.status === 'rejected'
-        await fastify.pg.query(
+        await systemOf(fastify.pg).query(
           `UPDATE citizen_documents SET
              verification_status = $2,
              verification_notes  = COALESCE($9, verification_notes),
@@ -240,7 +241,7 @@ async function documentRoutes(fastify) {
         )
       }
 
-      const final = await fastify.pg.query(
+      const final = await systemOf(fastify.pg).query(
         `SELECT * FROM citizen_documents WHERE id = $1`, [inserted.id],
       )
 
@@ -249,7 +250,7 @@ async function documentRoutes(fastify) {
       if (RESIDENCY_KINDS.has(docKind)) {
         const st = final.rows[0].verification_status
         if (st === 'verified') {
-          await fastify.pg.query(
+          await systemOf(fastify.pg).query(
             `UPDATE users SET residency_status = 'verified',
                               residency_method = 'document_review',
                               residency_verified_at = NOW()
@@ -257,7 +258,7 @@ async function documentRoutes(fastify) {
             [userId],
           )
         } else if (['pending', 'under_review'].includes(st)) {
-          await fastify.pg.query(
+          await systemOf(fastify.pg).query(
             `UPDATE users SET residency_status = 'pending'
              WHERE id = $1 AND residency_status IN ('unverified', 'rejected')`,
             [userId],
@@ -278,7 +279,7 @@ async function documentRoutes(fastify) {
   // ── My documents ────────────────────────────────────────────────────
   fastify.get('/documents/mine', { preHandler: requireAuth(fastify) }, async (request, reply) => {
     try {
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `SELECT * FROM citizen_documents WHERE user_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC`,
         [request.user.id],
       )
@@ -292,7 +293,7 @@ async function documentRoutes(fastify) {
   // ── Single doc (owner / staff) ──────────────────────────────────────
   fastify.get('/documents/:id', { preHandler: requireAuth(fastify) }, async (request, reply) => {
     try {
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `SELECT * FROM citizen_documents WHERE id = $1 AND deleted_at IS NULL`,
         [request.params.id],
       )
@@ -312,7 +313,7 @@ async function documentRoutes(fastify) {
   // ── Staff queue ─────────────────────────────────────────────────────
   fastify.get('/documents/queue', { preHandler: requireRole(fastify, STAFF_ROLES) }, async (_request, reply) => {
     try {
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `SELECT cd.*, COALESCE(u.full_name, u.name) AS owner_name, u.email AS owner_email
          FROM citizen_documents cd
          LEFT JOIN users u ON u.id = cd.user_id
@@ -344,7 +345,7 @@ async function documentRoutes(fastify) {
         return reply.code(400).send({ success: false, error: 'bad_decision' })
       }
       const ex = extracted && typeof extracted === 'object' ? extracted : {}
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `UPDATE citizen_documents SET
            verification_status = $2,
            verification_notes  = $3,
@@ -371,7 +372,7 @@ async function documentRoutes(fastify) {
       // Residency verdict follows the document verdict (migration 115).
       if (RESIDENCY_KINDS.has(row.doc_kind)) {
         if (decision === 'verified') {
-          await fastify.pg.query(
+          await systemOf(fastify.pg).query(
             `UPDATE users SET residency_status = 'verified',
                               residency_method = 'document_review',
                               residency_verified_at = NOW()
@@ -381,7 +382,7 @@ async function documentRoutes(fastify) {
         } else {
           // Reject only demotes a citizen who has no other verified evidence
           // and was not verified through the deeds registry.
-          await fastify.pg.query(
+          await systemOf(fastify.pg).query(
             `UPDATE users u SET residency_status = 'rejected'
              WHERE u.id = $1
                AND u.residency_status = 'pending'
@@ -406,7 +407,7 @@ async function documentRoutes(fastify) {
   // ── Delete (owner while pending; admin always) ──────────────────────
   fastify.delete('/documents/:id', { preHandler: requireAuth(fastify) }, async (request, reply) => {
     try {
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `SELECT * FROM citizen_documents WHERE id = $1 AND deleted_at IS NULL`,
         [request.params.id],
       )
@@ -424,7 +425,7 @@ async function documentRoutes(fastify) {
       }
       // Soft delete (migration 103): the row and the stored file both stay so
       // the record is recoverable; every read filters deleted_at IS NULL.
-      await fastify.pg.query(
+      await systemOf(fastify.pg).query(
         `UPDATE citizen_documents SET deleted_at = NOW(), deleted_by = $2 WHERE id = $1`,
         [row.id, u.id],
       )

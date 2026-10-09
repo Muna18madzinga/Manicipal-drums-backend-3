@@ -39,6 +39,7 @@
 // carry the lockout policy. All three are admin-only by nature.
 // ─────────────────────────────────────────────────────────────────────────
 
+const { systemOf } = require('../lib/dbContext')
 const fs = require('node:fs')
 const path = require('node:path')
 const os = require('node:os')
@@ -97,7 +98,7 @@ async function adminConsoleRoutes(fastify) {
   // floor, not a census; the screen says so. Route patterns only: no record ids, no addresses.
   fastify.get('/admin/usage', admin, async (request, reply) => {
     try {
-      return reply.send({ success: true, data: await usageReport(fastify.pg, parseWindow((request.query || {}).days)) })
+      return reply.send({ success: true, data: await usageReport(systemOf(fastify.pg), parseWindow((request.query || {}).days)) })
     } catch (err) {
       request.log.error({ err }, 'usage report failed')
       return reply.code(500).send({ success: false, error: 'internal' })
@@ -106,7 +107,7 @@ async function adminConsoleRoutes(fastify) {
 
   fastify.get('/admin/overview', admin, async (_request, reply) => {
     try {
-      const { rows } = await fastify.pg.query(`
+      const { rows } = await systemOf(fastify.pg).query(`
         SELECT
           (SELECT count(*)::int FROM users
             WHERE deleted_at IS NULL AND role = ANY($1))                         AS staff_total,
@@ -241,7 +242,7 @@ async function adminConsoleRoutes(fastify) {
     try {
       const days = await getSetting(fastify, 'audit.retention_days')
       if (!Number.isFinite(Number(days)) || Number(days) < 30) return
-      const { rowCount } = await fastify.pg.query(
+      const { rowCount } = await systemOf(fastify.pg).query(
         `DELETE FROM public.admin_audit_event
           WHERE occurred_at < now() - ($1 || ' days')::interval
             AND severity <> 'critical'`,
@@ -260,7 +261,7 @@ async function adminConsoleRoutes(fastify) {
       const { sql, params } = auditFilter(request.query)
 
       const [list, count] = await Promise.all([
-        fastify.pg.query(
+        systemOf(fastify.pg).query(
           `SELECT id, occurred_at, actor_id, actor_email, actor_role,
                   event, severity, method, path, status, duration_ms,
                   entity_type, entity_id, host(ip) AS ip, details
@@ -272,7 +273,7 @@ async function adminConsoleRoutes(fastify) {
         ),
         // The count is what lets the console say "1–50 of 2,431" instead of
         // "there may be more". Same filter, so the two can never disagree.
-        fastify.pg.query(`SELECT count(*)::int AS n FROM public.admin_audit_event ${sql}`, params),
+        systemOf(fastify.pg).query(`SELECT count(*)::int AS n FROM public.admin_audit_event ${sql}`, params),
       ])
 
       return reply.send({
@@ -289,7 +290,7 @@ async function adminConsoleRoutes(fastify) {
   /** The event vocabulary actually present, so the filter offers real choices. */
   fastify.get('/admin/audit/events', admin, async (_request, reply) => {
     try {
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `SELECT event, count(*)::int AS n, max(occurred_at) AS last_seen
            FROM public.admin_audit_event
           WHERE occurred_at > now() - interval '90 days'
@@ -316,7 +317,7 @@ async function adminConsoleRoutes(fastify) {
     try {
       const MAX = 50_000
       const { sql, params } = auditFilter(request.query)
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `SELECT occurred_at, actor_email, actor_role, event, severity,
                 method, path, status, duration_ms, entity_type, entity_id, host(ip) AS ip
            FROM public.admin_audit_event
@@ -362,7 +363,7 @@ async function adminConsoleRoutes(fastify) {
       }
       if (request.query?.includeExpired === 'true') where.splice(0, 2)
 
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `SELECT s.id, s.user_id, s.ip, s.user_agent,
                 s.created_at, s.last_used_at, s.expires_at, s.revoked_at,
                 u.email, COALESCE(u.full_name, u.name) AS name, u.role
@@ -390,7 +391,7 @@ async function adminConsoleRoutes(fastify) {
     try {
       const { id } = request.params
       if (!isUuid(id)) return reply.code(400).send({ success: false, error: 'bad_id' })
-      const { rowCount } = await fastify.pg.query(
+      const { rowCount } = await systemOf(fastify.pg).query(
         'UPDATE public.user_session SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL',
         [id],
       )
@@ -413,7 +414,7 @@ async function adminConsoleRoutes(fastify) {
     try {
       const { id } = request.params
       if (!isUuid(id)) return reply.code(400).send({ success: false, error: 'bad_id' })
-      const { rowCount } = await fastify.pg.query(
+      const { rowCount } = await systemOf(fastify.pg).query(
         'UPDATE public.user_session SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL',
         [id],
       )
@@ -441,7 +442,7 @@ async function adminConsoleRoutes(fastify) {
       if (from) { params.push(from); where.push(`a.attempted_at >= $${params.length}`) }
 
       const [list, locked] = await Promise.all([
-        fastify.pg.query(
+        systemOf(fastify.pg).query(
           `SELECT a.id, a.attempted_at, a.email, a.user_id, host(a.ip) AS ip,
                   a.user_agent, a.succeeded, a.reason,
                   COALESCE(u.full_name, u.name) AS name, u.role
@@ -456,7 +457,7 @@ async function adminConsoleRoutes(fastify) {
         // loginSecurity.lockoutState computes it — failures since the last
         // success — so the console never shows a lockout the login route
         // would not apply.
-        fastify.pg.query(
+        systemOf(fastify.pg).query(
           `WITH s AS (
              SELECT lower(email) AS email, max(attempted_at) AS at
                FROM public.admin_login_attempt WHERE succeeded GROUP BY 1
@@ -500,7 +501,7 @@ async function adminConsoleRoutes(fastify) {
     try {
       const email = orNull(request.body?.email, 255)
       if (!email) return reply.code(400).send({ success: false, error: 'email_required' })
-      await fastify.pg.query(
+      await systemOf(fastify.pg).query(
         `INSERT INTO public.admin_login_attempt (email, ip, user_agent, succeeded, reason)
          VALUES ($1, $2::inet, $3, true, NULL)`,
         [email, null, `lockout cleared by ${request.user.email}`],
@@ -516,7 +517,7 @@ async function adminConsoleRoutes(fastify) {
   fastify.get('/admin/ip-blocks', admin, async (request, reply) => {
     try {
       const live = request.query?.includeReleased !== 'true'
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `SELECT b.id, b.cidr::text AS cidr, b.reason, b.created_at, b.expires_at,
                 b.released_at,
                 COALESCE(c.full_name, c.name) AS created_by_name,
@@ -545,7 +546,7 @@ async function adminConsoleRoutes(fastify) {
 
       // Postgres validates the CIDR: no regex here could tell 10.0.0.0/8 from
       // 10.0.0.1/8 (which is an error) as reliably as the type does.
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `INSERT INTO public.admin_ip_block (cidr, reason, expires_at, created_by)
          VALUES ($1::cidr, $2, $3, $4)
          ON CONFLICT (cidr) DO UPDATE
@@ -574,7 +575,7 @@ async function adminConsoleRoutes(fastify) {
     try {
       const { id } = request.params
       if (!isUuid(id)) return reply.code(400).send({ success: false, error: 'bad_id' })
-      const { rowCount } = await fastify.pg.query(
+      const { rowCount } = await systemOf(fastify.pg).query(
         `UPDATE public.admin_ip_block
             SET released_at = now(), released_by = $2
           WHERE id = $1 AND released_at IS NULL`,
@@ -593,7 +594,7 @@ async function adminConsoleRoutes(fastify) {
   // ═════════════════════════════════════════════════════════════════════
   fastify.get('/admin/settings', admin, async (_request, reply) => {
     try {
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `SELECT s.key, s.value, s.value_type, s.category, s.label, s.description,
                 s.constraints, s.enforced, s.secret, s.updated_at,
                 COALESCE(u.full_name, u.name) AS updated_by_name
@@ -627,7 +628,7 @@ async function adminConsoleRoutes(fastify) {
       return reply.code(400).send({ success: false, error: 'settings_object_required' })
     }
 
-    const client = await fastify.pg.connect()
+    const client = await systemOf(fastify.pg).connect()
     try {
       await client.query('BEGIN')
 
@@ -703,7 +704,7 @@ async function adminConsoleRoutes(fastify) {
   // ═════════════════════════════════════════════════════════════════════
   fastify.get('/admin/system/health', admin, async (_request, reply) => {
     try {
-      const { rows } = await fastify.pg.query(`
+      const { rows } = await systemOf(fastify.pg).query(`
         SELECT current_database()                                   AS database,
                version()                                            AS pg_version,
                pg_size_pretty(pg_database_size(current_database()))  AS size,
@@ -723,7 +724,7 @@ async function adminConsoleRoutes(fastify) {
       // the whole health page.
       let migrations = null
       try {
-        const m = await fastify.pg.query(
+        const m = await systemOf(fastify.pg).query(
           'SELECT count(*)::int AS applied, max(name) AS latest FROM public.schema_migrations',
         )
         migrations = m.rows[0]
@@ -780,7 +781,7 @@ async function adminConsoleRoutes(fastify) {
    */
   fastify.get('/admin/system/tables', admin, async (_request, reply) => {
     try {
-      const { rows } = await fastify.pg.query(`
+      const { rows } = await systemOf(fastify.pg).query(`
         SELECT n.nspname                                   AS schema,
                c.relname                                   AS name,
                COALESCE(s.n_live_tup, 0)::bigint           AS rows_approx,
@@ -826,7 +827,7 @@ async function adminConsoleRoutes(fastify) {
       }
 
       const [list, counts] = await Promise.all([
-        fastify.pg.query(
+        systemOf(fastify.pg).query(
           `SELECT id, email, channel, kind, subject, status, attempts, last_error,
                   scheduled_at, sent_at, created_at
              FROM public.notifications_outbox
@@ -835,7 +836,7 @@ async function adminConsoleRoutes(fastify) {
             LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
           [...params, limit, offset],
         ),
-        fastify.pg.query(
+        systemOf(fastify.pg).query(
           `SELECT status, count(*)::int AS n FROM public.notifications_outbox GROUP BY status`,
         ),
       ])
@@ -878,7 +879,7 @@ async function adminConsoleRoutes(fastify) {
     try {
       const { id } = request.params
       if (!isUuid(id)) return reply.code(400).send({ success: false, error: 'bad_id' })
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `UPDATE public.notifications_outbox
             SET status = 'pending', attempts = 0, last_error = NULL,
                 scheduled_at = now(), updated_at = now()
@@ -903,7 +904,7 @@ async function adminConsoleRoutes(fastify) {
     try {
       const { id } = request.params
       if (!isUuid(id)) return reply.code(400).send({ success: false, error: 'bad_id' })
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `UPDATE public.notifications_outbox
             SET status = 'cancelled', updated_at = now()
           WHERE id = $1 AND status = 'pending'
@@ -929,7 +930,7 @@ async function adminConsoleRoutes(fastify) {
   fastify.get('/admin/announcements', admin, async (request, reply) => {
     try {
       const all = request.query?.all === 'true'
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `SELECT a.id, a.title, a.body, a.level, a.audience,
                 a.starts_at, a.ends_at, a.created_at, a.withdrawn_at,
                 COALESCE(u.full_name, u.name) AS created_by_name
@@ -960,7 +961,7 @@ async function adminConsoleRoutes(fastify) {
         return reply.code(400).send({ success: false, error: 'ends_before_starts' })
       }
 
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `INSERT INTO public.admin_announcement (title, body, level, audience, starts_at, ends_at, created_by)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING id, title, body, level, audience, starts_at, ends_at, created_at`,
@@ -978,7 +979,7 @@ async function adminConsoleRoutes(fastify) {
       const { id } = request.params
       if (!isUuid(id)) return reply.code(400).send({ success: false, error: 'bad_id' })
       const b = request.body || {}
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `UPDATE public.admin_announcement SET
            title     = COALESCE($2, title),
            body      = COALESCE($3, body),
@@ -1012,7 +1013,7 @@ async function adminConsoleRoutes(fastify) {
     try {
       const { id } = request.params
       if (!isUuid(id)) return reply.code(400).send({ success: false, error: 'bad_id' })
-      const { rowCount } = await fastify.pg.query(
+      const { rowCount } = await systemOf(fastify.pg).query(
         'UPDATE public.admin_announcement SET withdrawn_at = now() WHERE id = $1 AND withdrawn_at IS NULL',
         [id],
       )
@@ -1029,7 +1030,7 @@ async function adminConsoleRoutes(fastify) {
   // ═════════════════════════════════════════════════════════════════════
   fastify.get('/admin/org', admin, async (_request, reply) => {
     try {
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `SELECT p.id, p.title, p.department, p.system_role, p.holder_id,
                 p.reports_to, p.sort_order,
                 COALESCE(u.full_name, u.name) AS holder_name,
@@ -1061,7 +1062,7 @@ async function adminConsoleRoutes(fastify) {
     try {
       const title = orNull(request.body?.title, 160)
       if (!title) return reply.code(400).send({ success: false, error: 'title_required' })
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `INSERT INTO public.admin_org_position (title, department, system_role, holder_id, reports_to, sort_order)
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
         [
@@ -1092,7 +1093,7 @@ async function adminConsoleRoutes(fastify) {
         return reply.code(400).send({ success: false, error: 'self_parent' })
       }
 
-      const { rows } = await fastify.pg.query(
+      const { rows } = await systemOf(fastify.pg).query(
         `UPDATE public.admin_org_position SET
            title       = COALESCE($2, title),
            department  = CASE WHEN $3::boolean THEN $4 ELSE department END,
@@ -1130,7 +1131,7 @@ async function adminConsoleRoutes(fastify) {
       if (!isUuid(id)) return reply.code(400).send({ success: false, error: 'bad_id' })
       // The FK is ON DELETE SET NULL, so subordinate posts survive as
       // top-level rather than disappearing with their parent.
-      const { rowCount } = await fastify.pg.query(
+      const { rowCount } = await systemOf(fastify.pg).query(
         'DELETE FROM public.admin_org_position WHERE id = $1', [id],
       )
       if (!rowCount) return reply.code(404).send({ success: false, error: 'not_found' })

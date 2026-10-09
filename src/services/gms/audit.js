@@ -8,11 +8,12 @@
 
 /** Resolves true once the row is written. Callers showing personal data must
  *  withhold it when this returns false: an unlogged view breaks rule 6. */
+const { systemOf } = require('../../lib/dbContext')
 async function audit(pg, request, { event, severity = 'medium', entityType = null, entityId = null, details = {} }) {
   const u = request.user
   if (!u?.id) return false
   try {
-    await pg.query(
+    await systemOf(pg).query(
       `INSERT INTO public.admin_audit_event
          (actor_id, actor_email, actor_role, event, severity, method, path, status,
           entity_type, entity_id, ip, user_agent, details)

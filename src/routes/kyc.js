@@ -11,6 +11,7 @@
  * GET    /api/kyc/status/:userId           — check verification status for user
  */
 
+const { systemOf } = require('../lib/dbContext')
 const { requireAuth, requireRole } = require('../middleware/jwtAuth')
 
 async function kycRoutes(fastify) {
@@ -26,7 +27,7 @@ async function kycRoutes(fastify) {
     }
     try {
       // Upsert — one submission per user
-      const r = await fastify.pg.query(
+      const r = await systemOf(fastify.pg).query(
         `INSERT INTO kyc_verifications (user_id, id_type, id_number, full_name, status)
          VALUES ($1, $2, $3, $4, 'pending')
          ON CONFLICT (user_id) DO UPDATE
@@ -54,7 +55,7 @@ async function kycRoutes(fastify) {
         const params = []
         if (status) { q += ' WHERE k.status = $1'; params.push(status) }
         q += ' ORDER BY k.created_at DESC'
-        const r = await fastify.pg.query(q, params)
+        const r = await systemOf(fastify.pg).query(q, params)
         return reply.send({ success: true, data: r.rows })
       } catch (err) {
         fastify.log.error(err)
@@ -66,7 +67,7 @@ async function kycRoutes(fastify) {
   // ── GET /kyc/my — citizen's own ─────────────────────────────────────
   fastify.get('/kyc/my', { preHandler: requireAuth(fastify) }, async (req, reply) => {
     try {
-      const r = await fastify.pg.query(
+      const r = await systemOf(fastify.pg).query(
         'SELECT * FROM kyc_verifications WHERE user_id = $1', [req.user.id])
       return reply.send({ success: true, data: r.rows[0] || null })
     } catch {
@@ -79,7 +80,7 @@ async function kycRoutes(fastify) {
     async (req, reply) => {
       const { reviewer_notes } = req.body || {}
       try {
-        const r = await fastify.pg.query(
+        const r = await systemOf(fastify.pg).query(
           `UPDATE kyc_verifications SET status='approved', reviewer_notes=$1,
            reviewed_by=$2, reviewed_at=NOW(), updated_at=NOW()
            WHERE id=$3 RETURNING *`,
@@ -87,7 +88,7 @@ async function kycRoutes(fastify) {
         )
         if (!r.rows.length) return reply.code(404).send({ success: false, error: 'not_found' })
         // Emit notification to planner so newly verified users appear
-        await fastify.pg.query(
+        await systemOf(fastify.pg).query(
           `INSERT INTO workflow_notifications
              (title, message, kind, recipient_role, created_by)
            VALUES ('KYC verified', 'Identity verified for user ID ' || $1, 'success', 'planner', $2)`,
@@ -105,7 +106,7 @@ async function kycRoutes(fastify) {
     async (req, reply) => {
       const { reviewer_notes } = req.body || {}
       try {
-        const r = await fastify.pg.query(
+        const r = await systemOf(fastify.pg).query(
           `UPDATE kyc_verifications SET status='rejected', reviewer_notes=$1,
            reviewed_by=$2, reviewed_at=NOW(), updated_at=NOW()
            WHERE id=$3 RETURNING *`,
@@ -123,7 +124,7 @@ async function kycRoutes(fastify) {
   fastify.get('/kyc/status/:userId', { preHandler: requireRole(fastify, ['admin', 'planner']) },
     async (req, reply) => {
       try {
-        const r = await fastify.pg.query(
+        const r = await systemOf(fastify.pg).query(
           'SELECT status FROM kyc_verifications WHERE user_id = $1', [req.params.userId])
         return reply.send({ success: true, data: { status: r.rows[0]?.status || 'not_submitted' } })
       } catch {

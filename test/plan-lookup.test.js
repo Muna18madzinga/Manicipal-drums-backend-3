@@ -97,6 +97,16 @@ describe('lookup', () => {
     expect(s.fake.pg.query).not.toHaveBeenCalled()
   })
 
+  test('names a parcel of the one parcel model (land.parcel) by its stand number, ward and area', async () => {
+    const s = await setup(async (sql) => {
+      if (/parcel_geometry/.test(sql)) return { rows: [{ found: true }] }
+      if (/FROM land.parcel l/.test(sql)) return { rows: [{ label: 'Dorset Farm 12', place: 'Ward 14', area_ha: '12.5' }] }
+      return { rows: [] }
+    })
+    const { reply } = await s.call('GET /plan-lookup/:layer/:id', { params: { layer: 'land.parcel', id: 'VP-12' } })
+    expect(reply.body.data.parcel).toMatchObject({ layer: 'land.parcel', id: 'VP-12', label: 'Dorset Farm 12', place: 'Ward 14', area_ha: 12.5 })
+  })
+
   test('an unknown parcel is a 404', async () => {
     const s = await setup(async (sql) => (/parcel_geometry/.test(sql) ? { rows: [{ found: false }] } : { rows: [] }))
     expect((await lookup(s)).reply.statusCode).toBe(404)

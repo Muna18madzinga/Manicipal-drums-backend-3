@@ -129,6 +129,11 @@ async function parcelLabel(pg, ref) {
     const r = await pg.query('SELECT stand_number AS label, ward AS place, ROUND(area_sqm / 10000.0, 4) AS area_ha FROM stands WHERE id::text = $1', [ref.id])
     return r.rows[0] ? { label: r.rows[0].label, place: r.rows[0].place || null, area_ha: r.rows[0].area_ha === null ? null : Number(r.rows[0].area_ha) } : { label: null, place: null, area_ha: null }
   }
+  if (ref.layer === 'land.parcel') {
+    const r = await pg.query(`SELECT l.stand_no AS label, CASE WHEN w.name IS NULL THEN NULL ELSE 'Ward ' || w.name END AS place, ROUND(l.area_m2 / 10000.0, 4) AS area_ha
+                                FROM land.parcel l LEFT JOIN admin.ward w ON w.ward_code = l.ward_code WHERE l.parcel_id = $1`, [ref.id])
+    return r.rows[0] ? { label: r.rows[0].label, place: r.rows[0].place || null, area_ha: r.rows[0].area_ha === null ? null : Number(r.rows[0].area_ha) } : { label: null, place: null, area_ha: null }
+  }
   return { label: null, place: null, area_ha: null }
 }
 

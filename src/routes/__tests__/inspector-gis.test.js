@@ -4,6 +4,7 @@
 // transaction that is always rolled back.
 
 require('dotenv').config()
+const { systemOf } = require('../../lib/dbContext')   // fixtures use the system connection (TENANCY_MODE=strict has no request context)
 const { Pool } = require('pg')
 const spatial = require('../../services/inspectorSpatial')
 const { _internals: routeInternals } = require('../inspector-gis')
@@ -205,7 +206,7 @@ describe('inspector GIS routes', () => {
     inspector = await loginAs(app, 'demo.inspector@vungu.test', 'demo1234')
     viewer = await loginAs(app, 'demo.viewer@vungu.test', 'demo1234')
     planner = await loginAs(app, 'demo.planner@vungu.test', 'demo1234')
-    const p = await app.pg.query(
+    const p = await systemOf(app.pg).query(
       `INSERT INTO spatial_planning.permit_application
          (applicant_name, development_type, status, stand_number, location)
        VALUES ('GIS route test', 'new_building', 'approved', 'ZZ-ROUTE-1',
@@ -213,7 +214,7 @@ describe('inspector GIS routes', () => {
        RETURNING id`,
     )
     permitId = p.rows[0].id
-    const si = await app.pg.query(
+    const si = await systemOf(app.pg).query(
       `INSERT INTO spatial_planning.stage_inspection (permit_app_id, stage_number, attempt)
        VALUES ($1, 1, 1) RETURNING id`, [permitId])
     inspectionId = si.rows[0].id
@@ -221,10 +222,10 @@ describe('inspector GIS routes', () => {
 
   afterAll(async () => {
     for (const id of [orderId, oddOrderId].filter(Boolean)) {
-      await app.pg.query('DELETE FROM spatial_planning.enforcement_order WHERE id = $1', [id])
+      await systemOf(app.pg).query('DELETE FROM spatial_planning.enforcement_order WHERE id = $1', [id])
     }
-    await app.pg.query('DELETE FROM spatial_planning.permit_event WHERE permit_app_id = $1', [permitId])
-    await app.pg.query('DELETE FROM spatial_planning.permit_application WHERE id = $1', [permitId])
+    await systemOf(app.pg).query('DELETE FROM spatial_planning.permit_event WHERE permit_app_id = $1', [permitId])
+    await systemOf(app.pg).query('DELETE FROM spatial_planning.permit_application WHERE id = $1', [permitId])
     // uploaded test files live outside the DB
     await require('node:fs/promises')
       .rm(require('node:path').resolve(process.cwd(), 'uploads', 'permit-documents', permitId), { recursive: true, force: true })
@@ -306,15 +307,15 @@ describe('inspector GIS routes', () => {
   }, 30000)
 
   test('an inspector cannot log attendance on another inspector\'s assignment', async () => {
-    const other = await app.pg.query(`SELECT id FROM users WHERE email = 'demo.admin@vungu.test'`)
-    await app.pg.query('UPDATE spatial_planning.stage_inspection SET inspector_id = $1 WHERE id = $2', [other.rows[0].id, inspectionId])
+    const other = await systemOf(app.pg).query(`SELECT id FROM users WHERE email = 'demo.admin@vungu.test'`)
+    await systemOf(app.pg).query('UPDATE spatial_planning.stage_inspection SET inspector_id = $1 WHERE id = $2', [other.rows[0].id, inspectionId])
     const res = await app.inject({
       method: 'POST', url: `/api/stage-inspections/${inspectionId}/field-events`,
       headers: as(inspector), payload: { event_type: 'travelling' },
     })
     expect(res.statusCode).toBe(403)
     expect(res.json().error).toBe('not_assigned')
-    await app.pg.query('UPDATE spatial_planning.stage_inspection SET inspector_id = NULL WHERE id = $1', [inspectionId])
+    await systemOf(app.pg).query('UPDATE spatial_planning.stage_inspection SET inspector_id = NULL WHERE id = $1', [inspectionId])
   })
 
   // The inspector's case file asks for the orders on one stand. Before this the
@@ -514,7 +515,7 @@ describe('inspector GIS routes', () => {
     const body = ok.json().data
     expect(body.site.position.source).toBe('field_gps')
     expect(body.movedM).toBeGreaterThan(2000)
-    const ev = await app.pg.query(
+    const ev = await systemOf(app.pg).query(
       `SELECT detail FROM spatial_planning.permit_event WHERE permit_app_id = $1 AND event_type = 'site_location_set'`,
       [permitId],
     )
