@@ -197,6 +197,7 @@ const MIGRATIONS = [
   '170_statutory_periods.sql',
   '171_acknowledgement_starts_clock.sql',
   '172_stands_revenue_legacy_tenancy.sql',
+  '173_embedded_survey_legacy.sql',
 ]
 
 function createPool(env = process.env) {

@@ -22,7 +22,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env'), quiet: true
 const { Pool } = require('pg')
 
 // The number of authority-owned relations still without row-level security, 9 October 2026, after council_ops (a fresh build has 108; the development database, which is behind the migrations, 94). Lower it as they are protected.
-const DEBT_BASELINE = 46
+const DEBT_BASELINE = 26
 
 let failures = 0
 const check = (ok, msg) => { console.log(`  ${ok ? 'ok  ' : 'FAIL'}  ${msg}`); if (!ok) failures++ }
@@ -43,6 +43,12 @@ async function main() {
     const role = (await q("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = 'vungu_app'"))[0]
     if (role) check(role.rolsuper === false && role.rolbypassrls === false, 'the application role is neither a superuser nor able to bypass row-level security')
     else console.log('  info  no vungu_app role in this database')
+
+    const sv = await q("SELECT to_regclass('tenancy.surveyor_schema_access') AS t")
+    if (sv[0].t) {
+      const open = await q('SELECT schema_name, kind, relation, role_name FROM tenancy.surveyor_schema_access LIMIT 20')
+      check(open.length === 0, open.length ? `per-surveyor schemas reachable by the application or a direct client: ${open.map((o) => `${o.role_name}->${o.schema_name}${o.relation ? '.' + o.relation : ''}`).join(', ')}` : 'per-surveyor schemas are closed to the application role and direct clients')
+    }
 
     const sys = (await q("SELECT rolname, rolsuper, rolcreaterole FROM pg_roles WHERE rolname IN ('vungu_system','vungu_runtime')"))
     for (const r of sys) check(!r.rolsuper && !r.rolcreaterole, `${r.rolname} is not a superuser and cannot create roles`)
