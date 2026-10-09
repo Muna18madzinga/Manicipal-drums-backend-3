@@ -331,8 +331,8 @@ async function build() {
 
   await require('./src/lib/runtimeDb').assertRuntimeRole(server.pg.pool, { log: server.log })
 
-  // The database connection follows the person asking (TENANCY_MODE: off | warn | strict; docs/TENANCY.md). In 'off', the default,
-  // nothing changes. Installed here, before any route, so every route gets the same decoration; work that is the system's own
+  // The database connection follows the person asking (TENANCY_MODE: off | warn | strict; docs/TENANCY.md). Strict is the default.
+  // Installed here, before any route, so every route gets the same decoration; work that is the system's own
   // (sign-in, the audit log, notifications, jobs) says so with systemOf(fastify.pg).
   const dbContext = require('./src/lib/dbContext')
   const tenancy = dbContext.install(server)

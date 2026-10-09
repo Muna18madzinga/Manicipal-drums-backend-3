@@ -12,10 +12,10 @@
  *                                             and the short list reviewed by hand (scripts/tenancy-route-audit.js).
  *
  * MODES (TENANCY_MODE)
- *   off     (default) nothing changes: fastify.pg is the plain pool. Safe to ship.
+ *   off     nothing changes: fastify.pg is the plain pool. The old behaviour, kept as an explicit opt-out.
  *   warn    inside a request fastify.pg is scoped; outside one (a job, startup) it is unscoped and says so in the log, so the
  *           places that need systemOf can be found without breaking anything.
- *   strict  as warn, but database access outside a request through fastify.pg throws: the system must say so.
+ *   strict  (default) as warn, but database access outside a request through fastify.pg throws: the system must say so.
  *
  * WHO IS ASKING. An AsyncLocalStorage store is opened for every request (the onRequest hook) and the authentication step puts the
  * person in it (setUser). Until authentication has run, or on a route that does not authenticate, the person is the public.
@@ -31,8 +31,9 @@ const als = new AsyncLocalStorage()
 const MODES = ['off', 'warn', 'strict']
 
 const modeOf = (env = process.env) => {
-  const m = String(env.TENANCY_MODE || 'off').trim().toLowerCase()
-  return MODES.includes(m) ? m : 'off'
+  // strict unless told otherwise; a typo in the setting must not quietly switch the protection off
+  const m = String(env.TENANCY_MODE || 'strict').trim().toLowerCase()
+  return MODES.includes(m) ? m : 'strict'
 }
 
 /** Open the store for one request. Use as the body of an onRequest hook: runWithRequest(done). */

@@ -30,10 +30,10 @@ const fastifyOf = (pg) => ({ pg, log: { warn: jest.fn() }, decorate() {} })
 
 describe('the mode', () => {
   test('is off unless asked, and ignores nonsense', () => {
-    expect(modeOf({})).toBe('off')
+    expect(modeOf({})).toBe('strict')
     expect(modeOf({ TENANCY_MODE: 'STRICT' })).toBe('strict')
     expect(modeOf({ TENANCY_MODE: ' warn ' })).toBe('warn')
-    expect(modeOf({ TENANCY_MODE: 'yolo' })).toBe('off')
+    expect(modeOf({ TENANCY_MODE: 'yolo' })).toBe('strict')
   })
 })
 

@@ -71,6 +71,10 @@ just been allowed to create.
   needs it) is still to do. `scripts/verify-plan-model.js` fails if those reference tables become writable again.
 - **QGIS Desktop and the tile server** connect to the database directly and are not scoped.
 
+## Mode: strict is the default
+
+`TENANCY_MODE` is `strict` unless set otherwise (`warn` to find un-scoped code, `off` for the old behaviour); an unrecognised value is treated as `strict`. In strict mode every query made through `fastify.pg` runs as the person asking, and database access outside a request throws unless it says `systemOf(fastify.pg)`.
+
 ## The runtime login (not the owner)
 
 The server must not connect as the database owner or any superuser. Two accounts, two jobs:

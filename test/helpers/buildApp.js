@@ -13,7 +13,7 @@ const { appealRoutes } = require('../../src/routes/appeals')
 async function buildAppForTest() {
   const app = Fastify({ logger: false })
   await app.register(fastifyPostgres, { connectionString: process.env.APP_DATABASE_URL || process.env.DATABASE_URL })
-  // The same connection context as server.js, in whatever TENANCY_MODE says (default off): run these suites with
+  // The same connection context as server.js, in whatever TENANCY_MODE says (default strict): run these suites with
   // TENANCY_MODE=strict to prove the write paths too.
   const dbContext = require('../../src/lib/dbContext')
   dbContext.install(app)
