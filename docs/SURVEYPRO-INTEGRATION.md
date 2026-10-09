@@ -72,11 +72,13 @@ Through the authority's reader login (`survey_share`, SurveyPro migration 099):
 |---|---|
 | launch endpoint, Ed25519 token library, key configuration | small |
 | a SurveyPro reader (`SURVEYPRO_DATABASE_URL` as the authority's reader login) and an importer: delivered / reviewed status onto `survey_task`; accepted parcels into `land.parcel` | medium |
-| the surveyor console links to SurveyPro; the embedded module is switched off (`EMBEDDED_SURVEY=off`, already in place) | small, at cutover |
+| the surveyor console's **Survey in SurveyPro** button | done |
 
-## Already done on the VunGIS side
+## The embedded copy is gone
 
-The embedded copy of SurveyPro is frozen: its `survey.*` tables are closed to the request plane (migration 173), the per-surveyor schemas are proven unreachable by the application role (`tenancy.surveyor_schema_access`), and `EMBEDDED_SURVEY=off` switches the module off.
+The copy of SurveyPro that was embedded in VunGIS (the Survey Task Manager at `/api/survey` and the `/surveyor-workspace` screens) has been removed, so surveying has one source of truth. What stays is VunGIS's own job module: `survey_task` and the `/surveyor` console with its job queue (`/surveyor/jobs`). Old `/surveyor-workspace` bookmarks go to the console.
+
+The `survey.*` tables and the `surveyor_*` schemas it used are still in the database, closed to the application role (migration 173; `tenancy.surveyor_schema_access` proves it), until the owner confirms there is no production data to keep. Then one migration drops them. The uncommitted `TransformView.vue` work from the old tree is saved as a patch in the SurveyPro repository (`docs/vungis-TransformView-wip.patch`, branch `beta-vungis`).
 
 ## Setting up the launch
 

@@ -121,7 +121,7 @@ const CAPABILITIES = [
     routes: ['/api/gis-styles'] },
   { id: 'survey.compute',  group: 'Spatial', label: 'Run survey computations',
     roles: ['admin', 'surveyor'],
-    routes: ['/api/survey', '/api/control-points'] },
+    routes: ['/api/surveyor'] },
 
   // ── GIS Branch (GMS). Role lists are the ones the routes enforce. ────
   { id: 'gms.register',    group: 'GIS Branch', label: 'Open the parcel register',

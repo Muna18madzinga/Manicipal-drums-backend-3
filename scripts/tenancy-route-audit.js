@@ -22,7 +22,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env'), quiet: true
 const { Pool } = require('pg')
 
 const ROOT = path.join(__dirname, '..')
-const DIRS = ['src/routes', 'src/services', 'src/survey', 'src/middleware', 'src/utils']
+const DIRS = ['src/routes', 'src/services', 'src/middleware', 'src/utils']
 const SKIP = /(__tests__|\.test\.|\.spec\.|\/attic\/|\.d\.ts$)/
 
 function walk(dir, out = []) {

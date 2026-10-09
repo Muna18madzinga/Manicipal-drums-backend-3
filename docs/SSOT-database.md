@@ -42,8 +42,8 @@ Legend: ✅ allowlisted migration · ⚠️ dump/seed-only (missing on fresh dep
 |---|---|
 | **Canonical** | `public.users` ✅ (001 + 060/061/093); `public.user_profiles` 1:1 (✅ 078) |
 | **Readers/Writers** | `src/middleware/jwtAuth.js`, `src/routes/auth.js`, invite routes, `development-applications.js`, `residency.js` |
-| **Duplicates/Legacy** | `survey.users` (✅ 102) is a **separate** merge-app identity, auto-provisioned from vungu JWT (`src/survey/plugin.js:21-50`); not interchangeable with `public.users` |
-| **Notes** | survey identity sync is one-way (vungu → survey) |
+| **Duplicates/Legacy** | `survey.users` (migration 102) belonged to the Survey Task Manager that was embedded here and has been removed (surveying moved to SurveyPro). The `survey.*` tables and the `surveyor_*` schemas remain, closed to the application role (migration 173), until the owner confirms there is no production data to keep and drops them |
+| **Notes** | survey identity now lives in SurveyPro; a job is opened there by signed launch token (docs/SURVEYPRO-INTEGRATION.md) |
 
 ## 4. Development applications (citizen portal)
 

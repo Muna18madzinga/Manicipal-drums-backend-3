@@ -701,22 +701,8 @@ async function build() {
     server.log.error({ err: error }, 'Failed to register tile routes')
   }
 
-  // Survey Task Manager — ESM plugin, mounted under
-  // /api/survey so its route names never collide with vungu's /api/* set.
-  // FROZEN: surveying has moved to SurveyPro (docs/SURVEYPRO-INTEGRATION.md). EMBEDDED_SURVEY=off switches this copy off for
-  // cutover; it stays on until SurveyPro is reachable from the surveyor console.
-  try {
-    if (String(process.env.EMBEDDED_SURVEY || 'on').toLowerCase() === 'off') {
-      console.log('⏸️  Embedded Survey Task Manager is switched off (EMBEDDED_SURVEY=off): surveying is done in SurveyPro')
-    } else {
-    const { default: surveyPlugin } = await import('./src/survey/plugin.js')
-    await server.register(surveyPlugin, { prefix: '/api/survey' })
-    console.log('✅ Survey Task Manager routes registered under /api/survey (frozen: see docs/SURVEYPRO-INTEGRATION.md)')
-    }
-  } catch (error) {
-    server.log.error({ err: error }, 'Failed to register Survey Task Manager routes')
-    console.error('❌ Failed to register Survey Task Manager routes:', error.message)
-  }
+  // Surveying is done in SurveyPro (docs/SURVEYPRO-INTEGRATION.md). The Survey Task Manager that used to be embedded here, mounted at
+  // /api/survey, is gone; a job is opened in SurveyPro from POST /api/surveyor/jobs/:id/launch (routes/surveyor.js).
 
   // Register OGC Services Routes (WMS/WFS/WMTS)
   try {
