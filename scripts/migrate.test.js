@@ -126,6 +126,7 @@ describe('migration plan', () => {
       '171_acknowledgement_starts_clock.sql',
       '172_stands_revenue_legacy_tenancy.sql',
       '173_embedded_survey_legacy.sql',
+      '174_parcel_survey_class.sql',
     ])
 
     for (const filename of MIGRATIONS) {

@@ -1,6 +1,6 @@
 # VunGIS and SurveyPro: the hand-off contract
 
-Status: v2, 2026-10-09. Decisions taken; SurveyPro's database layer built and verified; **the launch is built and verified end to end** (VunGIS issues the token, SurveyPro accepts it and opens the project); reading accepted work back into VunGIS is next.
+Status: v2, 2026-10-09. Decisions taken; SurveyPro's database layer built and verified; **the launch and the importer are built and verified end to end** (VunGIS issues the token and SurveyPro opens the project; VunGIS reads the council's accepted work back through its reader login). Still to come on the SurveyPro side: delivering a project and the reviewer's accept / return, so there is something to read.
 The SurveyPro side is described in its own repository: `docs/AUTHORITY_TENANCY.md`.
 
 ## Decisions (from the owner)
@@ -71,8 +71,36 @@ Through the authority's reader login (`survey_share`, SurveyPro migration 099):
 | | |
 |---|---|
 | launch endpoint, Ed25519 token library, key configuration | small |
-| a SurveyPro reader (`SURVEYPRO_DATABASE_URL` as the authority's reader login) and an importer: delivered / reviewed status onto `survey_task`; accepted parcels into `land.parcel` | medium |
+| a SurveyPro reader (`SURVEYPRO_DATABASE_URL` as the authority's reader login) and an importer: delivered / reviewed status onto `survey_task`; accepted parcels into `land.parcel` | done (below) |
 | the surveyor console's **Survey in SurveyPro** button | done |
+
+## The importer (SurveyPro to VunGIS)
+
+`node scripts/import-surveypro.js` is a dry run; `--apply` does it; `--json` gives the report as JSON. It needs `SURVEYPRO_DATABASE_URL` (the council's reader login on SurveyPro, made by SurveyPro's `scripts/create-authority-reader.js`) and `DATABASE_URL` (VunGIS, the system plane: `land.parcel` is national data, so the application role cannot write it). Run it from a scheduler (every fifteen minutes is plenty). The dry run and `--apply` share one code path, the second committing what the first rolls back, so a dry run cannot promise what apply does differently. Rules are in `src/services/surveyproImport.js`:
+
+- **Status.** A job follows its project: delivered becomes *submitted*; the reviewer's decision becomes *accepted*, or *returned* (a rejection also returns it to the surveyor). A surveyor who delivers again after a return is *submitted* again. It only moves forward, never out of *accepted* or *cancelled*, and a job that belongs to another authority is reported, not touched.
+- **Parcels.** Only after the project is *accepted*, and only finalized, active parcels. They enter `land.parcel` as **authority-origin** parcels with no `sg_ref` (they await the Surveyor-General, they are not approved by it), `survey_class` = **the SI 727 survey class the surveyor declared** (below), `accuracy_basis = 'surveyed'`, status *current*, custodian "Local authority survey (SurveyPro), awaiting the Surveyor-General", and `source_relation = 'surveypro'`, `source_key = <authority>:<project>:<parcel>` so a run can be repeated and checked. A project with a township gives stands; one without gives plots. A parcel's outbox event is raised like any other (the ERP link).
+- **Survey class is not the record's state.** SI 727 (the Land Survey (General) Regulations, 1979), Second Schedule para 1, has three survey classes by the *kind* of survey: **A** determines the position of town survey-marks, **B** is surveys in townships, **C** is every other survey. There is no class D. The classes set the limits of error a survey is held to (Land Survey Act [Chapter 20:12] s9(1)(c), s13(1)(d)). Whether the council has accepted a survey, or the Surveyor-General has approved it, is shown by `origin`, `sg_ref` and `status`, never by the class. The surveyor declares the class on the project in SurveyPro (`PATCH /api/survey-projects/:id/survey-class`, migration 101); the share view carries it as `survey_class`; the importer writes it to `land.parcel.survey_class` (migration 174). It is **never guessed**: a project with no declared class is refused, and so is class A (town survey-marks, not parcels), with a reason that says so. A class that does not match the project (a township should be B, otherwise C) is reported as a warning, not refused, because whether a place is a township is a legal question the project's township field only approximates.
+- **The datum, decided here.** SurveyPro tags its geometry with the EPSG code for the Lo zone (2228x); VunGIS transforms survey coordinates with its **own** registry (`gis_ops.crs_registry`, SRIDs 9220xx), whose Cape to WGS 84 transformation is the one the Surveyor-General platform confirms (today Merry & Rens, accuracy ±20 m *pending DSG confirmation*). The importer re-tags the geometry with the registry SRID for the same zone (the numbers do not change: same projection, same axes) before transforming, so every parcel in the register is transformed the same way and carries the method and accuracy used. A Lo zone the registry lacks (Lo25) or a non-Lo system (UTM) is refused with a reason, not guessed.
+- **Area** is computed from the geometry; SurveyPro's figure is compared and a disagreement beyond half a square metre and a tenth of a percent is reported as a warning. The geometry's figure is the one kept.
+- **Nothing already imported is ever changed.** If SurveyPro's boundary has since changed the parcel is reported as *diverged*: a changed boundary needs a new acceptance. (`land.parcel_guard` enforces the same below the application.)
+- **A layout with any problem is refused whole**, with the reasons: an invalid or non-polygon geometry, an unsupported system, a repeated stand number, a stand number already in the township, or an overlap with an existing stand or plot (a farm does not count: a township is carved out of one) or between its own parcels. Parcels that merely share an edge do not overlap.
+
+Check the township on a launched project before delivering it: the launch pre-fills it with the job's ward, and the township becomes the parcels' township code.
+
+Tested on the live database (`test/surveypro-import.test.js`, 24 tests) and end to end against a real SurveyPro database built from its migrations, through a reader login its own script created: the council's project and parcels were read through the share views, the draft parcel was left out, two parcels were imported in the right place on the ground, a second run changed nothing, and the login could not read SurveyPro's base tables.
+
+## Survey classes and the register
+
+Decided 2026-10-09, after reading SI 727 (the scan) and the Land Survey Act [Chapter 20:12] (2012 update). The classes are the SI 727 classes and nothing else; the Act has no A to D grade.
+
+- `land.parcel.survey_class` is `A`, `B`, `C` or NULL (migration 174). NULL means not declared, or not an SI 727 survey (a digitised extract, say). It is never defaulted.
+- How a position was arrived at is `accuracy_basis` (`surveyed`, `general_plan`, `map_digitised`, `estimated`, `unknown`; migration 137). Approval by the Surveyor-General is `sg_ref` / `general_plan_id`; origin is `origin`. Migration 174 fills `accuracy_basis` where it was empty, from what the old class stood for.
+- `land.parcel.accuracy_class` (the old A to D) is now nullable and **legacy**: existing values are kept as history, new writers leave it empty. The Surveyor-General plan importer still writes `A` (the register screens and tests read it) alongside `accuracy_basis = 'general_plan'`; retiring that is a later step with the screens.
+- Features (`gis_ops.feature`) and buildings keep their own required A to D map-capture grade. That is a grade for points and lines drawn on the map, not an SI 727 survey, and is a separate decision.
+- The importer refuses class A for parcels (it is surveys of town survey-marks) and warns when the class disagrees with the township (B in a township, otherwise C).
+
+Still to check with a surveyor against the paper regulations: SurveyPro's tolerance kernel applies para 5 style distance factors (0.04 and 0.06) when comparing found beacons, and its comment cites a "para 7(5)" that the scan does not show. Section 15(1)(ii) ties acceptance of previous-survey coordinates to para 7, whose limits are 0.01 (class B) and 0.02 (class C) times the distance. The scan's OCR of paras 5 and 7 was not clean enough to settle it.
 
 ## The embedded copy is gone
 

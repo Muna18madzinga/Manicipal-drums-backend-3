@@ -121,14 +121,14 @@ async function importGeneralPlan(pg, input, user) {
       INSERT INTO land.parcel
         (stand_no, township_code, ward_code, geom_source, source_srid, geom_wgs84,
          transform_method, transform_accuracy_m, area_m2, sg_ref, general_plan_id,
-         accuracy_class, source, created_by)
+         accuracy_class, accuracy_basis, source, created_by)
       SELECT i.stand_no, $1,
              COALESCE(i.ward_code, (
                SELECT w.ward_code FROM admin.ward w
                 WHERE ST_Intersects(w.geom, ST_PointOnSurface(ST_Transform(i.g, 4326))) LIMIT 1)),
              i.g, $2, ST_Multi(ST_Transform(i.g, 4326)),
              $3, $4, round(ST_Area(i.g)::numeric, 2), $5, $6,
-             'A', 'Survey Section approved general plan ' || $5, $7
+             'A', 'general_plan', 'Survey Section approved general plan ' || $5, $7
         FROM gp_in i ORDER BY i.idx
       RETURNING parcel_id, stand_no, area_m2, ward_code, sg_ref`,
     [township_code, source_srid, crs.transform_method, crs.accuracy_m, sg_ref, gp.import_id, user?.id ?? null])
