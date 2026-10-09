@@ -8,6 +8,7 @@
  *   GET   /surveyor/jobs/:id                  (reader)   — task + citizen-app context + records
  *   PATCH /surveyor/jobs/:id                  (surveyor) — claim / status transition
  *   POST  /surveyor/jobs/:id/findings         (surveyor) — submit findings + recommendation
+ *   POST  /surveyor/jobs/:id/launch           (surveyor) — open the job in SurveyPro (signed, 10-minute token)
  *   GET   /surveyor/jobs/:id/coordinates      (reader)
  *   POST  /surveyor/jobs/:id/coordinates      (surveyor)
  *   GET   /surveyor/jobs/:id/beacons          (reader)
@@ -27,6 +28,7 @@
 
 const { requireRole } = require('../middleware/jwtAuth')
 const { computeAreaConsistency } = require('../utils/area-computation')
+const launchToken = require('../lib/launchToken')
 
 const SURVEYOR = ['surveyor', 'admin']
 const ASSIGNERS = ['planner', 'eo', 'planning_clerk', 'admin']
@@ -214,6 +216,43 @@ async function surveyorRoutes(fastify) {
   })
 
   // ── Findings (report back to planner / EO) ─────────────────────────
+  // ── Open the job in SurveyPro ─────────────────────────────────────────
+  // Surveying is done in SurveyPro (docs/SURVEYPRO-INTEGRATION.md). This hands the assigned surveyor, and the job, over: it returns a
+  // URL carrying a short-lived token signed with VunGIS's private key. SurveyPro checks it with the public key, finds the surveyor by
+  // email, confirms their appointment with this job's authority, and opens (or reopens) a project linked to the job.
+  // Only the surveyor the job is assigned to can launch it: a launch is the surveyor starting work.
+  fastify.post('/surveyor/jobs/:id/launch', { preHandler: requireRole(fastify, SURVEYOR) }, async (request, reply) => {
+    const task = await loadTask(request, reply); if (!task) return
+    if (!task.assigned_to) return reply.code(409).send({ success: false, error: 'not_assigned', message: 'Claim the job before opening it in SurveyPro.' })
+    if (task.assigned_to !== request.user.id) return reply.code(403).send({ success: false, error: 'not_your_job' })
+    if (['cancelled', 'accepted'].includes(task.status)) return reply.code(409).send({ success: false, error: 'job_closed' })
+
+    const privateKey = launchToken.loadPrivateKey()
+    if (!privateKey || !process.env.SURVEYPRO_URL) {
+      return reply.code(503).send({ success: false, error: 'launch_not_configured', message: 'SurveyPro is not connected to this system yet.' })
+    }
+    try {
+      const { rows } = await pg.query(
+        `SELECT la.code, la.authority_name AS name FROM spatial_planning.survey_task t JOIN public.local_authorities la ON la.id = t.authority_id WHERE t.id = $1`, [task.id])
+      if (!rows[0]) return reply.code(409).send({ success: false, error: 'no_authority' })
+      const { token, claims } = launchToken.sign(
+        launchToken.claimsForJob({
+          ...task, lon: task.lng, permit_ref: task.tpd_reference || task.dev_register_no,
+          authority_code: rows[0].code, authority_name: rows[0].name,
+        }, request.user),
+        { privateKey, kid: launchToken.keyId() })
+      // starting work: an assigned job becomes in progress
+      if (task.status === 'assigned') {
+        await pg.query("UPDATE spatial_planning.survey_task SET status = 'in_progress', updated_at = NOW() WHERE id = $1 AND status = 'assigned'", [task.id])
+      }
+      request.log.info({ job: task.id, jti: claims.jti, authority: rows[0].code }, 'survey job launched in SurveyPro')
+      return reply.send({ success: true, data: { url: launchToken.launchUrl(token), expires_at: new Date(claims.exp * 1000).toISOString(), authority_code: rows[0].code } })
+    } catch (err) {
+      request.log.error({ err }, 'launch survey job failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    }
+  })
+
   fastify.post('/surveyor/jobs/:id/findings', { preHandler: requireRole(fastify, SURVEYOR) }, async (request, reply) => {
     const task = await loadTask(request, reply); if (!task) return
     const b = request.body || {}

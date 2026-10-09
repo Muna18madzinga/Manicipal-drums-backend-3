@@ -1,97 +1,112 @@
 # VunGIS and SurveyPro: the hand-off contract
 
-Status: DRAFT for sign-off, 2026-10-09. Nothing below is built yet except the tenancy side (migration 173) and the cutover switch.
+Status: v2, 2026-10-09. Decisions taken; SurveyPro's database layer built and verified; **the launch is built and verified end to end** (VunGIS issues the token, SurveyPro accepts it and opens the project); reading accepted work back into VunGIS is next.
+The SurveyPro side is described in its own repository: `docs/AUTHORITY_TENANCY.md`.
 
-## Decision
+## Decisions (from the owner)
 
-SurveyPro is a separate product (own repository, own database, offered as a SaaS to local authorities). VunGIS does not embed it: it integrates with it.
+1. **Tokens are signed asymmetrically.** VunGIS holds the private key; SurveyPro holds only the public key.
+2. **Plan documents are stored as files with a checksum.** The formats beyond PDF, and how they are stored, are to be revisited and redesigned later.
+3. **Coordinates are carried as westing and southing plus the Lo zone** (SurveyPro stores Cape / Lo south-orientated, X ordinate = westing, Y ordinate = southing). Other projections, UTM first, must fit without a redesign. This is SurveyPro's concern (see below): VunGIS holds geometry with its SRID and lets PostGIS transform it.
+4. **SurveyPro hosts the database and shares views with local authorities the way VunGIS gives them access:** a login of the authority's own that reads only its views.
+5. **Both employed and contracted surveyors**, designed for both: councils often contract surveyors for cadastral surveys.
 
-Ownership: **surveyors are employed by the local authority, so survey datasets are owned by the authority and administered by the surveyor.**
+Ownership, restated: surveyors work for the local authority (employed or contracted), so **survey datasets are owned by the authority and administered by the surveyor.**
+
+## What decision 4 changes
+
+The first draft had SurveyPro push a bundle of coordinates, beacons and parcels into VunGIS's `survey_*` tables. That is dropped. If SurveyPro hosts the data and shares views, VunGIS should **read** what it needs rather than hold a second copy that can drift:
 
 | | System of record |
 |---|---|
-| Survey working data (projects, field points, computations, drafts, plan sheets) | SurveyPro, in the surveyor's schema (`surveyor_<x>`) |
-| The job the authority assigns, who it is assigned to, its status | VunGIS: `spatial_planning.survey_task` (tenant data) |
-| What the surveyor hands back and the authority accepts (coordinates, beacons, parcels, plan documents, findings) | VunGIS: `survey_coordinate`, `survey_beacon`, `survey_parcel`, `survey_document`, `survey_finding` (tenant data) |
-| The cadastre once a plan is accepted | VunGIS `land.parcel` (custody rules in `SPATIAL-NAMING-CONVENTION.md`); lodging with the Surveyor-General is a later step |
+| Survey work (projects, points, parcels, beacons, plan files, reviews) | **SurveyPro**, in tables keyed to an authority and a surveyor, isolated by row-level security |
+| The job the authority assigns, and its status | **VunGIS** `spatial_planning.survey_task` (tenant data) |
+| Accepted parcels, once a plan is accepted | **VunGIS** `land.parcel` (`origin = 'authority'`, `source_relation = 'surveypro'`); lodging with the Surveyor-General comes later |
 
-For a SaaS serving several authorities, the simplest strong boundary is **one SurveyPro database per authority**, with the per-surveyor schemas as the working partition inside it. SurveyPro then needs no organisation column. (Today it has none, and its shared `public` tables are visible across surveyors; that is its own known gap, not VunGIS's.)
+An authority reaches its survey data three ways, all returning the same rows:
+- **the SurveyPro web application**, signed in as an appointed surveyor, head surveyor or reviewer;
+- **a database login of its own** (`sp_reader_<code>`) over `survey_share.projects / points / parcels / beacons / reviews`, for QGIS and the like;
+- **VunGIS**, which uses that same login to read accepted work and to show a job's progress.
 
 ## The flow
 
-1. A planner or EO assigns a job in VunGIS (`POST /api/surveyor/jobs`). It is tenant data of the authority.
-2. The surveyor opens the job and chooses **Survey in SurveyPro**. VunGIS issues a *launch token* and opens SurveyPro with it.
-3. SurveyPro verifies the token, finds or creates the surveyor's profile and schema, and creates (or reopens) a project linked to the job (`vungis_job_id`).
-4. The surveyor works in SurveyPro.
-5. The surveyor chooses **Deliver to council**. SurveyPro posts a *deliverable bundle* to VunGIS with the scoped delivery token it received at launch.
-6. VunGIS records the bundle against the job as the surveyor's submission (job status `submitted`). A planner or the head surveyor reviews it.
-7. On acceptance the parcels enter the authority's cadastre (`land.parcel`, `origin = 'authority'`). Lodging with the Surveyor-General is out of scope here.
+1. A planner or EO assigns a job in VunGIS (`POST /api/surveyor/jobs`).
+2. The surveyor chooses **Survey in SurveyPro**. VunGIS signs a *launch token* and opens SurveyPro with it.
+3. SurveyPro verifies the token with VunGIS's public key and finds the surveyor. The surveyor must hold an **appointment** with that authority (surveyor, employed or contracted). SurveyPro creates, or reopens, a project for that authority linked to the job (`external_job_id`).
+4. The surveyor works in SurveyPro and **delivers** the project (`delivered_at`).
+5. An authority **reviewer** (or head surveyor, never the project's own surveyor) records *accepted*, *rejected* or *returned*. Append-only.
+6. VunGIS reads the status through the shared views: the job shows as submitted, then accepted. On acceptance VunGIS imports the parcels into `land.parcel`, in their own system and with their axes labelled.
 
 ## Launch token (VunGIS to SurveyPro)
 
-`POST /api/surveyor/jobs/:id/launch` (surveyor assigned to the job, or admin) returns `{ url, expires_at }`.
-
-A signed JWT, valid 10 minutes, single use (`jti`):
+`POST /api/surveyor/jobs/:id/launch` (the assigned surveyor, or an admin) returns `{ url, expires_at }`. The token is a JWT signed **Ed25519**, valid 10 minutes, single use (`jti`):
 
 ```
-iss: "vungis"            aud: "surveypro"          sub: <surveyor email>        name, role
-authority: { code, name }                       // SurveyPro checks it matches its own deployment
-job: { id, task_type, stand_number, suburb_ward, gauss_lo, instructions, due_date, location: { lon, lat }, permit_ref }
-deliver: { url, token }                         // scoped delivery token, below
+iss "vungis"   aud "surveypro"   sub <surveyor email>   name
+authority { code, name }         SurveyPro checks the code against survey.authority and the surveyor's appointments
+job { id, task_type, stand_number, suburb_ward, gauss_lo, instructions, due_date, location { lon, lat }, permit_ref }
 ```
 
-Recommended signing: **Ed25519 (asymmetric)**. VunGIS signs; SurveyPro holds only the public key, so a compromise of SurveyPro cannot mint tokens. (A shared HS256 secret works but puts a minting key in a second system.)
+There is no delivery token: a delivery is a status change inside SurveyPro, not a push to VunGIS. (An optional notification from SurveyPro to VunGIS on delivery and on a review decision can follow; VunGIS can also simply read the views.)
 
-## Delivery token (SurveyPro to VunGIS)
+## What VunGIS reads
 
-Separate JWT, `aud: "vungis-handoff"`, claims `{ sub (user id), job (task id), scope: "deliver" }`, valid 8 hours. It authorises exactly one thing: `POST /api/handoff/jobs/:id/deliverables` for that job. It is not a login session. VunGIS looks the user up, confirms the job is assigned to them and belongs to their authority, and runs the insert as that user (so row-level security applies).
+Through the authority's reader login (`survey_share`, SurveyPro migration 099):
 
-## Deliverable bundle
-
-`POST /api/handoff/jobs/:id/deliverables`, JSON, idempotent on `bundle_id` (resending the same bundle changes nothing).
-
-```
-bundle_id        uuid, chosen by SurveyPro
-project          { id, name, survey_type, survey_date, lo_zone: 25|27|29|31|33 }
-coordinates[]    { label, y_westing, x_southing, elevation?, description? }
-beacons[]        { corner_label, beacon_type, y_westing, x_southing, status, notes? }
-parcels[]        { stand?, designation?, points: [{ label, y_westing, x_southing }], area_m2?, perimeter_m?, closure_error_m?, closure_ratio? }
-documents[]      { doc_type, title, file (multipart), sha256 }
-findings         { summary, recommendation?, conditions?, notes? }
-```
-
-### Coordinates: the axes are not easting and northing
-
-SurveyPro stores Cape / Lo coordinates south-orientated: **Y is Westing, X is Southing** (EPSG:22291 family, `+axis=wsu`; SurveyPro's `FIX_CAPE_LO_AXIS.md`). VunGIS's survey tables use `easting` and `northing`. The bundle therefore carries `y_westing` / `x_southing` and a `lo_zone`, and **VunGIS converts explicitly**; no field called easting or northing may carry a Y or X. The check script that pins the two conventions lives in the Surveyor-General platform repository.
-
-### Parcels
-
-VunGIS recomputes area, perimeter and closure from the points (`computeAreaConsistency`) and records any disagreement with SurveyPro's figures. The server's figures are the ones kept.
-
-### Documents
-
-SurveyPro produces binary plans (SI 727 PDFs, schedules). `survey_document` today holds rendered **text** and allows only `dsg_certificate` and `report_on_survey`. Plans need to be stored as files with a checksum; see decision 2.
-
-## Gaps this exposes on the VunGIS side
-
-- `survey_coordinate.coord_system` allows `WGS84`, `Lo31`, `Lo29`, `UTM35S`, `other`, but jobs may be in zones 25, 27, 29, 31 and 33 (`survey_task.gauss_lo`). Lo25, Lo27 and Lo33 jobs cannot store coordinates in their own system.
-- `survey_document` cannot hold a file.
-- Nothing yet issues launch tokens or accepts a bundle.
-
-## What changes where
-
-| | Build |
+| view | carries |
 |---|---|
-| VunGIS (this repository) | launch endpoint, delivery endpoint, token library, migration for zones and document files, tests; the surveyor console links to SurveyPro |
-| SurveyPro (its repository) | accept a launch token (`/auth/launch`), store `vungis_job_id` on projects, "Deliver to council" action producing the bundle, deployment config naming its authority |
-| Cutover | deploy SurveyPro for the authority; ship the above; set `EMBEDDED_SURVEY=off`; repoint the surveyor console |
+| `projects` | authority, name, type, district, surveyor name / licence / firm, engagement, `external_job_id`, `delivered_at`, latest review decision and note |
+| `points`, `parcels` | the geometry in its own system with `srid`, `lo_zone`, `axis_order`; `y_westing` / `x_southing` for Cape / Lo, `easting` / `northing` for anything else |
+| `beacons` | adopted beacons, westing and southing |
+| `reviews` | every decision, who and when |
 
-Already done: the embedded copy is frozen and its `survey.*` tables are closed to the request plane (migration 173); `tenancy.surveyor_schema_access` proves the per-surveyor schemas are unreachable by the application role; `EMBEDDED_SURVEY=off` switches the module off. Existing data in the embedded per-surveyor schemas is exported to SurveyPro once, at cutover (the dev database holds none).
+**Coordinates.** VunGIS reads the geometry (`geom`, with its `srid`) and never handles raw westing / southing numbers, so it has no axis convention of its own to get wrong: the Lo systems declare `axis=wsu` in `spatial_ref_sys` and `ST_Transform` honours it (checked: a point sent to Cape / Lo29 and back returns exactly). The `y_westing` / `x_southing` / `easting` / `northing` / `axis_order` columns exist for people and tools that read the views (QGIS, a spreadsheet), not for VunGIS. What *does* need care is the **datum**: Cape or Arc 1950, and the rotation signs used between them. That is what the Surveyor-General platform's `check-datum-conventions.js` pins, and the importer must use the transformation that script confirms.
 
-## Decisions needed
+**Parcels.** VunGIS recomputes area, perimeter and closure from the geometry (`computeAreaConsistency`) and records any disagreement with SurveyPro's figures; its own are kept.
 
-1. **Token signing**: Ed25519 (recommended) or a shared secret?
-2. **Plan documents**: store PDFs as files in VunGIS with a checksum (recommended), or keep only a reference to SurveyPro?
-3. **Coordinate carriage**: accept `y_westing` / `x_southing` plus `lo_zone` as above, converting on arrival?
-4. **Where SurveyPro runs**: hosted by you for several authorities (database per authority), or deployed inside each authority?
-5. **Who the surveyors are**: employees only, or also contracted private surveyors who work for the authority from their own SurveyPro accounts? That decides whether a surveyor's SurveyPro identity is created from the launch token or already exists.
+**Files.** Plan documents are stored as files in SurveyPro with a checksum and offered to the authority as a list with a download link; SurveyPro's tables for them are not built yet (`survey.project_file`). Redesign for more formats comes later.
+
+## What VunGIS builds
+
+| | |
+|---|---|
+| launch endpoint, Ed25519 token library, key configuration | small |
+| a SurveyPro reader (`SURVEYPRO_DATABASE_URL` as the authority's reader login) and an importer: delivered / reviewed status onto `survey_task`; accepted parcels into `land.parcel` | medium |
+| the surveyor console links to SurveyPro; the embedded module is switched off (`EMBEDDED_SURVEY=off`, already in place) | small, at cutover |
+
+## Already done on the VunGIS side
+
+The embedded copy of SurveyPro is frozen: its `survey.*` tables are closed to the request plane (migration 173), the per-surveyor schemas are proven unreachable by the application role (`tenancy.surveyor_schema_access`), and `EMBEDDED_SURVEY=off` switches the module off.
+
+## Setting up the launch
+
+1. In VunGIS: `node scripts/generate-launch-keys.js` writes `.launch-key.pem` (private, git-ignored) and prints the public key. Set `SURVEYPRO_URL` (where SurveyPro's web application is served) and `SURVEYPRO_LAUNCH_KEY_FILE=.launch-key.pem`.
+2. In SurveyPro: set `VUNGIS_LAUNCH_PUBLIC_KEY` to that public key; run its migrations (096-100); an administrator creates the two group roles once (its `docs/AUTHORITY_TENANCY.md`).
+3. In SurveyPro, add the council (`survey.authority`, code = VunGIS `local_authorities.code`) and its first head surveyor (the platform operator does this once, in SQL). From then on the head surveyor appoints people through `POST /api/authorities/:code/members`.
+4. A surveyor registers in SurveyPro with the same email address they use in VunGIS, and is appointed. Then **Survey in SurveyPro** on a job works.
+
+Check the keys any time with `node scripts/generate-launch-keys.js --check`.
+
+## Decided
+
+1. **Appointments are made by the council's head surveyor in SurveyPro** (the council manages its own panel, employed and contracted alike). VunGIS never creates one. A surveyor the council has not appointed is told so, by name, when they try to launch.
+2. **VunGIS reads SurveyPro through the authority's reader login** over the network: exactly the access councils already get (`scripts/create-authority-reader.js` in SurveyPro).
+
+## Open points
+1. **Authority codes** must match between the two systems (`local_authorities.code` and `survey.authority.code`). One of them should be the register; the Surveyor-General platform's list is the natural source.
+2. **Private practice.** SurveyPro still serves independent surveyors, whose projects belong to no authority and are visible to them alone. A job from an authority always belongs to that authority.
+3. **Existing data** in the embedded per-surveyor schemas is moved once, at cutover (`survey.adopt_surveyor_schema`). The dev database holds none.
+
+## What the launch refuses, and says
+
+| | answer |
+|---|---|
+| not the assigned surveyor, or the job is unclaimed / closed | VunGIS 403 / 409; nothing is signed |
+| VunGIS has no key or no `SURVEYPRO_URL` | 503 "SurveyPro is not connected" |
+| token forged, changed, expired, for another audience, or signed by another key | SurveyPro 401, with the reason |
+| the same link used twice | SurveyPro 409; open the job again |
+| no SurveyPro account for that email | 404; register with the same email, then open again |
+| council not in SurveyPro | 409 |
+| surveyor not appointed to that council today (never, or ended) | 403, naming the council and the head surveyor to ask |
+
+A second launch of the same job reopens the same project (found by the job's id), so a surveyor can come back to it from VunGIS any number of times.

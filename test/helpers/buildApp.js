@@ -9,6 +9,7 @@ const { inspectorGisRoutes } = require('../../src/routes/inspector-gis')
 const { inspectorRoutingRoutes } = require('../../src/routes/inspector-routing')
 const { environmentalHealthRoutes } = require('../../src/routes/environmental-health')
 const { appealRoutes } = require('../../src/routes/appeals')
+const { surveyorRoutes } = require('../../src/routes/surveyor')
 
 async function buildAppForTest() {
   const app = Fastify({ logger: false })
@@ -49,6 +50,7 @@ async function buildAppForTest() {
     await inspectorRoutingRoutes(scope)
     await environmentalHealthRoutes(scope)
     await appealRoutes(scope)
+    await surveyorRoutes(scope)
   }, { prefix: '/api' })
   await app.ready()
   return app
