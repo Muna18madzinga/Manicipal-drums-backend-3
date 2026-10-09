@@ -6,6 +6,9 @@
 // Load .env so DATABASE_URL / JWT_SECRET / etc. reach process.env before any
 // route module reads them. The dotenv dependency was installed but never wired.
 require('dotenv').config()
+// The runtime login (APP_DATABASE_URL, scripts/create-runtime-role.js) takes over DATABASE_URL for this process; the owner stays for scripts.
+require('dotenv').config({ path: require('path').join(__dirname, '.env.runtime'), quiet: true })
+require('./src/lib/runtimeDb').adoptRuntimeUrl()
 
 const Fastify = require('fastify')
 
@@ -325,6 +328,8 @@ async function build() {
     // max_connections=100 still has headroom for the survey pool (20).
     max: 30,
   })
+
+  await require('./src/lib/runtimeDb').assertRuntimeRole(server.pg.pool, { log: server.log })
 
   // The database connection follows the person asking (TENANCY_MODE: off | warn | strict; docs/TENANCY.md). In 'off', the default,
   // nothing changes. Installed here, before any route, so every route gets the same decoration; work that is the system's own

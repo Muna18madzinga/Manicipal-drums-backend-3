@@ -192,6 +192,7 @@ const MIGRATIONS = [
   '166_direct_client_roles.sql',
   // 167: tenancy.make_tenant / make_tenant_child (one call turns authority-owned data into tenant data); council_ops converted.
   '167_make_tenant.sql',
+  '168_runtime_role.sql',
 ]
 
 function createPool(env = process.env) {

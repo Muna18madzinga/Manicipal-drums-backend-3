@@ -44,6 +44,10 @@ async function main() {
     if (role) check(role.rolsuper === false && role.rolbypassrls === false, 'the application role is neither a superuser nor able to bypass row-level security')
     else console.log('  info  no vungu_app role in this database')
 
+    const sys = (await q("SELECT rolname, rolsuper, rolcreaterole FROM pg_roles WHERE rolname IN ('vungu_system','vungu_runtime')"))
+    for (const r of sys) check(!r.rolsuper && !r.rolcreaterole, `${r.rolname} is not a superuser and cannot create roles`)
+    if (!sys.length) console.log('  info  no runtime role yet (migration 168; scripts/create-runtime-role.js)')
+
     const debt = await q('SELECT schema, relations, names FROM tenancy.debt ORDER BY schema')
     const total = debt.reduce((n, d) => n + d.relations, 0)
     check(total <= DEBT_BASELINE, `authority-owned relations without row-level security: ${total} (baseline ${DEBT_BASELINE})`)

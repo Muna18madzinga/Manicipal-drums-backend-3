@@ -71,6 +71,26 @@ just been allowed to create.
   needs it) is still to do. `scripts/verify-plan-model.js` fails if those reference tables become writable again.
 - **QGIS Desktop and the tile server** connect to the database directly and are not scoped.
 
+## The runtime login (not the owner)
+
+The server must not connect as the database owner or any superuser. Two accounts, two jobs:
+
+| account | used by | can |
+|---|---|---|
+| owner (`DATABASE_URL`, e.g. postgres) | migrations and scripts | change structure, create roles |
+| `vungu_runtime` (`APP_DATABASE_URL`) | the server, all its pools | read and write data, run functions, create schemas (survey); not alter or drop tables, create roles, read password hashes, or edit the contract |
+
+`vungu_runtime` is a member of `vungu_system` (the data privileges, migration 168) and `vungu_app` (the role every request steps down to). It has BYPASSRLS, which only the system plane (`systemOf(fastify.pg)`) ever uses; requests run as `vungu_app`, which cannot bypass.
+
+Set up (once per database, as the owner):
+
+    node scripts/create-runtime-role.js --apply     # creates the login, writes .env.runtime (secret, git-ignored, never printed)
+    node scripts/create-runtime-role.js --check     # proves what it can and cannot do
+
+`server.js` loads `.env.runtime` and, when `APP_DATABASE_URL` is set, uses it for every connection it makes while scripts keep the owner. On startup it logs the role; in production it refuses to start as a superuser unless `ALLOW_SUPERUSER_DB=1`. In production set `APP_DATABASE_URL` in the host's environment instead of using the file. `--rotate` changes the password.
+
+Known: the QGIS layer-import route (`src/routes/qgis.js`) drops and creates tables in `public`. As the runtime login it is refused, deliberately; it belongs in a script run by the owner.
+
 ## Transitional, and to be removed
 - Staff with no authority are given **Vungu** (`users_default_authority`), and `permit_application.authority_id`
   defaults to 1. Both go when staff are provisioned into their own authority (the invite flow must carry the

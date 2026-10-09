@@ -120,6 +120,7 @@ describe('migration plan', () => {
       '165_tenancy_contract.sql',
       '166_direct_client_roles.sql',
       '167_make_tenant.sql',
+      '168_runtime_role.sql',
     ])
 
     for (const filename of MIGRATIONS) {
