@@ -75,7 +75,7 @@ describe('appeals', () => {
     const a = res.json().data
     expect(a.status).toBe('lodged')
     expect(a.grounds).toMatch(/approved layout/)
-    // Lodged 10 days after the decision — inside the 28-day window.
+    // Lodged 10 days after the decision — inside the one-month window (s.38(1)(a)).
     expect(a.days_after_decision).toBe(10)
     expect(a.within_window).toBe(true)
     // The denormalised columns a register row needs.
@@ -92,6 +92,13 @@ describe('appeals', () => {
     const a = (await lodge(refused, { appellant_name: 'L Ncube', grounds: 'Late but lodged' })).json().data
     expect(a.days_after_decision).toBe(60)
     expect(a.within_window).toBe(false)
+  })
+
+  test('the window is one calendar month, not 28 days: day 28 is inside, day 32 is outside whatever the month', async () => {
+    const inside = (await lodge(await permit('refused', 28), { appellant_name: 'A', grounds: 'Day 28' })).json().data
+    expect(inside.within_window).toBe(true)
+    const outside = (await lodge(await permit('refused', 32), { appellant_name: 'B', grounds: 'Day 32' })).json().data
+    expect(outside.within_window).toBe(false)
   })
 
   test('a case that is not the caller\'s own cannot be appealed by them', async () => {

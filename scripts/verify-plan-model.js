@@ -249,6 +249,8 @@ async function main() {
     // a decision that needs special consent, on the adopted plan's Communal Farming zone
     await client.query("UPDATE zone_land_use_controls SET control_type = 'special_consent' WHERE id = $1", [cell.id])
 
+    // stands are tenant data: say whose these are (an insert with no authority is refused)
+    await client.query("SELECT set_config('app.authority_id', (SELECT id::text FROM public.local_authorities WHERE code = 'VUNGU'), false)")
     // parcels: two adjacent zone squares and stands in different places (far from real data)
     const square = (x0, x1) => `ST_Multi(ST_GeomFromText('POLYGON((${x0} 10, ${x1} 10, ${x1} 10.01, ${x0} 10.01, ${x0} 10))', 4326))`
     const mkZone = async (name, typeId, x0, x1) => (await client.query(

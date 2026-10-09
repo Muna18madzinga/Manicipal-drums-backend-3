@@ -665,7 +665,7 @@ async function planningClerkRoutes(fastify) {
                  a.letter_no AS reference, a.recipient AS party,
                  a.due_by AS due_at, a.sent_at AS satisfied_at,
                  p.tpd_reference, p.stand_number, p.applicant_name,
-                 'Acknowledge within 5 working days of receipt' AS rule
+                 'Acknowledge within two weeks of receipt (s.26(2)(a)); council target five working days' AS rule
           FROM spatial_planning.clerk_acknowledgement a
           LEFT JOIN spatial_planning.permit_application p ON p.id = a.permit_application_id
           WHERE a.voided_at IS NULL AND a.sent_at IS NULL
@@ -680,7 +680,7 @@ async function planningClerkRoutes(fastify) {
                  p.tpd_reference, p.applicant_name,
                  p.statutory_due_date::timestamptz, NULL::timestamptz,
                  p.tpd_reference, p.stand_number, p.applicant_name,
-                 'Determine within 3 months or the application is deemed refused'
+                 'Determine within three months of acknowledgement (s.26(7)) or the application is deemed refused'
           FROM spatial_planning.permit_application p
           WHERE p.statutory_due_date IS NOT NULL
             AND COALESCE(p.clock_state, 'running') = 'running'

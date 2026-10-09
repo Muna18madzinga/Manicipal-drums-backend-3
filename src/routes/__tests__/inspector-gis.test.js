@@ -100,6 +100,8 @@ describe('site resolution against the registers', () => {
        RETURNING id`,
     )
     permitId = p.rows[0].id
+    // stands are tenant data: say whose these fixtures are (an insert with no authority is refused)
+    await client.query("SELECT set_config('app.authority_id', (SELECT id::text FROM public.local_authorities WHERE code = 'VUNGU'), true)")
     const d = 0.00028
     const e = 0.00038
     const env = (x0) => `ST_SetSRID(ST_MakeEnvelope(${x0}, ${VUNGU_Y - e / 2}, ${x0 + d}, ${VUNGU_Y + e / 2}), 4326)`

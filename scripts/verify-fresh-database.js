@@ -86,6 +86,11 @@ async function main() {
     check(ten.code === 0 && /ALL CHECKS PASSED/.test(ten.out), 'every relation is classified and none departs from its class')
     if (ten.code !== 0) console.log(ten.out.split('\n').filter((l) => /FAIL|^\s{8}\S/.test(l)).slice(0, 80).join('\n'))
 
+    console.log('== the statutory clocks follow the Act (verify-statutory-clock.js)')
+    const clock = run(path.join(__dirname, 'verify-statutory-clock.js'), [])
+    check(clock.code === 0 && /ALL CHECKS PASSED/.test(clock.out), 'three months from acknowledgement, four for a subdivision, set by the database')
+    if (clock.code !== 0) console.log(clock.out.split('\n').filter((l) => /FAIL/.test(l)).join('\n'))
+
     console.log('== load the sample matrix with the real loader')
     const csv = path.join(ROOT, 'docs', 'district-development-control-matrix.csv')
     const load = run(path.join(__dirname, 'load-zoning-matrix.js'), ['--file', csv, '--apply'])

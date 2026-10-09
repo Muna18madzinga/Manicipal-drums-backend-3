@@ -36,11 +36,12 @@ const DECISIONS = ['upheld', 'dismissed', 'remitted']
 const APPEALABLE = ['approved', 'approved_with_conditions', 'refused']
 
 /**
- * s.38 window. The council does not refuse a late appeal here — the Court
- * decides admissibility — but every register shows whether it arrived in time,
- * which is the fact the EO is asked about.
+ * s.38(1)(a) window: ONE CALENDAR MONTH from notification of the decision (the Act counts months, not days, so it is 28 to 31
+ * days). The register holds the decision date, not the date the applicant was notified, so the month runs from the decision
+ * date: the earlier of the two, which can only make an appeal look late that the Court may still hear. The council does not
+ * refuse a late appeal here — the Court decides admissibility — but every register shows whether it arrived in time, which is
+ * the fact the EO is asked about.
  */
-const APPEAL_WINDOW_DAYS = 28
 
 const isUuid = (v) =>
   typeof v === 'string' && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(v)
@@ -84,9 +85,7 @@ function appealDto(r) {
     // Was it lodged inside the s.38 window? Computed in SQL from the decision
     // date so the register and the case file can never disagree about it.
     days_after_decision: r.days_after_decision == null ? null : Number(r.days_after_decision),
-    within_window: r.days_after_decision == null
-      ? null
-      : Number(r.days_after_decision) <= APPEAL_WINDOW_DAYS,
+    within_window: r.within_window == null ? null : r.within_window === true,
   }
 }
 
@@ -96,7 +95,8 @@ const SELECT_APPEAL = `
          p.applicant_name, p.status AS permit_status,
          p.decision_at AS permit_decided_at,
          p.created_by, p.applicant_email,
-         (a.lodged_at - p.decision_at) AS days_after_decision
+         (a.lodged_at - p.decision_at) AS days_after_decision,
+         (a.lodged_at <= p.decision_at + INTERVAL '1 month') AS within_window
     FROM spatial_planning.application_appeal a
     JOIN spatial_planning.permit_application p ON p.id = a.permit_app_id
 `
@@ -364,4 +364,4 @@ async function appealRoutes(fastify) {
   })
 }
 
-module.exports = { appealRoutes, APPEAL_WINDOW_DAYS }
+module.exports = { appealRoutes }

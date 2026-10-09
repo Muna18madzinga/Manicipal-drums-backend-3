@@ -194,6 +194,9 @@ const MIGRATIONS = [
   '167_make_tenant.sql',
   '168_runtime_role.sql',
   '169_spatial_planning_tenancy.sql',
+  '170_statutory_periods.sql',
+  '171_acknowledgement_starts_clock.sql',
+  '172_stands_revenue_legacy_tenancy.sql',
 ]
 
 function createPool(env = process.env) {

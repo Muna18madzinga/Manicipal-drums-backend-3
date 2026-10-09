@@ -206,6 +206,7 @@ async function undo(db) {
   const pool = new Pool({
     connectionString: DATABASE_URL,
   });
+  await require('./lib/seedAuthority').seedAuthority(pool);   // tenant rows must say whose they are
   const db = await pool.connect();
   const undoing = process.argv.includes('--undo');
   try {

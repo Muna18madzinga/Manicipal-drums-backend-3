@@ -22,7 +22,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env'), quiet: true
 const { Pool } = require('pg')
 
 // The number of authority-owned relations still without row-level security, 9 October 2026, after council_ops (a fresh build has 108; the development database, which is behind the migrations, 94). Lower it as they are protected.
-const DEBT_BASELINE = 59
+const DEBT_BASELINE = 46
 
 let failures = 0
 const check = (ok, msg) => { console.log(`  ${ok ? 'ok  ' : 'FAIL'}  ${msg}`); if (!ok) failures++ }
