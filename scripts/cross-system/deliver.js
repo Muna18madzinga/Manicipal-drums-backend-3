@@ -111,11 +111,28 @@ let bad = 0; const ok = (c, m) => { console.log((c ? '  ok   ' : '  FAIL ') + m)
   const p = (await vg.query("SELECT survey_class, accuracy_basis, origin FROM land.parcel WHERE source_relation='surveypro' ORDER BY stand_no")).rows
   ok(p.length === 2 && p.every(x => x.survey_class === 'B' && x.accuracy_basis === 'surveyed' && x.origin === 'authority'), 'carrying the declared class B')
 
+  console.log('\nthe Surveyor-General approves the plan')
+  // the approved plan arrives for the same township with the same boundaries: the council's stands are adopted in place, not duplicated or refused
+  const { importGeneralPlan } = require(ROOT + '/src/services/gms/parcelImport')
+  const before = (await vg.query("SELECT parcel_id, stand_no, township_code, source_srid, ST_AsGeoJSON(geom_source)::json AS g FROM land.parcel WHERE source_relation='surveypro' ORDER BY stand_no")).rows
+  const plan = await importGeneralPlan(vg, { sg_ref: 'XS-ADOPT', township_code: before[0].township_code, source_srid: before[0].source_srid, commit: true,
+    features: before.map(b => ({ type: 'Feature', properties: { stand_no: b.stand_no }, geometry: b.g })) }, { id: null })
+  ok(plan.ok && plan.adopted_ids.length === 2 && plan.parcel_ids.length === 0, `both stands are adopted in place (${JSON.stringify(plan.report && plan.report.summary)})`)
+  const after = (await vg.query("SELECT parcel_id, origin, sg_ref FROM land.parcel WHERE source_relation='surveypro' ORDER BY stand_no")).rows
+  ok(after.length === 2 && after.every((a, i) => a.parcel_id === before[i].parcel_id && a.origin === 'custodian' && a.sg_ref === 'XS-ADOPT'), 'same parcel ids, now approved')
+  r = cli('--apply')
+  ok(r.status === 0 && /0 diverged/.test(r.stdout) && /2 already in the register/.test(r.stdout), 'SurveyPro\'s importer then sees them as approved, not diverged: ' + (r.stdout || '').split('\n').slice(-3).join(' | '))
+
   const c = await vg.connect()
   try {
     await c.query('BEGIN'); await c.query("SET LOCAL gms.purge='on'")
     const ids = (await c.query("SELECT parcel_id FROM land.parcel WHERE source_relation='surveypro' AND source_key LIKE 'VUNGU:%'")).rows.map(x => x.parcel_id)
-    if (ids.length) { await c.query('DELETE FROM integration.outbox_event WHERE idempotency_key = ANY($1::text[])', [ids.map(i => 'ParcelCreated:' + i)]); await c.query('DELETE FROM land.parcel WHERE parcel_id = ANY($1::text[])', [ids]) }
+    if (ids.length) {
+      await c.query('DELETE FROM land.parcel_event WHERE parcel_id = ANY($1::text[])', [ids])
+      await c.query('DELETE FROM integration.outbox_event WHERE idempotency_key = ANY($1::text[]) OR idempotency_key LIKE $2', [ids.map(i => 'ParcelCreated:' + i), 'ParcelApproved:%:XS-ADOPT'])
+      await c.query('DELETE FROM land.parcel WHERE parcel_id = ANY($1::text[])', [ids])
+      await c.query("DELETE FROM land.general_plan WHERE sg_ref = 'XS-ADOPT'")
+    }
     await c.query('COMMIT')
   } finally { c.release() }
   try { fs.unlinkSync(WT + '/.reader-vungu.env') } catch {}

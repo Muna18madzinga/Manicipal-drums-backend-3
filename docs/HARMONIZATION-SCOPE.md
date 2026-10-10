@@ -1,6 +1,6 @@
 # Harmonizing VunGIS's spatial data with SurveyPro: scope of the first two pieces
 
-Status: scoped 2026-10-10, nothing built. Context: `docs/SURVEYPRO-INTEGRATION.md` (the hand-off that exists today).
+Status: scoped 2026-10-10. **Piece B is built** (see "Built" under B); piece A is not started. Context: `docs/SURVEYPRO-INTEGRATION.md` (the hand-off that exists today).
 
 What exists today is a one-way seam: a council's accepted SurveyPro work is imported into `land.parcel`. Two things are missing at the edges of it:
 
@@ -49,7 +49,11 @@ Both boundaries are compared in the survey CRS (`geom_source`, untouched), so no
 4. The import officer's screen shows the four counts and lets the officer open a conflict.
 5. Tests on the live database: adopt keeps `parcel_id`; conflict writes nothing; orphan reported; refusal unchanged for custodian parcels; second import idempotent.
 
-### Decisions I need
+### Built (2026-10-10)
+
+Migration 175 (`land.parcel_event`, append-only), `importGeneralPlan` reconciliation (`src/services/gms/parcelImport.js`), the SurveyPro importer no longer calls an approved parcel "diverged", the import officer's screen shows the new counts, conflicts and orphans, 14 tests (`test/plan-adoption.test.js`) and a step in the `deliver` cross-system scenario (adopt, then the importer sees the stands as approved). **Decided:** tolerance 0.02 m (to be confirmed by a surveyor or the Surveyor-General), plots matched by boundary (intersection over union of at least 0.99; more than one candidate is `ambiguous_match`, never guessed), orphans reported and left alone. **One thing to check before it is used in anger:** the new `ParcelApproved` outbox event is additive, but the ERP adapter's consumer is outside this repository; confirm it ignores or handles an unknown type. Until then an adopted parcel's event simply waits in the queue.
+
+### Decisions that were needed
 
 1. **Tolerance for "the boundary agrees."** In the same CRS the approved diagram should equal the submitted survey, so I propose **0.02 m** per vertex (adjustable). A surveyor or the Surveyor-General should confirm what they treat as the same boundary.
 2. **Plots with no township** (a council survey with no township gets `parcel_kind = plot`, no township code): they cannot be matched by stand number. Match by geometry only (overlap of at least 99%), or leave them for manual reconciliation?

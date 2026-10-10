@@ -136,10 +136,13 @@ async function importProject(client, project, parcels, { zoneSrid }) {
     if (!['POLYGON', 'MULTIPOLYGON'].includes(g.type)) { out.parcels.errors.push({ code: 'not_a_polygon', parcel: p.id, stand: standNo, type: g.type }); continue }
     if (!g.valid) { out.parcels.errors.push({ code: 'invalid_geometry', parcel: p.id, stand: standNo, reason: g.reason }); continue }
 
-    const existing = (await q('SELECT parcel_id, ST_OrderingEquals(geom_source, ST_SetSRID(ST_GeomFromGeoJSON($2), $3::int)) AS same FROM land.parcel WHERE source_relation = $4 AND source_key = $1',
+    const existing = (await q('SELECT parcel_id, sg_ref, ST_OrderingEquals(geom_source, ST_SetSRID(ST_GeomFromGeoJSON($2), $3::int)) AS same FROM land.parcel WHERE source_relation = $4 AND source_key = $1',
       [key, p.geojson, srid, 'surveypro']))[0]
     if (existing) {
-      if (existing.same) out.parcels.unchanged.push({ parcel: p.id, stand: standNo, parcel_id: existing.parcel_id })
+      // once the Surveyor-General has approved the parcel (adopted in place by the plan import) its boundary is the approved one: that the council's
+      // survey differs from it is no longer news about SurveyPro, so it is not reported as diverged
+      if (existing.sg_ref) out.parcels.unchanged.push({ parcel: p.id, stand: standNo, parcel_id: existing.parcel_id, approved: existing.sg_ref })
+      else if (existing.same) out.parcels.unchanged.push({ parcel: p.id, stand: standNo, parcel_id: existing.parcel_id })
       else out.parcels.diverged.push({ parcel: p.id, stand: standNo, parcel_id: existing.parcel_id, note: 'the boundary in SurveyPro differs from the one already in the register; a changed boundary needs a new acceptance' })
       continue
     }

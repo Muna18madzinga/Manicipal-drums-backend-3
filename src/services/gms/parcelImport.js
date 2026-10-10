@@ -8,8 +8,20 @@
 // copy is derived and stamped with the transformation used.
 //
 // Always produces the validation report. Writes only when commit is true AND
-// the report has no errors, all in one transaction with the ParcelCreated
-// outbox events.
+// the report has no errors, all in one transaction with the outbox events.
+//
+// RECONCILIATION (docs/HARMONIZATION-SCOPE.md, piece B). A township's stands may already be in the register as AUTHORITY-origin parcels, imported from
+// the council's own survey (SurveyPro). The approved plan does not replace them: a matching stand is ADOPTED IN PLACE, so it keeps its parcel_id (ERP
+// keys hang off it and parcel ids are never reused) and gains the approval. Per plan feature:
+//   - no parcel with that stand number                           -> a NEW parcel
+//   - an authority parcel with that stand number, boundary within ADOPT_TOLERANCE_M of the plan's -> ADOPT
+//   - an authority parcel with that stand number, boundary further off -> an error (boundary_differs), both boundaries in the report
+//   - a custodian parcel (already approved) with that stand number -> an error (stand_no_exists), as ever
+//   - no stand-number match, but an authority PLOT (a council survey with no township) whose boundary agrees (IoU >= ADOPT_PLOT_IOU) -> ADOPT, and the
+//     plot becomes a stand of this township; more than one candidate either way -> an error (ambiguous_match)
+//   - no match, but overlapping an authority parcel of another number -> an error (overlaps_authority_parcel)
+// Authority parcels the plan does not account for are listed as ORPHANS and left alone. Boundaries are compared in the survey CRS, so no datum shift
+// enters the comparison. What an adopted parcel was is kept in land.parcel_event.
 // ─────────────────────────────────────────────────────────────────────────
 
 const { enqueue } = require('./outbox')
@@ -17,6 +29,14 @@ const { enqueue } = require('./outbox')
 // Two parcels sharing an edge touch; anything overlapping by more than this is
 // an overlap. Survey coordinates are to the centimetre.
 const OVERLAP_TOLERANCE_M2 = 0.01
+
+// A plan boundary "agrees" with the council's when no vertex is further than this (metres, Hausdorff distance in the survey CRS). To be confirmed with a
+// surveyor / the Surveyor-General; the report always carries the measured deviation.
+const ADOPT_TOLERANCE_M = 0.02
+// A plot (no township, so no stand number to match on) is matched by boundary: area of intersection over area of union, at least this
+const ADOPT_PLOT_IOU = 0.99
+// an authority parcel and a plan stand of another number overlapping by more than this (m2) is a numbering conflict, not a shared edge
+const AUTHORITY_OVERLAP_M2 = 0.05
 
 async function importGeneralPlan(pg, input, user) {
   const { sg_ref, township_code, source_srid, features, commit } = input
@@ -73,11 +93,68 @@ async function importGeneralPlan(pg, input, user) {
        WHERE stand_no IS NOT NULL GROUP BY stand_no HAVING count(*) > 1`)) {
       errors.push({ code: 'duplicate_stand_no_in_plan', stand_no: r.stand_no, features: r.features })
     }
+    // --- parcels already in the register for these stands: refuse, adopt, or report a conflict --------------------------------------------
+    const validPoly = `i.g IS NOT NULL AND GeometryType(i.g) IN ('POLYGON', 'MULTIPOLYGON') AND ST_IsValid(i.g)`
+    const adopt = []                       // { idx, parcel_id, matched_by, deviation_m }
+    const claimed = new Set()              // feature indexes decided below (adopted, refused or in conflict)
     for (const r of await q(`
-      SELECT i.idx, i.stand_no, p.parcel_id FROM gp_in i
+      SELECT i.idx, i.stand_no, p.parcel_id, p.origin, p.sg_ref,
+             CASE WHEN ${validPoly}
+                  THEN ST_HausdorffDistance(ST_Boundary(ST_Transform(i.g, p.source_srid)), ST_Boundary(p.geom_source), 0.25) END AS deviation_m,
+             CASE WHEN ${validPoly} THEN ST_AsGeoJSON(ST_Transform(i.g, 4326), 7)::json END AS plan_geometry,
+             ST_AsGeoJSON(p.geom_wgs84, 7)::json AS register_geometry
+        FROM gp_in i
         JOIN land.parcel p ON p.township_code = $1 AND p.stand_no = i.stand_no AND p.status = 'current'`,
     [township_code])) {
-      errors.push({ code: 'stand_no_exists', feature: r.idx, stand_no: r.stand_no, parcel_id: r.parcel_id })
+      claimed.add(r.idx)
+      if (r.origin !== 'authority' || r.sg_ref) {
+        errors.push({ code: 'stand_no_exists', feature: r.idx, stand_no: r.stand_no, parcel_id: r.parcel_id })
+      } else if (r.deviation_m === null) {
+        // the plan's own geometry is already reported as invalid; nothing to compare
+      } else if (Number(r.deviation_m) <= ADOPT_TOLERANCE_M) {
+        adopt.push({ idx: r.idx, parcel_id: r.parcel_id, matched_by: 'stand_no', deviation_m: Number(r.deviation_m) })
+      } else {
+        errors.push({ code: 'boundary_differs', feature: r.idx, stand_no: r.stand_no, parcel_id: r.parcel_id, deviation_m: Number(r.deviation_m),
+          tolerance_m: ADOPT_TOLERANCE_M, plan_geometry: r.plan_geometry, register_geometry: r.register_geometry })
+      }
+    }
+    // plots: no township, so matched by boundary alone
+    const planGeometryOk = !errors.some((e) => e.code === 'invalid_geometry' || e.code === 'not_a_polygon')   // GEOS throws on invalid input
+    const plotRows = !planGeometryOk ? [] : await q(`
+      SELECT i.idx, i.stand_no, p.parcel_id, x.iou, x.deviation_m
+        FROM gp_in i
+        JOIN land.parcel p ON p.origin = 'authority' AND p.status = 'current' AND p.parcel_kind = 'plot' AND p.township_code IS NULL AND p.sg_ref IS NULL
+                          AND p.geom_wgs84 && ST_Transform(i.g, 4326)
+        CROSS JOIN LATERAL (
+          SELECT ST_Area(ST_Intersection(ST_Transform(i.g, p.source_srid), p.geom_source))
+                   / NULLIF(ST_Area(ST_Union(ST_Transform(i.g, p.source_srid), p.geom_source)), 0) AS iou,
+                 ST_HausdorffDistance(ST_Boundary(ST_Transform(i.g, p.source_srid)), ST_Boundary(p.geom_source), 0.25) AS deviation_m) x
+       WHERE ${validPoly} AND i.idx <> ALL($1::int[]) AND x.iou >= $2`, [[...claimed], ADOPT_PLOT_IOU])
+    const byFeature = new Map(); const byPlot = new Map()
+    for (const r of plotRows) {
+      byFeature.set(r.idx, [...(byFeature.get(r.idx) || []), r]); byPlot.set(r.parcel_id, [...(byPlot.get(r.parcel_id) || []), r])
+    }
+    for (const [idx, list] of byFeature) {
+      claimed.add(idx)
+      const r = list[0]
+      if (list.length > 1 || byPlot.get(r.parcel_id).length > 1) {
+        errors.push({ code: 'ambiguous_match', feature: idx, stand_no: r.stand_no, parcel_ids: [...new Set(list.map((x) => x.parcel_id))],
+          note: 'more than one plot matches this stand, or this plot matches more than one stand' })
+      } else {
+        adopt.push({ idx, parcel_id: r.parcel_id, matched_by: 'geometry', deviation_m: Number(r.deviation_m), iou: Number(r.iou) })
+      }
+    }
+    // a stand that matched nothing but sits on an authority parcel of another number: a numbering conflict, never two parcels on one piece of ground
+    const adoptedIds = adopt.map((a) => a.parcel_id)
+    for (const r of !planGeometryOk ? [] : await q(`
+      SELECT i.idx, i.stand_no, p.parcel_id, p.stand_no AS parcel_stand_no, x.overlap_m2
+        FROM gp_in i
+        JOIN land.parcel p ON p.origin = 'authority' AND p.status = 'current' AND p.parcel_kind IN ('stand', 'plot')
+                          AND p.geom_wgs84 && ST_Transform(i.g, 4326) AND p.parcel_id <> ALL($2::text[])
+        CROSS JOIN LATERAL (SELECT ST_Area(ST_Intersection(ST_Transform(i.g, p.source_srid), p.geom_source)) AS overlap_m2) x
+       WHERE ${validPoly} AND i.idx <> ALL($1::int[]) AND x.overlap_m2 > $3`, [[...claimed], adoptedIds, AUTHORITY_OVERLAP_M2])) {
+      claimed.add(r.idx)
+      errors.push({ code: 'overlaps_authority_parcel', feature: r.idx, stand_no: r.stand_no, parcel_id: r.parcel_id, parcel_stand_no: r.parcel_stand_no, overlap_m2: Number(r.overlap_m2) })
     }
     // Topology: parcels in a layout may not overlap. Only meaningful (and only
     // safe for GEOS) once every geometry is a valid polygon.
@@ -98,11 +175,31 @@ async function importGeneralPlan(pg, input, user) {
     // Section's approved plan is closed by construction. Add when importing
     // unapproved layouts.
 
+    // authority parcels this plan does not account for: reported, never touched
+    const conflicted = new Set(errors.filter((e) => e.parcel_id).map((e) => e.parcel_id))
+    const orphans = (await q(`
+      SELECT p.parcel_id, p.stand_no, p.parcel_kind, p.township_code
+        FROM land.parcel p
+       WHERE p.origin = 'authority' AND p.status = 'current' AND p.parcel_kind IN ('stand', 'plot') AND p.sg_ref IS NULL
+         AND p.parcel_id <> ALL($2::text[])
+         AND (p.township_code = $1
+              OR (p.township_code IS NULL AND EXISTS (
+                    SELECT 1 FROM gp_in i WHERE i.g IS NOT NULL AND p.geom_wgs84 && ST_Transform(i.g, 4326) AND ST_Intersects(p.geom_wgs84, ST_Transform(i.g, 4326)))))
+       ORDER BY p.stand_no`, [township_code, [...adoptedIds, ...conflicted]]))
+
     const report = {
       source_crs: crs.code,
       feature_count: rows.length,
       transform_method: crs.transform_method,
       transform_accuracy_m: Number(crs.accuracy_m),
+      summary: {
+        new: rows.length - claimed.size,
+        adopt: adopt.length,
+        conflicts: errors.filter((e) => ['boundary_differs', 'ambiguous_match', 'overlaps_authority_parcel'].includes(e.code)).length,
+        orphans: orphans.length,
+      },
+      adopt,
+      orphans,
       errors,
     }
 
@@ -117,6 +214,25 @@ async function importGeneralPlan(pg, input, user) {
       [sg_ref, township_code, source_srid, rows.length, user?.id ?? null],
     )).rows[0]
 
+    // adopt in place: keep what the parcel was, then give it the approved plan (the guard lets a boundary change under a survey import)
+    await client.query("SELECT set_config('gms.survey_import', 'on', true)")
+    for (const a of adopt) {
+      const before = (await q('SELECT origin, stand_no, township_code, parcel_kind, source_srid, area_m2, accuracy_basis, sg_ref, source, custodian_dept, geom_source FROM land.parcel WHERE parcel_id = $1', [a.parcel_id]))[0]
+      const { geom_source: oldGeom, ...details } = before
+      await q(`INSERT INTO land.parcel_event (parcel_id, event, general_plan_id, performed_by, details, previous_geom, previous_srid)
+               VALUES ($1, 'adopted', $2, $3, $4::jsonb, $5, $6)`,
+        [a.parcel_id, gp.import_id, user?.id ?? null, JSON.stringify({ ...details, matched_by: a.matched_by, deviation_m: a.deviation_m, iou: a.iou ?? null }), oldGeom, before.source_srid])
+      await q(`
+        UPDATE land.parcel p
+           SET stand_no = i.stand_no, township_code = $2, parcel_kind = 'stand', source_srid = $3, geom_source = i.g,
+               geom_wgs84 = ST_Multi(ST_Transform(i.g, 4326)), transform_method = $4, transform_accuracy_m = $5,
+               area_m2 = round(ST_Area(i.g)::numeric, 2), sg_ref = $6, general_plan_id = $7, origin = 'custodian',
+               accuracy_basis = 'general_plan', source = 'Survey Section approved general plan ' || $6, custodian_dept = 'Survey Section',
+               ward_code = COALESCE(p.ward_code, i.ward_code)
+          FROM gp_in i WHERE i.idx = $8 AND p.parcel_id = $1`,
+        [a.parcel_id, township_code, source_srid, crs.transform_method, crs.accuracy_m, sg_ref, gp.import_id, a.idx])
+    }
+
     const created = await q(`
       INSERT INTO land.parcel
         (stand_no, township_code, ward_code, geom_source, source_srid, geom_wgs84,
@@ -129,9 +245,9 @@ async function importGeneralPlan(pg, input, user) {
              i.g, $2, ST_Multi(ST_Transform(i.g, 4326)),
              $3, $4, round(ST_Area(i.g)::numeric, 2), $5, $6,
              'A', 'general_plan', 'Survey Section approved general plan ' || $5, $7
-        FROM gp_in i ORDER BY i.idx
+        FROM gp_in i WHERE i.idx <> ALL($8::int[]) ORDER BY i.idx
       RETURNING parcel_id, stand_no, area_m2, ward_code, sg_ref`,
-    [township_code, source_srid, crs.transform_method, crs.accuracy_m, sg_ref, gp.import_id, user?.id ?? null])
+    [township_code, source_srid, crs.transform_method, crs.accuracy_m, sg_ref, gp.import_id, user?.id ?? null, adopt.map((a) => a.idx)])
 
     for (const p of created) {
       await enqueue(client, 'ParcelCreated', {
@@ -144,6 +260,14 @@ async function importGeneralPlan(pg, input, user) {
       }, `ParcelCreated:${p.parcel_id}`)
     }
 
+    // the parcels adopted were already in the register: tell the ERP link they are now approved (same parcel, same id)
+    for (const a of adopt) {
+      const p = (await q('SELECT parcel_id, stand_no, area_m2, ward_code, sg_ref FROM land.parcel WHERE parcel_id = $1', [a.parcel_id]))[0]
+      await enqueue(client, 'ParcelApproved', {
+        parcel_id: p.parcel_id, stand_no: p.stand_no, area_m2: Number(p.area_m2), ward_code: p.ward_code, sg_ref: p.sg_ref, matched_by: a.matched_by,
+      }, `ParcelApproved:${p.parcel_id}:${p.sg_ref}`)
+    }
+
     await client.query('COMMIT')
     return {
       ok: true,
@@ -151,6 +275,7 @@ async function importGeneralPlan(pg, input, user) {
       report,
       import_id: gp.import_id,
       parcel_ids: created.map((p) => p.parcel_id),
+      adopted_ids: adopt.map((a) => a.parcel_id),
     }
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {})
@@ -160,4 +285,4 @@ async function importGeneralPlan(pg, input, user) {
   }
 }
 
-module.exports = { importGeneralPlan, OVERLAP_TOLERANCE_M2 }
+module.exports = { importGeneralPlan, OVERLAP_TOLERANCE_M2, ADOPT_TOLERANCE_M, ADOPT_PLOT_IOU }
