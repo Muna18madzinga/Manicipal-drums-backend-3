@@ -103,6 +103,20 @@ Decided 2026-10-09, after reading SI 727 (the scan) and the Land Survey Act [Cha
 
 Still to check with a surveyor against the paper regulations: SurveyPro's tolerance kernel applies para 5 style distance factors (0.04 and 0.06) when comparing found beacons, and its comment cites a "para 7(5)" that the scan does not show. Section 15(1)(ii) ties acceptance of previous-survey coordinates to para 7, whose limits are 0.01 (class B) and 0.02 (class C) times the distance. The scan's OCR of paras 5 and 7 was not clean enough to settle it.
 
+## The layout check (SurveyPro asks VunGIS)
+
+A surveyor, and later the council's reviewer, can ask whether the register would take a layout BEFORE it is delivered or accepted, with the same rules the importer applies (`src/services/layoutCheck.js`): a stand number already taken in the township, an overlap with an existing stand or plot (a farm does not count), a repeated number, a bad geometry, a system the register does not know; area and class notes as warnings. It is advisory and changes nothing on either side.
+
+SurveyPro signs a five-minute Ed25519 **service token** naming the person, the council (SurveyPro has checked the person is appointed to it) and the purpose (`check-layout`); VunGIS holds only the public key and refuses anything else (another key, issuer, audience, purpose, council, or a token claiming a long life). `POST /api/context/check-layout` runs in a read-only transaction. Configuration:
+
+```
+VunGIS      SURVEYPRO_SERVICE_PUBLIC_KEY (PEM, \n for newlines) or SURVEYPRO_SERVICE_KEY_FILE
+SurveyPro   SURVEYPRO_SERVICE_PRIVATE_KEY or SURVEYPRO_SERVICE_KEY_FILE, and VUNGIS_API_URL (no /api)
+            node scripts/generate-service-keys.js     (SurveyPro repository: writes the private key to a git-ignored file, prints the public one)
+```
+
+Without them the check says it is not connected and everything else works as before.
+
 ## Checking the two systems together
 
 `scripts/cross-system/run.js` (`npm run test:cross-system`) runs both systems against each other on a throw-away database, so a change on either side of the seam can be re-checked in one go. For each scenario it builds a scratch SurveyPro database (`surveypro_scratch_xs`, on the same Postgres server) from a read-only schema dump of a SurveyPro development database plus SurveyPro's own migrations 096 onward, starts a real SurveyPro server on it, drives both through their APIs, and removes the database and the cluster-wide roles afterwards.

@@ -113,6 +113,7 @@ const { gmsRoutes } = require('./src/routes/gms')
 const { gmsIntegrationRoutes } = require('./src/routes/gms-integration')
 const { gmsEditingRoutes } = require('./src/routes/gms-editing')
 const { gmsMapRoutes } = require('./src/routes/gms-map')
+const { contextRoutes } = require('./src/routes/context')
 
 // map-search endpoints are registered inside tilesRoutes (avoid duplicate).
 
@@ -695,6 +696,8 @@ async function build() {
     // Phase 2 (migration 133): editing, QA, map workspace.
     await server.register(gmsEditingRoutes, { prefix: '/api' })
     await server.register(gmsMapRoutes, { prefix: '/api' })
+    // What VunGIS tells SurveyPro about the register (service-token authenticated, read-only): the layout check
+    await server.register(contextRoutes, { prefix: '/api' })
     // map-search lives in tilesRoutes (do not double-register mapSearchRoutes)
     console.log('✅ Vector tile + property register + GIS editing + symbology registry + planning + council ops + planning clerk + service desk routes registered')
   } catch (error) {

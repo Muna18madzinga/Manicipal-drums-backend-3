@@ -3,7 +3,7 @@
  *
  *   SURVEYPRO_REPO=C:/surveypro-oct-beta/_beta-vungis-wt \
  *   SURVEYPRO_SCHEMA_ENV=C:/surveypro-oct-beta/surveypro/app-backend/.env \
- *   node scripts/cross-system/run.js [launch] [class] [deliver] [shared] [cutover]      (no names = all)
+ *   node scripts/cross-system/run.js [launch] [class] [deliver] [shared] [cutover] [check]      (no names = all)
  *
  * What it does, for each scenario: builds a throw-away SurveyPro database (surveypro_scratch_xs) on the same Postgres server as VunGIS, starts
  * a real SurveyPro server on it, drives both systems through their APIs, and tears everything down, including the cluster-wide roles
@@ -14,6 +14,7 @@
  *   deliver   delivery and review in per-surveyor-schema mode: deliver, return, redeliver, accept, import
  *   shared    the application switch (SURVEY_STORE=shared): private practice, council projects, freezing, delivery in place, import
  *   cutover   the cut-over of per-surveyor schemas onto the shared tables, then served through the shared store
+ *   check     the layout check: a surveyor and a reviewer ask VunGIS (signed service token) whether the register would take a layout
  *
  * Needs
  *   SURVEYPRO_REPO         a SurveyPro checkout or worktree (the folder that contains app-backend), on the branch under test
@@ -33,7 +34,7 @@ const ROOT = path.resolve(__dirname, '../..')
 require(path.join(ROOT, 'node_modules/dotenv')).config({ path: path.join(ROOT, '.env'), quiet: true })
 const { Pool } = require(path.join(ROOT, 'node_modules/pg'))
 
-const SCENARIOS = ['launch', 'class', 'deliver', 'shared', 'cutover']
+const SCENARIOS = ['launch', 'class', 'deliver', 'shared', 'cutover', 'check']
 const SCRATCH = 'surveypro_scratch_xs'
 const die = (m) => { console.error(m); process.exit(2) }
 

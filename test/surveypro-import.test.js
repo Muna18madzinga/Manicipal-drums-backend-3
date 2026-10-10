@@ -70,6 +70,7 @@ describe('importing the council\'s survey work from SurveyPro', () => {
         await c.query('DELETE FROM integration.outbox_event WHERE idempotency_key = ANY($1::text[])', [ids.map((i) => `ParcelCreated:${i}`)])
         await c.query('DELETE FROM land.parcel WHERE parcel_id = ANY($1::text[])', [ids])
       }
+      await c.query("DELETE FROM land.parcel WHERE source = 'spi import test (approved plan)'")
       if (jobs.length) await c.query('DELETE FROM spatial_planning.survey_task WHERE id = ANY($1::uuid[])', [jobs])
       await c.query('COMMIT')
     } finally { c.release() }
@@ -229,6 +230,18 @@ describe('importing the council\'s survey work from SurveyPro', () => {
       const r = mine(await run(), p.id)
       expect(r.parcels.errors.map((e) => e.code)).toEqual(['overlaps_existing'])
       expect(r.parcels.errors[0].overlap_m2).toBeGreaterThan(100)
+    })
+
+    test('a parcel from an approved general plan has no source at all, and the layout still clashes with its number and its ground', async () => {
+      // regression: `NOT (source_relation = 'surveypro' AND ...)` is NULL for such a parcel, so the clash and overlap checks skipped it
+      await q(`WITH x AS (SELECT ST_SetSRID(ST_GeomFromText($1), 922029) AS g)
+              INSERT INTO land.parcel (stand_no, township_code, geom_source, source_srid, geom_wgs84, transform_method, transform_accuracy_m, area_m2, accuracy_basis, source, parcel_kind, origin, sg_ref)
+              SELECT '77', 'SPI Township', x.g, 922029, ST_Multi(ST_Transform(x.g, 4326)), 'test', 20, 900, 'general_plan', 'spi import test (approved plan)', 'stand', 'custodian', 'SPI-GP' FROM x`,
+        [square(W0 + 6000, S0)])
+      const sameNumber = await project(accepted, [{ stand: '77', wkt: square(W0 + 6200, S0) }])
+      expect(mine(await run(), sameNumber.id).parcels.errors.map((e) => e.code)).toEqual(['stand_no_exists'])
+      const sameGround = await project({ ...accepted, township: 'Another Township' }, [{ stand: 'Q1', wkt: square(W0 + 6010, S0) }])
+      expect(mine(await run(), sameGround.id).parcels.errors.map((e) => e.code)).toEqual(['overlaps_existing'])
     })
 
     test('parcels in the same project that overlap each other refuse the layout; ones that share an edge do not', async () => {

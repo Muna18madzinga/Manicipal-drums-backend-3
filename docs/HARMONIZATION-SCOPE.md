@@ -1,6 +1,6 @@
 # Harmonizing VunGIS's spatial data with SurveyPro: scope of the first two pieces
 
-Status: scoped 2026-10-10. **Piece B is built** (see "Built" under B); piece A is not started. Context: `docs/SURVEYPRO-INTEGRATION.md` (the hand-off that exists today).
+Status: scoped 2026-10-10. **Piece B is built** (see "Built" under B). **A1 (the layout check) is built** (see "Built" under A1); A2 (the context layer) is not started. Context: `docs/SURVEYPRO-INTEGRATION.md` (the hand-off that exists today).
 
 What exists today is a one-way seam: a council's accepted SurveyPro work is imported into `land.parcel`. Two things are missing at the edges of it:
 
@@ -72,6 +72,8 @@ The importer already has the rules that refuse a layout (stand number already in
 - Extract those checks from `surveyproImport.js` into one function that returns the same refusal codes without writing.
 - `POST /api/context/check-layout` in VunGIS: takes the layout (parcels in Lo coordinates, township), returns the report. SurveyPro calls it from the delivery screen ("Check against the register"); the reviewer sees the result on the review screen. **Advisory for the surveyor, hard gate stays the importer.**
 - Needs a way for SurveyPro to call VunGIS (below).
+
+**Built (2026-10-10).** The importer's rules now live in one place, `src/services/layoutCheck.js`, used by the importer and by the check. `POST /api/context/check-layout` (`src/routes/context.js`) is authenticated by a service token (`src/lib/serviceToken.js`: Ed25519, five minutes, names the person, the council and the purpose; VunGIS holds only the public key), runs in a read-only transaction, and returns `{ ok, errors, warnings, checked }`. In SurveyPro: `services/vungisClient.js` signs and calls; `POST /api/survey-projects/:id/check-layout` (the project's surveyor, appointed to the council) and `POST /api/reviews/projects/:id/check-layout` (the council's reviewer or head surveyor); a "Check against the register" button on the delivery and review screens. Advisory: it never stops a delivery, and when VunGIS cannot be reached it says so and nothing else is affected. Tests: `test/layout-check.test.js` (18), the client's tests in SurveyPro (11), and the `check` cross-system scenario, which shows the check, the reviewer's check and the importer agreeing. **Decisions taken:** advisory, not blocking; the reviewer sees the same check. **Bug found and fixed on the way:** the importer's stand-number and overlap checks used `NOT (source_relation = 'surveypro' AND ...)`, which is NULL for a parcel with no source (every parcel from an approved general plan), so those parcels were skipped; the number clash would have hit the unique index and failed the project, the overlap would have gone through. Now `IS DISTINCT FROM`, with a regression test.
 
 ### A2. Context layer: what is already on the ground
 

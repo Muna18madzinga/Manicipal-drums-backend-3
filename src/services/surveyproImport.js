@@ -29,9 +29,8 @@
  * can never promise something apply then does differently.
  */
 const { enqueue } = require('./gms/outbox')
+const { OVERLAP_TOLERANCE_M2, areasDisagree, prepareParcels, registerProblems } = require('./layoutCheck')
 
-const OVERLAP_TOLERANCE_M2 = 0.5      // two independent transforms of a shared edge differ by far less than this
-const AREA_TOLERANCE = { absolute_m2: 0.5, relative: 0.001 }
 const IDENT = /^[a-z_][a-z0-9_]*$/i
 
 // SI 727 (the Land Survey (General) Regulations, 1979, Second Schedule para 1) has three survey classes, by the KIND of survey: A determines the
@@ -62,13 +61,6 @@ function mayMove(from, to) {
 
 /** Has the council accepted the project as it now stands? */
 const isAccepted = (project) => statusFromProject(project) === 'accepted'
-
-/** Do two areas disagree by more than the tolerance? */
-function areasDisagree(a, b) {
-  if (a == null || b == null) return false
-  const x = Number(a), y = Number(b)
-  return Math.abs(x - y) > Math.max(AREA_TOLERANCE.absolute_m2, AREA_TOLERANCE.relative * Math.max(x, y))
-}
 
 const sourceKey = (project, parcel) => `${project.authority_code}:${project.id}:${parcel.id}`
 
@@ -118,37 +110,24 @@ async function importProject(client, project, parcels, { zoneSrid }) {
   for (const p of candidates) if (!eligible.includes(p)) out.parcels.skipped.push({ parcel: p.id, stand: p.stand, reason: p.parcel_status !== 'active' ? 'not_active' : 'not_finalized', status: p.status })
 
   const township = project.township ? String(project.township).trim() : ''
-  const stands = new Map()
-  const toInsert = []
-  for (const p of eligible) {
-    const standNo = String(p.stand || p.designation || '').trim()
-    const key = sourceKey(project, p)
-    if (!standNo) { out.parcels.errors.push({ code: 'missing_stand_no', parcel: p.id }); continue }
-    if (stands.has(standNo)) { out.parcels.errors.push({ code: 'duplicate_stand_no_in_project', stand: standNo, parcels: [stands.get(standNo), p.id] }); continue }
-    stands.set(standNo, p.id)
-    if (!p.geojson) { out.parcels.errors.push({ code: 'no_geometry', parcel: p.id, stand: standNo }); continue }
-    const srid = p.lo_zone != null ? await zoneSrid(client, p.lo_zone) : null
-    if (!srid) { out.parcels.errors.push({ code: 'unsupported_crs', parcel: p.id, stand: standNo, srid: p.srid, lo_zone: p.lo_zone }); continue }
-
-    const g = (await q(
-      `WITH x AS (SELECT ST_SetSRID(ST_GeomFromGeoJSON($1), $2::int) AS g)
-       SELECT GeometryType(g) AS type, ST_IsValid(g) AS valid, ST_IsValidReason(g) AS reason, round(ST_Area(g)::numeric, 2) AS area FROM x`, [p.geojson, srid]))[0]
-    if (!['POLYGON', 'MULTIPOLYGON'].includes(g.type)) { out.parcels.errors.push({ code: 'not_a_polygon', parcel: p.id, stand: standNo, type: g.type }); continue }
-    if (!g.valid) { out.parcels.errors.push({ code: 'invalid_geometry', parcel: p.id, stand: standNo, reason: g.reason }); continue }
-
-    const existing = (await q('SELECT parcel_id, sg_ref, ST_OrderingEquals(geom_source, ST_SetSRID(ST_GeomFromGeoJSON($2), $3::int)) AS same FROM land.parcel WHERE source_relation = $4 AND source_key = $1',
-      [key, p.geojson, srid, 'surveypro']))[0]
-    if (existing) {
+  // each parcel on its own (shared with the layout check, src/services/layoutCheck.js); what is already in the register is decided here
+  const prepared = await prepareParcels(client, eligible, {
+    keyOf: (p) => sourceKey(project, p), zoneSrid,
+    existing: async (p, srid, key, standNo) => {
+      const existing = (await q('SELECT parcel_id, sg_ref, ST_OrderingEquals(geom_source, ST_SetSRID(ST_GeomFromGeoJSON($2), $3::int)) AS same FROM land.parcel WHERE source_relation = $4 AND source_key = $1',
+        [key, p.geojson, srid, 'surveypro']))[0]
+      if (!existing) return false
       // once the Surveyor-General has approved the parcel (adopted in place by the plan import) its boundary is the approved one: that the council's
       // survey differs from it is no longer news about SurveyPro, so it is not reported as diverged
       if (existing.sg_ref) out.parcels.unchanged.push({ parcel: p.id, stand: standNo, parcel_id: existing.parcel_id, approved: existing.sg_ref })
       else if (existing.same) out.parcels.unchanged.push({ parcel: p.id, stand: standNo, parcel_id: existing.parcel_id })
-      else out.parcels.diverged.push({ parcel: p.id, stand: standNo, parcel_id: existing.parcel_id, note: 'the boundary in SurveyPro differs from the one already in the register; a changed boundary needs a new acceptance' })
-      continue
-    }
-    if (areasDisagree(p.area_m2, g.area)) out.parcels.warnings.push({ code: 'area_disagrees', parcel: p.id, stand: standNo, surveypro_m2: Number(p.area_m2), computed_m2: Number(g.area) })
-    toInsert.push({ p, standNo, key, srid, area: g.area })
-  }
+      else out.parcels.diverged.push({ parcel: p.id, stand: standNo, parcel_id: existing.parcel_id, note: 'the boundary in SurveyPro differs from the one already in the register; a changed boundary needs a new acceptance, so nothing was changed' })
+      return true
+    },
+  })
+  const toInsert = prepared.toInsert
+  out.parcels.errors.push(...prepared.errors)
+  out.parcels.warnings.push(...prepared.warnings)
 
   // the survey class the parcels were surveyed to: declared by the surveyor, never guessed
   const surveyClass = project.survey_class ? String(project.survey_class).trim().toUpperCase() : null
@@ -167,32 +146,8 @@ async function importProject(client, project, parcels, { zoneSrid }) {
     if (surveyClass !== expected) out.parcels.warnings.push({ code: 'class_vs_township', survey_class: surveyClass, expected, note: township ? 'the project names a township, which SI 727 treats as class B' : 'the project names no township, which SI 727 treats as class C' })
   }
 
-  // ---- problems that make a layout unsafe to enter ------------------------------------------------------------------------------
-  if (township) {
-    for (const t of toInsert) {
-      const clash = (await q(`SELECT parcel_id FROM land.parcel WHERE township_code = $1 AND stand_no = $2 AND status = 'current' AND NOT (source_relation = 'surveypro' AND source_key = $3)`, [township, t.standNo, t.key]))[0]
-      if (clash) out.parcels.errors.push({ code: 'stand_no_exists', parcel: t.p.id, stand: t.standNo, parcel_id: clash.parcel_id })
-    }
-  }
-  for (const t of toInsert) {
-    const rows = await q(
-      `WITH x AS (SELECT ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON($1), $2::int), 4326) AS g)
-       SELECT p.parcel_id, p.stand_no, ST_Area(ST_Intersection(p.geom_wgs84, x.g)::geography) AS overlap_m2
-         FROM land.parcel p, x
-        WHERE p.status = 'current' AND p.parcel_kind IN ('stand', 'plot') AND NOT (p.source_relation = 'surveypro' AND p.source_key = $3)
-          AND ST_Intersects(p.geom_wgs84, x.g) AND ST_Area(ST_Intersection(p.geom_wgs84, x.g)::geography) > $4`,
-      [t.p.geojson, t.srid, t.key, OVERLAP_TOLERANCE_M2])
-    for (const r of rows) out.parcels.errors.push({ code: 'overlaps_existing', parcel: t.p.id, stand: t.standNo, parcel_id: r.parcel_id, stand_no: r.stand_no, overlap_m2: Number(Number(r.overlap_m2).toFixed(2)) })
-  }
-  for (let i = 0; i < toInsert.length; i++) {
-    for (let j = i + 1; j < toInsert.length; j++) {
-      const r = (await q(
-        `SELECT ST_Area(ST_Intersection(ST_SetSRID(ST_GeomFromGeoJSON($1), $3::int), ST_SetSRID(ST_GeomFromGeoJSON($2), $4::int))) AS m2
-           WHERE ST_Intersects(ST_SetSRID(ST_GeomFromGeoJSON($1), $3::int), ST_SetSRID(ST_GeomFromGeoJSON($2), $4::int))`,
-        [toInsert[i].p.geojson, toInsert[j].p.geojson, toInsert[i].srid, toInsert[j].srid]))[0]
-      if (r && Number(r.m2) > OVERLAP_TOLERANCE_M2) out.parcels.errors.push({ code: 'overlap_within_project', stands: [toInsert[i].standNo, toInsert[j].standNo], overlap_m2: Number(Number(r.m2).toFixed(2)) })
-    }
-  }
+  // ---- problems that make a layout unsafe to enter (shared with the layout check) ----------------------------------------------------
+  out.parcels.errors.push(...await registerProblems(client, toInsert, township))
   if (out.parcels.errors.length) return out          // all or nothing for the layout
 
   // ---- enter them -----------------------------------------------------------------------------------------------------------------
