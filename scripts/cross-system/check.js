@@ -26,7 +26,7 @@ let bad = 0; const ok = (c, m) => { console.log((c ? '  ok   ' : '  FAIL ') + m)
   let vgUp = true
 
   // ---- SurveyPro, a separate process on the scratch database, told where VunGIS is and how to sign ---------------------------------------
-  const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, PORT: String(SP_PORT), HOST: '127.0.0.1', DATABASE_URL: scratchUrl, DB_NAME: process.env.XS_SCRATCH_DB,
+  const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, PORT: String(SP_PORT), HOST: '127.0.0.1', DATABASE_URL: scratchUrl, APP_DATABASE_URL: process.env.XS_APP_URL || scratchUrl, DB_NAME: process.env.XS_SCRATCH_DB,
     JWT_SECRET: crypto.randomBytes(24).toString('hex'), VUNGIS_API_URL: `http://127.0.0.1:${VG_PORT}`,
     SURVEYPRO_SERVICE_PRIVATE_KEY: keys.privateKey.export({ type: 'pkcs8', format: 'pem' }).replace(/\n/g, '\\n') }
   const child = spawn('node', ['src/server.js'], { cwd: WT, env, stdio: 'ignore' }); const stop = () => { try { child.kill() } catch {} }; process.on('exit', stop)

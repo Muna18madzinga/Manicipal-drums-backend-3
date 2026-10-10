@@ -65,3 +65,4 @@ qgis-projects/_db-backups/
 .env.bak*
 .env.runtime
 .launch-key.pem
+.surveypro-readers.json

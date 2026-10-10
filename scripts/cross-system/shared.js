@@ -14,7 +14,7 @@ const PORT = 3058; const SPURL = `http://127.0.0.1:${PORT}`
 let bad = 0; const ok = (c, m) => { console.log((c ? '  ok   ' : '  FAIL ') + m); if (!c) bad++ }
 
 ;(async () => {
-  const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, PORT: String(PORT), HOST: '127.0.0.1', DATABASE_URL: scratchUrl, DB_NAME: process.env.XS_SCRATCH_DB,
+  const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, PORT: String(PORT), HOST: '127.0.0.1', DATABASE_URL: scratchUrl, APP_DATABASE_URL: process.env.XS_APP_URL || scratchUrl, DB_NAME: process.env.XS_SCRATCH_DB,
     JWT_SECRET: crypto.randomBytes(24).toString('hex'), SURVEY_STORE: 'shared' }
   const child = spawn('node', ['src/server.js'], { cwd: WT, env, stdio: 'ignore' }); const stop = () => { try { child.kill() } catch {} }; process.on('exit', stop)
   let up = false
@@ -37,6 +37,10 @@ let bad = 0; const ok = (c, m) => { console.log((c ? '  ok   ' : '  FAIL ') + m)
   const sq = (w, s, n = 30) => `POLYGON((${w} ${s}, ${w + n} ${s}, ${w + n} ${s + n}, ${w} ${s + n}, ${w} ${s}))`
   const W = -84035, SS = 2151377
   const mkProject = (who, body) => sp.post('/survey-projects', { name: 'P', clientName: 'C', district: 'Vungu', surveyType: 'Layout survey', surveyDate: '2026-06-01', workingDirectory: 'C:/e2e-shared', ...body }, who.H)
+
+  // the server is running as the NON-OWNER login (migration 104), not as the owner: its own connections say so
+  const who = (await db.query("SELECT usename, count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND application_name = '' AND pid <> pg_backend_pid() GROUP BY 1")).rows.map((x) => x.usename)
+  ok(who.includes('surveypro_xs_runtime'), `the server's connections are the runtime login's (${who.join(', ')})`)
 
   console.log('private practice')
   let r = await mkProject(S, { name: 'Private job' }); ok(r.status === 201, `a private project is created (${r.status})`)

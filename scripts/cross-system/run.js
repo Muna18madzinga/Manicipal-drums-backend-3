@@ -3,7 +3,7 @@
  *
  *   SURVEYPRO_REPO=C:/surveypro-oct-beta/_beta-vungis-wt \
  *   SURVEYPRO_SCHEMA_ENV=C:/surveypro-oct-beta/surveypro/app-backend/.env \
- *   node scripts/cross-system/run.js [launch] [class] [deliver] [shared] [cutover] [check]      (no names = all)
+ *   node scripts/cross-system/run.js [launch] [class] [deliver] [shared] [cutover] [check] [runtime]      (no names = all)
  *
  * What it does, for each scenario: builds a throw-away SurveyPro database (surveypro_scratch_xs) on the same Postgres server as VunGIS, starts
  * a real SurveyPro server on it, drives both systems through their APIs, and tears everything down, including the cluster-wide roles
@@ -15,6 +15,7 @@
  *   shared    the application switch (SURVEY_STORE=shared): private practice, council projects, freezing, delivery in place, import
  *   cutover   the cut-over of per-surveyor schemas onto the shared tables, then served through the shared store
  *   check     the layout check: a surveyor and a reviewer ask VunGIS (signed service token) whether the register would take a layout
+ *   runtime   the non-owner runtime login SurveyPro runs as in EVERY scenario: no rights of its own on the tenant tables, no bypass, no DDL
  *
  * Needs
  *   SURVEYPRO_REPO         a SurveyPro checkout or worktree (the folder that contains app-backend), on the branch under test
@@ -27,6 +28,7 @@
  * Exit code 0 only if every scenario passed. Credentials are never printed.
  */
 const fs = require('fs')
+const crypto = require('crypto')
 const os = require('os')
 const path = require('path')
 const { spawnSync } = require('child_process')
@@ -34,8 +36,9 @@ const ROOT = path.resolve(__dirname, '../..')
 require(path.join(ROOT, 'node_modules/dotenv')).config({ path: path.join(ROOT, '.env'), quiet: true })
 const { Pool } = require(path.join(ROOT, 'node_modules/pg'))
 
-const SCENARIOS = ['launch', 'class', 'deliver', 'shared', 'cutover', 'check']
+const SCENARIOS = ['launch', 'class', 'deliver', 'shared', 'cutover', 'check', 'runtime']
 const SCRATCH = 'surveypro_scratch_xs'
+const RUNTIME = 'surveypro_xs_runtime'
 const die = (m) => { console.error(m); process.exit(2) }
 
 const wanted = process.argv.slice(2)
@@ -83,7 +86,7 @@ async function teardown() {
   try {
     await admin.query(`DROP DATABASE IF EXISTS ${SCRATCH} WITH (FORCE)`)
     // cluster-wide roles the migrations created; a role something else still depends on simply stays
-    const roles = (await admin.query("SELECT rolname FROM pg_roles WHERE rolname ~ '^(sp_reader_|survey_reader$|surveypro_request$)'")).rows
+    const roles = (await admin.query("SELECT rolname FROM pg_roles WHERE rolname ~ '^(sp_reader_|survey_reader$|surveypro_request$|surveypro_xs_runtime$)'")).rows
     for (const { rolname } of roles) await admin.query(`DROP ROLE IF EXISTS ${rolname}`).catch(() => {})
   } finally { await admin.end() }
 }
@@ -99,6 +102,7 @@ async function build(dump) {
   if (r.status !== 0) { await db.end(); die('loading the SurveyPro base schema failed: ' + String(r.stderr).split('\n')[0]) }
   const dir = path.join(spBackend, 'migrations')
   const files = fs.readdirSync(dir).map((f) => ({ f, m: /^(\d{3})_.*\.do\.sql$/.exec(f) })).filter((x) => x.m && Number(x.m[1]) >= 96).sort((a, b) => a.f.localeCompare(b.f)).map((x) => x.f)
+  let password
   const c = await db.connect()
   try {
     for (const f of files) {
@@ -107,13 +111,21 @@ async function build(dump) {
     }
     const v = (await c.query('SELECT relation, rule FROM tenancy.violations')).rows
     if (v.length) throw new Error('tenancy.violations is not empty after the migrations: ' + v.map((x) => `${x.rule} ${x.relation}`).join(', '))
+    // the NON-OWNER login SurveyPro runs as in every scenario (migration 104): it may step down to the request role and has no rights of its own on the tenant tables
+    password = crypto.randomBytes(18).toString('hex')
+    await c.query(`CREATE ROLE ${RUNTIME} LOGIN PASSWORD '${password}' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT`)
+    await c.query(`GRANT surveypro_request TO ${RUNTIME}`)
+    await c.query(`GRANT CONNECT ON DATABASE ${SCRATCH} TO ${RUNTIME}`)
+    await c.query('SELECT survey.grant_runtime($1)', [RUNTIME])
   } finally { c.release(); await db.end() }
-  return { url, files }
+  const appUrl = new URL(url); appUrl.username = RUNTIME; appUrl.password = password
+  return { url, appUrl: appUrl.toString(), files }
 }
 
 ;(async () => {
   const dump = schemaDump()
   const results = []
+  const began = new Date()
   for (const name of todo) {
     console.log(`\n${'='.repeat(78)}\n${name}\n${'='.repeat(78)}`)
     let built
@@ -121,11 +133,14 @@ async function build(dump) {
     console.log(`(scratch SurveyPro database built: migrations ${built.files[0].slice(0, 3)}-${built.files[built.files.length - 1].slice(0, 3)}, no tenancy violations)`)
     const r = spawnSync('node', [path.join(__dirname, name + '.js')], {
       cwd: ROOT, stdio: 'inherit', timeout: 10 * 60 * 1000,
-      env: { ...process.env, XS_SCRATCH_URL: built.url, XS_SCRATCH_DB: SCRATCH, SURVEYPRO_BACKEND: spBackend },
+      env: { ...process.env, XS_SCRATCH_URL: built.url, XS_APP_URL: built.appUrl, XS_SCRATCH_DB: SCRATCH, SURVEYPRO_BACKEND: spBackend },
     })
     results.push([name, r.status === 0])
   }
   await teardown()
+  // the importer records every applied run in VunGIS (integration.surveypro_import_run); these runs were ours, not a council's: take them out
+  const vg = new Pool({ connectionString: vungisUrl, max: 1 })
+  try { await vg.query("DELETE FROM integration.surveypro_import_run WHERE trigger = 'cli' AND started_at >= $1", [began]) } catch { /* before migration 176 there is no such table */ } finally { await vg.end() }
   console.log(`\n${'='.repeat(78)}`)
   for (const [n, pass] of results) console.log(`${pass ? 'PASS' : 'FAIL'}  ${n}`)
   process.exit(results.every(([, p]) => p) ? 0 : 1)

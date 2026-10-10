@@ -12,9 +12,12 @@
 //   POST /integration/reconciliation/run          integration
 //   POST /integration/reconciliation/:id/assign   integration       { assigned_to }
 //   POST /integration/reconciliation/:id/resolve  integration       { note }
+//   GET  /integration/surveypro                   integrationView   the SurveyPro importer: schedule, councils, recent runs
+//   GET  /integration/surveypro/runs/:id          integrationView   one run, with what it did
+//   POST /integration/surveypro/run               integration       { apply } run it now (a dry run unless apply is true)
 //
-// Also owns the outbox worker and the nightly reconciliation, started on
-// onReady and stopped on onClose. opts.worker === false (tests) or
+// Also owns the outbox worker, the nightly reconciliation and, when SURVEYPRO_IMPORT_MINUTES is set, the SurveyPro importer's
+// schedule (src/services/surveyproSchedule.js), started on onReady and stopped on onClose. opts.worker === false (tests) or
 // GMS_WORKER=off turns both off; opts.erpAdapter overrides the adapter.
 //
 // Registered as its own encapsulated plugin because the inbound signature is
@@ -28,6 +31,7 @@ const { createErpAdapter } = require('../services/gms/erpAdapter')
 const { deliverOne, deliverDue } = require('../services/gms/outbox')
 const { runReconciliation } = require('../services/gms/reconciliation')
 const { handleInbound, verifySignature, envelopeError } = require('../services/gms/inbound')
+const { loadReaders, scheduleMinutes, runScheduled, recentRuns } = require('../services/surveyproSchedule')
 
 const tags = ['GMS integration']
 const WORKER_TICK_MS = 30_000
@@ -182,6 +186,40 @@ async function gmsIntegrationRoutes(fastify, opts = {}) {
     return { success: true, data: r }
   })
 
+  // ── The SurveyPro importer ───────────────────────────────────────────────────────────────────────────────────────────────────────
+  // Councils are named by the key they were configured under, never by connection string.
+  fastify.get('/integration/surveypro', { ...viewer, schema: { tags, summary: 'The SurveyPro importer: schedule, councils, recent runs' } }, async () => {
+    let readers = []; let misconfigured = null
+    try { readers = loadReaders() } catch (e) { misconfigured = e.message }
+    const runs = await recentRuns(pg, 15)
+    const last = runs[0] || null
+    return {
+      success: true,
+      data: {
+        scheduled: scheduleMinutes() > 0, interval_minutes: scheduleMinutes() || null, applies: process.env.SURVEYPRO_IMPORT_APPLY !== 'off',
+        councils: readers.map((r) => r.name), misconfigured,
+        last_run: last ? { id: last.id, started_at: last.started_at, status: last.status } : null,
+        last_ok_at: runs.find((r) => r.status === 'ok')?.finished_at ?? null,
+        runs: runs.map(({ report, ...r }) => r),
+      },
+    }
+  })
+
+  fastify.get('/integration/surveypro/runs/:id', { ...viewer, schema: { tags, summary: 'One run of the SurveyPro importer' } }, async (request, reply) => {
+    const { rows: [r] } = await pg.query('SELECT * FROM integration.surveypro_import_run WHERE id = $1', [Number(request.params.id) || 0])
+    if (!r) return reply.code(404).send({ success: false, error: 'not_found' })
+    return { success: true, data: r }
+  })
+
+  fastify.post('/integration/surveypro/run', { preHandler: requireRole(fastify, GMS.integration), schema: { tags, summary: 'Run the SurveyPro importer now (a dry run unless apply is true)' } }, async (request, reply) => {
+    let readers
+    try { readers = loadReaders() } catch (e) { return reply.code(503).send({ success: false, error: 'misconfigured', message: e.message }) }
+    if (!readers.length) return reply.code(503).send({ success: false, error: 'not_configured', message: 'No council is configured for the SurveyPro importer.' })
+    const result = await runScheduled(pg, { readers, apply: request.body?.apply === true, trigger: 'manual' })
+    if (result.skipped) return reply.code(409).send({ success: false, error: 'already_running', message: 'The importer is running already; try again in a moment.' })
+    return { success: true, data: result }
+  })
+
   // ── Worker ──────────────────────────────────────────────────────────
   if (opts.worker === false || process.env.GMS_WORKER === 'off') return
 
@@ -206,11 +244,30 @@ async function gmsIntegrationRoutes(fastify, opts = {}) {
       busy = false
     }
   }
+  // The SurveyPro importer, if it is scheduled (SURVEYPRO_IMPORT_MINUTES; off by default). runScheduled never overlaps itself, across timers or servers.
+  let importTimer
   fastify.addHook('onReady', async () => {
     timer = setInterval(tick, WORKER_TICK_MS)
     timer.unref()
+    const minutes = opts.importEveryMs ? 1 : scheduleMinutes()      // opts.importEveryMs: tests only
+    if (!minutes) return
+    let readers = []
+    try { readers = loadReaders() } catch (err) { fastify.log.error({ err }, 'SurveyPro importer is scheduled but its councils are misconfigured; not started'); return }
+    if (!readers.length) { fastify.log.warn('SURVEYPRO_IMPORT_MINUTES is set but no council is configured; the SurveyPro importer is not scheduled'); return }
+    fastify.log.info({ minutes, councils: readers.map((r) => r.name) }, 'SurveyPro importer scheduled')
+    importTimer = setInterval(async () => {
+      try {
+        const r = await runScheduled(pg, { readers, apply: process.env.SURVEYPRO_IMPORT_APPLY !== 'off', trigger: 'schedule' })
+        if (r.skipped) return fastify.log.info('SurveyPro import skipped: another run is in progress')
+        const level = r.status === 'ok' ? 'info' : 'warn'
+        fastify.log[level]({ run: r.id, status: r.status, totals: r.totals }, 'SurveyPro import ran')
+      } catch (err) {
+        fastify.log.error({ err }, 'SurveyPro import could not be recorded')
+      }
+    }, opts.importEveryMs || minutes * 60_000)
+    importTimer.unref()
   })
-  fastify.addHook('onClose', async () => clearInterval(timer))
+  fastify.addHook('onClose', async () => { clearInterval(timer); clearInterval(importTimer) })
 }
 
 module.exports = { gmsIntegrationRoutes }

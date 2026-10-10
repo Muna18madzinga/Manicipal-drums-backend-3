@@ -10,7 +10,7 @@ if (!/surveypro_scratch/.test(scratchUrl)) throw new Error('not scratch')
 const WT = process.env.SURVEYPRO_BACKEND
 let bad = 0; const ok = (c, m) => { console.log((c ? '  ok   ' : '  FAIL ') + m); if (!c) bad++ }
 const boot = async (port, store) => {
-  const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, PORT: String(port), HOST: '127.0.0.1', DATABASE_URL: scratchUrl, DB_NAME: process.env.XS_SCRATCH_DB, JWT_SECRET: 'fixed-e2e-secret-fixed-e2e-secret', SURVEY_STORE: store }
+  const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, PORT: String(port), HOST: '127.0.0.1', DATABASE_URL: scratchUrl, APP_DATABASE_URL: process.env.XS_APP_URL || scratchUrl, DB_NAME: process.env.XS_SCRATCH_DB, JWT_SECRET: 'fixed-e2e-secret-fixed-e2e-secret', SURVEY_STORE: store }
   const child = spawn('node', ['src/server.js'], { cwd: WT, env, stdio: 'ignore' })
   for (let i = 0; i < 70; i++) { await new Promise(r => setTimeout(r, 1500)); try { if ((await axios.get(`http://127.0.0.1:${port}/api/health`, { timeout: 1500 })).status === 200) break } catch {} }
   return { child, sp: axios.create({ baseURL: `http://127.0.0.1:${port}/api`, validateStatus: () => true, timeout: 60000 }) }

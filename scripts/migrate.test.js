@@ -128,6 +128,7 @@ describe('migration plan', () => {
       '173_embedded_survey_legacy.sql',
       '174_parcel_survey_class.sql',
       '175_parcel_event.sql',
+      '176_surveypro_import_run.sql',
     ])
 
     for (const filename of MIGRATIONS) {

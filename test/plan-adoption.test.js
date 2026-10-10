@@ -11,7 +11,8 @@ const { importGeneralPlan, ADOPT_TOLERANCE_M } = require('../src/services/gms/pa
 const SRID = 922029                       // Cape / Lo29 in the registry
 const TOWN = 'ADOPT-TEST-TOWN'
 const SG = 'ADOPT-TEST-SG'
-const W0 = -84035, S0 = 2151377
+// its own patch of ground, so suites running side by side cannot meet on it
+const W0 = -87500, S0 = 2154500
 // a 30 m square as GeoJSON in the survey CRS (x = westing, y = southing), optionally shifted
 const sq = (w, s, dx = 0, size = 30) => ({ type: 'Polygon', coordinates: [[[w + dx, s], [w + size + dx, s], [w + size + dx, s + size], [w + dx, s + size], [w + dx, s]]] })
 

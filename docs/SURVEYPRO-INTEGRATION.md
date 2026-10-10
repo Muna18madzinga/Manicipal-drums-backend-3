@@ -103,6 +103,25 @@ Decided 2026-10-09, after reading SI 727 (the scan) and the Land Survey Act [Cha
 
 Still to check with a surveyor against the paper regulations: SurveyPro's tolerance kernel applies para 5 style distance factors (0.04 and 0.06) when comparing found beacons, and its comment cites a "para 7(5)" that the scan does not show. Section 15(1)(ii) ties acceptance of previous-survey coordinates to para 7, whose limits are 0.01 (class B) and 0.02 (class C) times the distance. The scan's OCR of paras 5 and 7 was not clean enough to settle it.
 
+## Running it on a schedule
+
+Two ways, one engine (`src/services/surveyproSchedule.js`); choose by where VunGIS runs.
+
+**In the server.** Set `SURVEYPRO_IMPORT_MINUTES` (1 to 1440; unset or 0 means not scheduled, the default). The integration plugin that already runs the ERP outbox worker then runs the import on a timer. `SURVEYPRO_IMPORT_APPLY=off` keeps it to dry runs.
+
+**From the operating system** (a cron job, Windows Task Scheduler, a Render cron job): `node scripts/import-surveypro.js --apply` every fifteen minutes. Use this if the server runs as several instances or is restarted often; the engine is the same.
+
+Both read the same councils. **Each council has its own read-only login on SurveyPro**, so give the importer all of them: `SURVEYPRO_READERS` as JSON `{"VUNGU": "postgresql://...", "GWERU": "postgresql://..."}`, or `SURVEYPRO_READERS_FILE` pointing at a git-ignored file holding it, or, for one council, `SURVEYPRO_DATABASE_URL` as before. A council whose SurveyPro cannot be reached fails alone; the others are still read.
+
+What makes it safe to leave alone:
+
+- **One run at a time.** A Postgres advisory lock: a timer that overlaps itself, two servers, or a timer and a person never import together. A run that finds the lock held does nothing and says so.
+- **A trail.** Every applied run is a row in `integration.surveypro_import_run` (migration 176): when, who started it (schedule, manual, cli), applied or dry, and a status: **ok**; **attention** (the register refused a layout, or a boundary diverged: a person has to look, and the importer does not retry what it refused); **failed** (a council could not be read, or nothing is configured). The report keeps only what happened. Quiet runs are forgotten after a week, the rest after a year.
+- **No secrets in the record, the report, the logs or the console.** Councils are named by the key they were configured under, never by URL.
+- **A console.** *GIS Branch > Integration > SurveyPro imports*: whether it is scheduled and for which councils, the last good run, the recent runs and, opened, what each council's run did; "Dry run" and "Import now" for those who operate the integration. API: `GET /api/integration/surveypro`, `GET /api/integration/surveypro/runs/:id`, `POST /api/integration/surveypro/run` (a dry run unless `{"apply": true}`).
+
+Look at the console after the first few runs: a run that needs attention is waiting for a person (a stand number already taken, an overlap, an unsupported coordinate system), and the reasons are in it.
+
 ## The layout check (SurveyPro asks VunGIS)
 
 A surveyor, and later the council's reviewer, can ask whether the register would take a layout BEFORE it is delivered or accepted, with the same rules the importer applies (`src/services/layoutCheck.js`): a stand number already taken in the township, an overlap with an existing stand or plot (a farm does not count), a repeated number, a bad geometry, a system the register does not know; area and class notes as warnings. It is advisory and changes nothing on either side.

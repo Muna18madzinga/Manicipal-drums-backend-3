@@ -24,7 +24,7 @@ const launchLib = require(ROOT + '/src/lib/launchToken')
   // ---- SurveyPro, as a separate process on the scratch database ----------------------------------------------------------------
   const env = {
     PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, TMP: process.env.TMP,
-    PORT: String(PORT), HOST: '127.0.0.1', DATABASE_URL: scratchUrl, DB_NAME: process.env.XS_SCRATCH_DB, DB_HOST: 'localhost',
+    PORT: String(PORT), HOST: '127.0.0.1', DATABASE_URL: scratchUrl, APP_DATABASE_URL: process.env.XS_APP_URL || scratchUrl, DB_NAME: process.env.XS_SCRATCH_DB, DB_HOST: 'localhost',
     JWT_SECRET: crypto.randomBytes(24).toString('hex'), NODE_ENV: 'development',
     VUNGIS_LAUNCH_PUBLIC_KEY: keys.publicKey.export({ type: 'spki', format: 'pem' }),
   }
