@@ -3,7 +3,7 @@
  *
  *   SURVEYPRO_REPO=C:/surveypro-oct-beta/_beta-vungis-wt \
  *   SURVEYPRO_SCHEMA_ENV=C:/surveypro-oct-beta/surveypro/app-backend/.env \
- *   node scripts/cross-system/run.js [launch] [class] [deliver] [shared] [cutover] [check] [runtime]      (no names = all)
+ *   node scripts/cross-system/run.js [launch] [class] [deliver] [shared] [cutover] [check] [context] [runtime] [stage]      (no names = all)
  *
  * What it does, for each scenario: builds a throw-away SurveyPro database (surveypro_scratch_xs) on the same Postgres server as VunGIS, starts
  * a real SurveyPro server on it, drives both systems through their APIs, and tears everything down, including the cluster-wide roles
@@ -15,6 +15,8 @@
  *   shared    the application switch (SURVEY_STORE=shared): private practice, council projects, freezing, delivery in place, import
  *   cutover   the cut-over of per-surveyor schemas onto the shared tables, then served through the shared store
  *   check     the layout check: a surveyor and a reviewer ask VunGIS (signed service token) whether the register would take a layout
+ *   context   the register around a survey: a surveyor sees the farms, approved stands and the council's own surveyed stands near their work, each with how far to trust it
+ *   stage     (not a check, and not in the default run) stand VunGIS and SurveyPro up together, wired and populated, and leave them running until manuals/_tools/stage.stop appears
  *   runtime   the non-owner runtime login SurveyPro runs as in EVERY scenario: no rights of its own on the tenant tables, no bypass, no DDL
  *
  * Needs
@@ -36,14 +38,14 @@ const ROOT = path.resolve(__dirname, '../..')
 require(path.join(ROOT, 'node_modules/dotenv')).config({ path: path.join(ROOT, '.env'), quiet: true })
 const { Pool } = require(path.join(ROOT, 'node_modules/pg'))
 
-const SCENARIOS = ['launch', 'class', 'deliver', 'shared', 'cutover', 'check', 'runtime']
+const SCENARIOS = ['launch', 'class', 'deliver', 'shared', 'cutover', 'check', 'context', 'runtime', 'stage']
 const SCRATCH = 'surveypro_scratch_xs'
 const RUNTIME = 'surveypro_xs_runtime'
 const die = (m) => { console.error(m); process.exit(2) }
 
 const wanted = process.argv.slice(2)
 for (const w of wanted) if (!SCENARIOS.includes(w)) die(`unknown scenario "${w}" (${SCENARIOS.join(', ')})`)
-const todo = wanted.length ? wanted : SCENARIOS
+const todo = wanted.length ? wanted : SCENARIOS.filter((s) => s !== 'stage')   // stage is not a check: it stands both systems up and waits
 
 const repo = process.env.SURVEYPRO_REPO
 if (!repo || !fs.existsSync(path.join(repo, 'app-backend', 'migrations'))) die('Set SURVEYPRO_REPO to a SurveyPro checkout (the folder that contains app-backend).')
@@ -132,7 +134,7 @@ async function build(dump) {
     try { built = await build(dump) } catch (e) { console.log('BUILD FAILED: ' + e.message); results.push([name, false]); continue }
     console.log(`(scratch SurveyPro database built: migrations ${built.files[0].slice(0, 3)}-${built.files[built.files.length - 1].slice(0, 3)}, no tenancy violations)`)
     const r = spawnSync('node', [path.join(__dirname, name + '.js')], {
-      cwd: ROOT, stdio: 'inherit', timeout: 10 * 60 * 1000,
+      cwd: ROOT, stdio: 'inherit', timeout: name === 'stage' ? undefined : 10 * 60 * 1000,
       env: { ...process.env, XS_SCRATCH_URL: built.url, XS_APP_URL: built.appUrl, XS_SCRATCH_DB: SCRATCH, SURVEYPRO_BACKEND: spBackend },
     })
     results.push([name, r.status === 0])

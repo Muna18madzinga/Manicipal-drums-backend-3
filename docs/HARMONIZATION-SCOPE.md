@@ -1,6 +1,6 @@
 # Harmonizing VunGIS's spatial data with SurveyPro: scope of the first two pieces
 
-Status: scoped 2026-10-10. **Piece B is built** (see "Built" under B). **A1 (the layout check) is built** (see "Built" under A1); A2 (the context layer) is not started. Context: `docs/SURVEYPRO-INTEGRATION.md` (the hand-off that exists today).
+Status: scoped 2026-10-10. **Piece B is built** (see "Built" under B). **A1 (the layout check) and A2 (the context layer) are built** (see "Built" under A1 and A2). Context: `docs/SURVEYPRO-INTEGRATION.md` (the hand-off that exists today).
 
 What exists today is a one-way seam: a council's accepted SurveyPro work is imported into `land.parcel`. Two things are missing at the edges of it:
 
@@ -83,6 +83,8 @@ A read-only layer on the surveyor's map: farm boundaries, existing stands and pl
 - **Public fields only**: parcel id, stand number, township, kind, origin, status, `sg_ref`, `survey_class`, `accuracy_basis`, area, geometry. Never owners, accounts or bands.
 - **Geometry in the job's Lo zone** (from `geom_source`, reprojected with the registry) as well as WGS 84, so the surveyor sees it in the system they work in.
 - **Honest about quality.** Each feature carries its basis. A digitised farm (`map_digitised`, datum floor of ±20 m until the Surveyor-General confirms) must look different on the map from an approved stand, so nobody sets out a beacon from a farm outline.
+
+**Built (2026-10-10), A2.** `POST /api/context/parcels` (`src/routes/context.js`, `src/services/contextParcels.js`), authenticated by a service token for the purpose `context-parcels` (a token for the layout check does not open it, nor the reverse). SurveyPro: `POST /api/survey-projects/:id/context` works out where the project is (the extent of its points and parcels in the belt most of them are in; or, for a job not yet surveyed, the job's location) and asks; a "Register around this survey" control and layer on the cadastral map (`useRegisterContext`, `RegisterContextControl`), off by default and remembered per project. Each outline is **approved** (solid green), **the council's survey awaiting approval** (dashed blue) or **indicative** (dotted orange, with how far out it may be and "do not set out from it"); the outlines come in the surveyor's belt and are placed with the survey's own transformation. **Decisions taken** (the three questions were open): (1) offline: a copy is kept on the device (IndexedDB), used without asking for twelve hours, refreshed on request, and shown as "offline copy" when the register cannot be reached; (2) neighbouring councils: other councils' stands in the window are shown (they are public), tagged with their council; (3) quality: the three outlines above, never a single style. **One change from the scope:** "scoped by job" became "scoped by the surveyor's own project area", because not every project comes from a job; it is bounded instead by the appointment (SurveyPro checks it), a window of at most 6,000 m a side (3,000 m radius), at most 1,500 features, and public fields only. Tests: `test/context-parcels.test.js` (12), the client's (3 more) and the frontend's (service, layer and control: 22), and the `context` cross-system scenario.
 
 ### Authentication SurveyPro to VunGIS
 

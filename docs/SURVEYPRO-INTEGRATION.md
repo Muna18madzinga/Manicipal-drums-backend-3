@@ -122,6 +122,12 @@ What makes it safe to leave alone:
 
 Look at the console after the first few runs: a run that needs attention is waiting for a person (a stand number already taken, an overlap, an unsupported coordinate system), and the reasons are in it.
 
+## The register around a survey (SurveyPro asks VunGIS)
+
+A surveyor laying out a township sees what the register already holds around their work, as a layer on the map: farms, stands the Surveyor-General has approved, stands the council has surveyed and is waiting to have approved. `POST /api/context/parcels` answers with the parcels in a window (a box in the surveyor's Lo belt, or a circle round a place), **public facts only** (parcel id, stand number, township, kind, status, the Surveyor-General's reference, survey class and basis, area, farm number, council), geometry in the belt the surveyor works in (westing X, southing Y, as SurveyPro keeps its own coordinates) and, for each, `quality`: `approved`, `council_survey` or `indicative` (digitised from a map, with `indicative_m`, how far out it may be). It is capped: a window at most 6,000 m a side or 3,000 m in radius, at most 1,500 features, and a belt the register has. Read-only; authenticated by a service token for the purpose `context-parcels` (a different purpose from the layout check's, so neither token opens the other's door). Nothing about owners, ERP accounts or revenue bands is in it.
+
+Nobody should set out from an indicative outline, and the map says so. Outlines in the survey belt are placed with the SURVEY's own transformation, so a council-surveyed stand lines up with the surveyor's work; the register's WGS 84 copies, made with the register's own transformation, are not used for this layer.
+
 ## The layout check (SurveyPro asks VunGIS)
 
 A surveyor, and later the council's reviewer, can ask whether the register would take a layout BEFORE it is delivered or accepted, with the same rules the importer applies (`src/services/layoutCheck.js`): a stand number already taken in the township, an overlap with an existing stand or plot (a farm does not count), a repeated number, a bad geometry, a system the register does not know; area and class notes as warnings. It is advisory and changes nothing on either side.
