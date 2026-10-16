@@ -2,6 +2,7 @@
  * Stands routes — public list/detail + planner CRUD + reserve flow.
  *
  *   GET    /api/stands                  → GeoJSON FeatureCollection
+ *   GET    /api/stands/identify         → spatial point-in-polygon identify (sold/status + props)
  *   GET    /api/stands/:id              → single stand + zone + plan suggestion
  *   POST   /api/stands                  → planner/admin: create stand with geometry
  *   PUT    /api/stands/:id              → planner/admin: update stand details/geometry
@@ -51,7 +52,123 @@ function pickStatuses(raw) {
   return list.filter(s => STATUS_VALUES.has(s))
 }
 
+/** Citizen-facing availability label derived from registry status. */
+function availabilityLabel(status) {
+  const s = String(status || '').toLowerCase()
+  if (s === 'available') return { available: true, sold: false, label: 'Available' }
+  if (s === 'reserved') return { available: false, sold: false, label: 'Reserved' }
+  if (s === 'allocated' || s === 'sold') return { available: false, sold: true, label: 'Sold / allocated' }
+  if (s === 'withdrawn') return { available: false, sold: false, label: 'Withdrawn' }
+  return { available: false, sold: false, label: status || 'Unknown' }
+}
+
 async function standsRoutes(fastify) {
+  // ── Public: spatial identify (point → stand polygon + sold/status) ──
+  // MUST be registered before /stands/:id so "identify" is not parsed as an id.
+  fastify.get('/stands/identify', async (request, reply) => {
+    try {
+      const lng = Number(request.query?.lng ?? request.query?.lon ?? request.query?.x)
+      const lat = Number(request.query?.lat ?? request.query?.y)
+      if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+        return reply.code(400).send({
+          success: false,
+          error: 'lng_lat_required',
+          message: 'Provide lng and lat (WGS84) of the map click.',
+        })
+      }
+      if (lng < -180 || lng > 180 || lat < -90 || lat > 90) {
+        return reply.code(400).send({ success: false, error: 'lng_lat_out_of_range' })
+      }
+
+      // Compatible with both pre- and post-3NF stands columns.
+      const { rows } = await fastify.pg.query(
+        `SELECT
+           s.id, s.stand_number, s.ward, s.zone_id, s.zone_type,
+           s.use_scale, s.status, s.area_sqm, s.frontage_m, s.depth_m,
+           s.price_usd, s.description, s.reserved_until, s.allocated_at,
+           ST_AsGeoJSON(s.geom)::JSON AS geometry,
+           ST_X(ST_Centroid(s.geom)) AS centroid_lng,
+           ST_Y(ST_Centroid(s.geom)) AS centroid_lat,
+           ROUND(ST_Area(s.geom::geography)::numeric, 2) AS area_sqm_calc,
+           z.zone AS zone_name
+         FROM stands s
+         LEFT JOIN proposed_peri_urban_zones z ON z.id::text = s.zone_id::text
+         WHERE s.geom IS NOT NULL
+           AND ST_Intersects(s.geom, ST_SetSRID(ST_MakePoint($1, $2), 4326))
+         ORDER BY ST_Area(s.geom) ASC
+         LIMIT 5`,
+        [lng, lat],
+      )
+
+      if (!rows.length) {
+        return reply.send({
+          success: true,
+          data: null,
+          message: 'No stand polygon at this location.',
+          query: { lng, lat },
+        })
+      }
+
+      // Optional allocation join — table may be empty or absent on thin DBs.
+      const allocByStand = new Map()
+      try {
+        const ids = rows.map((r) => r.id)
+        const { rows: allocs } = await fastify.pg.query(
+          `SELECT DISTINCT ON (stand_id)
+             stand_id, reference_no, purpose, allocated_at
+           FROM stand_allocation
+           WHERE stand_id = ANY($1::uuid[])
+           ORDER BY stand_id, allocated_at DESC NULLS LAST`,
+          [ids],
+        )
+        for (const a of allocs) allocByStand.set(a.stand_id, a)
+      } catch (err) {
+        request.log.warn({ err }, 'stand_allocation lookup skipped')
+      }
+
+      const features = rows.map((r) => {
+        const avail = availabilityLabel(r.status)
+        const area = r.area_sqm != null ? Number(r.area_sqm) : (r.area_sqm_calc != null ? Number(r.area_sqm_calc) : null)
+        const alloc = allocByStand.get(r.id)
+        return {
+          id: r.id,
+          standNumber: r.stand_number,
+          ward: r.ward,
+          zoneId: r.zone_id,
+          zoneType: r.zone_type,
+          zoneName: r.zone_name || null,
+          useScale: r.use_scale,
+          areaSqm: area,
+          frontageM: r.frontage_m == null ? null : Number(r.frontage_m),
+          depthM: r.depth_m == null ? null : Number(r.depth_m),
+          priceUsd: r.price_usd == null ? null : Number(r.price_usd),
+          status: r.status,
+          ...avail,
+          description: r.description,
+          reservedUntil: r.reserved_until,
+          allocatedAt: r.allocated_at || alloc?.allocated_at || null,
+          allocation: alloc ? {
+            referenceNo: alloc.reference_no,
+            purpose: alloc.purpose || null,
+            allocatedAt: alloc.allocated_at,
+          } : null,
+          geometry: r.geometry,
+          centroid: [r.centroid_lng, r.centroid_lat],
+        }
+      })
+
+      return reply.send({
+        success: true,
+        data: features[0],
+        matches: features,
+        query: { lng, lat },
+      })
+    } catch (err) {
+      request.log.error({ err }, 'stands identify failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    }
+  })
+
   // ── Public: list as GeoJSON ─────────────────────────────────────────
   fastify.get('/stands', async (request, reply) => {
     try {
