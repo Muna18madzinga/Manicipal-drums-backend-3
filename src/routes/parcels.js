@@ -82,10 +82,48 @@ async function parcelResolver(pg, lng, lat) {
   const p = r.rows[0]
   return {
     fid: p.fid,
+    source: 'vungu_parcels',
     stand_number: p.stand_number,
     province: p.province,
     area_ha: p.area_ha === null ? null : Number(p.area_ha),
     centroid: [Number(p.lng), Number(p.lat)],
+  }
+}
+
+/** Authoritative council stand register (sale status lives here, not on cadastre). */
+async function registerStandResolver(pg, lng, lat) {
+  try {
+    const r = await pg.query(
+      `SELECT id, stand_number, ward, zone_type, status, area_sqm, price_usd,
+              ST_X(ST_Centroid(geom)) AS lng,
+              ST_Y(ST_Centroid(geom)) AS lat
+         FROM stands
+        WHERE geom IS NOT NULL
+          AND ST_Intersects(geom, ST_SetSRID(ST_MakePoint($1, $2), 4326))
+        ORDER BY ST_Area(geom) ASC
+        LIMIT 1`,
+      [lng, lat],
+    )
+    if (!r.rows[0]) return null
+    const p = r.rows[0]
+    const status = p.status || null
+    return {
+      id: p.id,
+      source: 'stands_register',
+      stand_number: p.stand_number,
+      ward: p.ward,
+      zone_type: p.zone_type,
+      status,
+      sold: status === 'allocated',
+      available: status === 'available',
+      area_sqm: p.area_sqm == null ? null : Number(p.area_sqm),
+      price_usd: p.price_usd == null ? null : Number(p.price_usd),
+      area_ha: p.area_sqm == null ? null : Number(p.area_sqm) / 10000,
+      centroid: [Number(p.lng), Number(p.lat)],
+    }
+  } catch (err) {
+    // Thin DBs without stands.geom should still resolve cadastre parcels.
+    return null
   }
 }
 
@@ -119,11 +157,15 @@ async function resolveLocation(pg, lng, lat) {
   ])
   let stand = null
   if (j.in_jurisdiction) {
-    stand = await parcelResolver(pg, lng, lat)
+    // Prefer the stands register (sold/available) over cadastre parcel name.
+    stand = await registerStandResolver(pg, lng, lat)
+    if (!stand) stand = await parcelResolver(pg, lng, lat)
     if (stand) {
       stand.district = j.district
-      stand.ward = ward
-      stand.description = buildDescription(stand, j.district)
+      if (!stand.ward) stand.ward = ward
+      stand.description = stand.source === 'stands_register'
+        ? `Stand ${stand.stand_number}${stand.status ? ` — ${stand.status}` : ''}`
+        : buildDescription(stand, j.district)
     }
   }
   return { ...j, ward, stand }
@@ -247,27 +289,45 @@ async function nearbyResolver(pg, lng, lat, radiusM) {
  * Name → parcel lookup for deep links (/gis-map?stand=…) and search.
  * Exact (case-insensitive) matches sort first, then smallest parcels — a
  * subdivided farm beats the giant parent when both contain the query.
- * ponytail: vungu_parcels only — UNION the stands table when it gains rows.
+ * Searches cadastre parcels and the stands register (sale status on stands).
  */
 async function findParcels(pg, q) {
   const r = await pg.query(
-    `SELECT fid,
-            COALESCE(NULLIF(name,''), name_cfu, 'Parcel ' || fid) AS stand_number,
-            status, area_ha, district,
-            ST_X(ST_Centroid(geom)) AS lng, ST_Y(ST_Centroid(geom)) AS lat,
-            ST_XMin(geom) AS minx, ST_YMin(geom) AS miny,
-            ST_XMax(geom) AS maxx, ST_YMax(geom) AS maxy
-     FROM vungu_parcels
-     WHERE geom IS NOT NULL AND (name ILIKE $1 OR name_cfu ILIKE $1)
-     ORDER BY (LOWER(name) = LOWER($2) OR LOWER(name_cfu) = LOWER($2)) DESC,
-              NULLIF(area_ha::text, '')::numeric ASC NULLS LAST
-     LIMIT 5`,
+    `WITH hits AS (
+       SELECT 'parcel'::text AS source,
+              fid::text AS id,
+              COALESCE(NULLIF(name,''), name_cfu, 'Parcel ' || fid) AS stand_number,
+              status, area_ha, district,
+              ST_X(ST_Centroid(geom)) AS lng, ST_Y(ST_Centroid(geom)) AS lat,
+              ST_XMin(geom) AS minx, ST_YMin(geom) AS miny,
+              ST_XMax(geom) AS maxx, ST_YMax(geom) AS maxy,
+              (LOWER(name) = LOWER($2) OR LOWER(name_cfu) = LOWER($2)) AS exact
+         FROM vungu_parcels
+        WHERE geom IS NOT NULL AND (name ILIKE $1 OR name_cfu ILIKE $1)
+       UNION ALL
+       SELECT 'stand'::text,
+              id::text,
+              stand_number,
+              status,
+              ROUND((area_sqm / 10000.0)::numeric, 4) AS area_ha,
+              ward AS district,
+              ST_X(ST_Centroid(geom)), ST_Y(ST_Centroid(geom)),
+              ST_XMin(geom), ST_YMin(geom), ST_XMax(geom), ST_YMax(geom),
+              (LOWER(stand_number) = LOWER($2)) AS exact
+         FROM stands
+        WHERE geom IS NOT NULL AND stand_number ILIKE $1
+     )
+     SELECT * FROM hits
+     ORDER BY exact DESC, NULLIF(area_ha::text, '')::numeric ASC NULLS LAST
+     LIMIT 8`,
     [`%${q}%`, q],
   )
   return r.rows.map(p => ({
-    fid: p.fid,
+    fid: p.id,
+    source: p.source,
     stand_number: p.stand_number,
     status: p.status,
+    sold: p.source === 'stand' && p.status === 'allocated',
     district: p.district,
     area_ha: p.area_ha === null ? null : Number(p.area_ha),
     centroid: [Number(p.lng), Number(p.lat)],
