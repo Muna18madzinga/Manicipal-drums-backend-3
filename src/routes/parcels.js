@@ -155,18 +155,19 @@ async function resolveLocation(pg, lng, lat) {
     jurisdictionResolver(pg, lng, lat),
     wardResolver(pg, lng, lat),
   ])
-  let stand = null
-  if (j.in_jurisdiction) {
-    // Prefer the stands register (sold/available) over cadastre parcel name.
-    stand = await registerStandResolver(pg, lng, lat)
-    if (!stand) stand = await parcelResolver(pg, lng, lat)
-    if (stand) {
-      stand.district = j.district
-      if (!stand.ward) stand.ward = ward
-      stand.description = stand.source === 'stands_register'
-        ? `Stand ${stand.stand_number}${stand.status ? ` — ${stand.status}` : ''}`
-        : buildDescription(stand, j.district)
-    }
+  // Stands register is authoritative for sold/available — resolve even when
+  // the click falls outside the current jurisdiction polygon (demo stands and
+  // boundary-edge cases). Cadastre parcels stay jurisdiction-gated.
+  let stand = await registerStandResolver(pg, lng, lat)
+  if (!stand && j.in_jurisdiction) {
+    stand = await parcelResolver(pg, lng, lat)
+  }
+  if (stand) {
+    stand.district = j.district
+    if (!stand.ward) stand.ward = ward
+    stand.description = stand.source === 'stands_register'
+      ? `Stand ${stand.stand_number}${stand.status ? ` — ${stand.status}` : ''}`
+      : buildDescription(stand, j.district)
   }
   return { ...j, ward, stand }
 }
@@ -297,7 +298,9 @@ async function findParcels(pg, q) {
        SELECT 'parcel'::text AS source,
               fid::text AS id,
               COALESCE(NULLIF(name,''), name_cfu, 'Parcel ' || fid) AS stand_number,
-              status, area_ha, district,
+              status::text AS status,
+              NULLIF(area_ha, '')::numeric AS area_ha,
+              district::text AS district,
               ST_X(ST_Centroid(geom)) AS lng, ST_Y(ST_Centroid(geom)) AS lat,
               ST_XMin(geom) AS minx, ST_YMin(geom) AS miny,
               ST_XMax(geom) AS maxx, ST_YMax(geom) AS maxy,
@@ -307,10 +310,10 @@ async function findParcels(pg, q) {
        UNION ALL
        SELECT 'stand'::text,
               id::text,
-              stand_number,
-              status,
-              ROUND((area_sqm / 10000.0)::numeric, 4) AS area_ha,
-              ward AS district,
+              stand_number::text,
+              status::text,
+              ROUND((area_sqm / 10000.0)::numeric, 4),
+              ward::text,
               ST_X(ST_Centroid(geom)), ST_Y(ST_Centroid(geom)),
               ST_XMin(geom), ST_YMin(geom), ST_XMax(geom), ST_YMax(geom),
               (LOWER(stand_number) = LOWER($2)) AS exact
@@ -318,7 +321,7 @@ async function findParcels(pg, q) {
         WHERE geom IS NOT NULL AND stand_number ILIKE $1
      )
      SELECT * FROM hits
-     ORDER BY exact DESC, NULLIF(area_ha::text, '')::numeric ASC NULLS LAST
+     ORDER BY exact DESC, area_ha ASC NULLS LAST
      LIMIT 8`,
     [`%${q}%`, q],
   )
