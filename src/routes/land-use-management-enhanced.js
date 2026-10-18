@@ -1,11 +1,11 @@
 // Enhanced Land Use Management Routes
 // Supports dynamic zone-land use relationships with three-tier development control
 
-const { Pool } = require('pg');
-
 // Initialize route
 async function landUseManagementRoutes(fastify, { auth }) {
-  const pool = fastify.pg.pool;
+  // Must use the contextual pool (fastify.pg.query). In TENANCY_MODE=strict,
+  // fastify.pg.pool is a Proxy that throws — that was 500ing every /groups call.
+  const pool = fastify.pg
 
   // ============================================
   // Land Use Groups Management

@@ -652,40 +652,35 @@ async function developmentControlRoutes(fastify) {
   // ============================================
 
   // GET /api/development-control/applications
+  // Live schema is the citizen intake table (id, user_id, form_data, status, …).
+  // The legacy parcel_id / application_number shape is gone on restored dumps —
+  // return the modern rows so the planner queue does not 500.
   fastify.get('/applications', staffOnly, async (request, reply) => {
-    const { parcel_id, status } = request.query
-    
-    let query = `
-      SELECT 
-        da.application_id,
-        da.application_number,
-        da.status,
-        da.date_submitted,
-        da.description,
-        f.id AS parcel_id,
-        f.name AS stand_number,
-        f.district AS township_name,
-        g.group_code AS proposed_use_code
-      FROM development_applications da
-      JOIN gweru_rural_farms f ON da.parcel_id = f.id
-      LEFT JOIN land_use_groups g ON da.proposed_use_id = g.group_id
-      WHERE 1=1
-    `
+    const { status } = request.query
     const params = []
-    
-    if (parcel_id) {
-      params.push(parseInt(parcel_id))
-      query += ` AND da.parcel_id = $${params.length}`
-    }
-    
+    let where = 'WHERE 1=1'
     if (status) {
       params.push(status)
-      query += ` AND da.status = $${params.length}`
+      where += ` AND da.status = $${params.length}`
     }
-    
-    query += ` ORDER BY da.date_submitted DESC`
-    
-    const { rows } = await fastify.pg.query(query, params)
+    const { rows } = await fastify.pg.query(
+      `SELECT
+         da.id,
+         da.id AS application_id,
+         da.user_id,
+         da.status,
+         COALESCE(da.submitted_at, da.created_at) AS date_submitted,
+         da.form_data,
+         da.selection_data,
+         da.fees_data,
+         da.created_at,
+         da.updated_at
+       FROM development_applications da
+       ${where}
+       ORDER BY COALESCE(da.submitted_at, da.created_at) DESC NULLS LAST
+       LIMIT 200`,
+      params,
+    )
     return { success: true, count: rows.length, data: rows }
   })
 
