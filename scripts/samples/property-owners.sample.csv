@@ -1,0 +1,3 @@
+stand_number,owner_name,national_id,phone,email,deed_number,is_primary
+HDR-004,Tendai Moyo,63-123456A12,0772123456,tendai@example.test,DT-2019-00421,true
+HDR-103,Chipo Ncube,63-654321B34,0772987654,chipo@example.test,DT-2020-01102,true

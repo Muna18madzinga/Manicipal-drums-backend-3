@@ -225,6 +225,34 @@ async function main() {
     record('C8_public_notices', n.status < 500, `status=${n.status}`)
   } catch (e) { record('C8_public_notices', false, e.message) }
 
+  // ── Acua 300 m² sub-units ───────────────────────────────────────────
+  try {
+    const su = await req('GET', '/api/stands/subunits?typology=acua_300', { expect: 200 })
+    const n = su.json?.features?.length ?? 0
+    record('ACUA_subunits_geojson', n > 0, `features=${n}`)
+  } catch (e) { record('ACUA_subunits_geojson', false, e.message) }
+
+  // ── X4 / X7 custodian scaffolds ─────────────────────────────────────
+  if (planner || tokens.eo) {
+    const tok = tokens.eo || planner
+    try {
+      const sg = await req('POST', '/api/custodian/sg-submissions', {
+        token: tok,
+        body: { title: `E2E SG layout ${Date.now()}`, plan_type: 'layout', stand_number: 'HDR-105' },
+        expect: 201,
+      })
+      record('X4_sg_submission', !!sg.json?.data?.id, `id=${sg.json?.data?.id}`)
+    } catch (e) { record('X4_sg_submission', false, e.message) }
+    try {
+      const dn = await req('POST', '/api/custodian/deeds-notices', {
+        token: tok,
+        body: { notice_kind: 'sale', stand_number: 'HDR-004', deed_number: 'E2E-DEED-1', transferee_name: 'E2E Buyer' },
+        expect: 201,
+      })
+      record('X7_deeds_notice', !!dn.json?.data?.id, `id=${dn.json?.data?.id}`)
+    } catch (e) { record('X7_deeds_notice', false, e.message) }
+  }
+
   // ── Newly built statutory registers (A5 / P10 / G11 / C15 / F7) ─────
   const eo = tokens.eo || planner
   if (eo) {

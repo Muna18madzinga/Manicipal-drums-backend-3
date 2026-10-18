@@ -47,10 +47,17 @@ const {
   honeypotTripped,
 } = require('../utils/captchaChallenge')
 
+function demoLoginsAllowed() {
+  // Production blocks @vungu.test unless ALLOW_DEMO_LOGIN=1 (never on a public host).
+  if (process.env.ALLOW_DEMO_LOGIN === '1') return true
+  if (process.env.ALLOW_DEMO_LOGIN === '0') return false
+  return process.env.NODE_ENV !== 'production'
+}
+
 async function captchaOk(request, body, email) {
   // Demo accounts in local development skip the check so staff can still
   // one-click sign in; production always requires a valid challenge.
-  if (process.env.NODE_ENV !== 'production' && typeof email === 'string' && email.endsWith('@vungu.test')) {
+  if (demoLoginsAllowed() && typeof email === 'string' && email.endsWith('@vungu.test')) {
     return { ok: true }
   }
   if (honeypotTripped(body)) return { ok: false, reason: 'bot' }
@@ -206,6 +213,14 @@ async function authRoutes(fastify) {
       if (!isString(email) || !isString(password)) {
         return reply.code(400).send({
           success: false, error: 'missing_credentials', message: 'Email and password are required',
+        })
+      }
+
+      if (typeof email === 'string' && email.endsWith('@vungu.test') && !demoLoginsAllowed()) {
+        return reply.code(403).send({
+          success: false,
+          error: 'demo_disabled',
+          message: 'Demo accounts are disabled on this host.',
         })
       }
 

@@ -40,7 +40,12 @@ async function check() {
     await refused('it cannot change table structure', 'alter table public.users add column zz_probe int')
     await refused('it cannot create a role', 'create role zz_probe_role')
     await refused('it cannot read password hashes of database roles', 'select rolpassword from pg_authid limit 1')
-    await refused('it cannot edit the tenancy contract', "update tenancy.relation_class set class = 'tenant' where false and relation = 'x'; delete from tenancy.relation_class where relation = 'zz'")
+    const hasTenancy = (await pool.query("select 1 from pg_namespace where nspname = 'tenancy'")).rowCount > 0
+    if (hasTenancy) {
+      await refused('it cannot edit the tenancy contract', "update tenancy.relation_class set class = 'tenant' where false and relation = 'x'; delete from tenancy.relation_class where relation = 'zz'")
+    } else {
+      ok(true, 'tenancy schema absent on this DB — skipped contract write check')
+    }
     const c = await pool.connect()
     try {
       await c.query('BEGIN'); await c.query('SET LOCAL ROLE vungu_app')

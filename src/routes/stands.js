@@ -80,6 +80,31 @@ async function standsRoutes(fastify) {
         return reply.code(400).send({ success: false, error: 'lng_lat_out_of_range' })
       }
 
+      // Prefer Acua / stand sub-units (smaller polygons) when the click hits one.
+      let subunit = null
+      try {
+        const { rows: su } = await fastify.pg.query(
+          `SELECT
+             u.id, u.subunit_number, u.estate, u.typology, u.status,
+             u.target_area_sqm, u.area_sqm, u.price_usd, u.ward, u.description,
+             u.parent_stand_id,
+             ST_AsGeoJSON(u.geom)::JSON AS geometry,
+             ST_X(ST_Centroid(u.geom)) AS centroid_lng,
+             ST_Y(ST_Centroid(u.geom)) AS centroid_lat,
+             p.stand_number AS parent_stand_number
+           FROM stand_subunit u
+           LEFT JOIN stands p ON p.id = u.parent_stand_id
+           WHERE u.geom IS NOT NULL
+             AND ST_Intersects(u.geom, ST_SetSRID(ST_MakePoint($1, $2), 4326))
+           ORDER BY ST_Area(u.geom) ASC
+           LIMIT 1`,
+          [lng, lat],
+        )
+        if (su[0]) subunit = su[0]
+      } catch (err) {
+        request.log.warn({ err }, 'stand_subunit identify skipped')
+      }
+
       // Compatible with both pre- and post-3NF stands columns.
       const { rows } = await fastify.pg.query(
         `SELECT
@@ -100,11 +125,40 @@ async function standsRoutes(fastify) {
         [lng, lat],
       )
 
-      if (!rows.length) {
+      if (!rows.length && !subunit) {
         return reply.send({
           success: true,
           data: null,
           message: 'No stand polygon at this location.',
+          query: { lng, lat },
+        })
+      }
+
+      if (subunit) {
+        const avail = availabilityLabel(subunit.status)
+        const area = subunit.area_sqm != null ? Number(subunit.area_sqm) : Number(subunit.target_area_sqm)
+        const subunitPayload = {
+          id: subunit.id,
+          kind: 'subunit',
+          estate: subunit.estate,
+          typology: subunit.typology,
+          standNumber: subunit.subunit_number,
+          parentStandId: subunit.parent_stand_id,
+          parentStandNumber: subunit.parent_stand_number || null,
+          ward: subunit.ward,
+          areaSqm: area,
+          targetAreaSqm: Number(subunit.target_area_sqm),
+          priceUsd: subunit.price_usd == null ? null : Number(subunit.price_usd),
+          status: subunit.status,
+          ...avail,
+          description: subunit.description,
+          geometry: subunit.geometry,
+          centroid: [subunit.centroid_lng, subunit.centroid_lat],
+        }
+        return reply.send({
+          success: true,
+          data: subunitPayload,
+          matches: [subunitPayload],
           query: { lng, lat },
         })
       }
@@ -168,6 +222,50 @@ async function standsRoutes(fastify) {
       })
     } catch (err) {
       request.log.error({ err }, 'stands identify failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    }
+  })
+
+  // ── Public: Acua / stand sub-units as GeoJSON ───────────────────────
+  fastify.get('/stands/subunits', async (request, reply) => {
+    try {
+      const typology = isString(request.query?.typology, 40) ? request.query.typology : 'acua_300'
+      const statuses = pickStatuses(request.query?.status)
+      const { rows } = await fastify.pg.query(
+        `SELECT
+           u.id, u.subunit_number, u.estate, u.typology, u.status,
+           u.target_area_sqm, u.area_sqm, u.price_usd, u.ward,
+           u.parent_stand_id, p.stand_number AS parent_stand_number,
+           ST_AsGeoJSON(u.geom)::JSON AS geometry
+         FROM stand_subunit u
+         LEFT JOIN stands p ON p.id = u.parent_stand_id
+         WHERE u.typology = $1 AND u.status = ANY($2::text[])
+         ORDER BY u.subunit_number
+         LIMIT 500`,
+        [typology, statuses],
+      )
+      return reply.send({
+        type: 'FeatureCollection',
+        features: rows.map((r) => ({
+          type: 'Feature',
+          id: r.id,
+          geometry: r.geometry,
+          properties: {
+            subunit_number: r.subunit_number,
+            estate: r.estate,
+            typology: r.typology,
+            status: r.status,
+            area_sqm: r.area_sqm != null ? Number(r.area_sqm) : Number(r.target_area_sqm),
+            target_area_sqm: Number(r.target_area_sqm),
+            price_usd: r.price_usd == null ? null : Number(r.price_usd),
+            ward: r.ward,
+            parent_stand_number: r.parent_stand_number,
+            parent_stand_id: r.parent_stand_id,
+          },
+        })),
+      })
+    } catch (err) {
+      request.log.error({ err }, 'stands subunits list failed')
       return reply.code(500).send({ success: false, error: 'internal' })
     }
   })

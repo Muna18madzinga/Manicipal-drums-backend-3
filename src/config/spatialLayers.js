@@ -72,6 +72,12 @@ const LAYERS = [
     attributes: ['fid', 'stand_id', 'stand_number', 'ward', 'zone_type_cache', 'use_scale', 'status', 'area_sqm_int', 'price_usd_cents'],
     minzoom: 9, maxzoom: 22, lowZoomFilter: null, srid: 4326 },
 
+  // Acua ~300 m² residential sub-units nested under larger parent stands.
+  { id: 'acua_stands', table: 'acua_stands_tile_view', geomType: 'polygon', group: 'master_plan',
+    title: 'Acua stands (300 m²)',
+    attributes: ['fid', 'subunit_id', 'subunit_number', 'parent_stand_id', 'estate', 'typology', 'status', 'area_sqm_int', 'price_usd_cents'],
+    minzoom: 12, maxzoom: 22, lowZoomFilter: null, srid: 4326 },
+
   // --- Vungu RDC Master Plan (council planning data, stored as real EPSG:4326) ---
   { id: 'vungu_cemeteries',                table: 'vungu_cemeteries',                geomType: 'polygon', group: 'master_plan', title: 'Cemeteries (Vungu)',          attributes: ['fid', 'name'],                                                                                                                                                          minzoom: 12, maxzoom: 22, lowZoomFilter: null, srid: 4326 },
   { id: 'vungu_waste_management',          table: 'vungu_waste_management',          geomType: 'polygon', group: 'master_plan', title: 'Waste Management (Vungu)',    attributes: ['fid', 'use'],                                                                                                                                                           minzoom: 12, maxzoom: 22, lowZoomFilter: null, srid: 4326 },
