@@ -115,7 +115,7 @@ async function standsRoutes(fastify) {
         const ids = rows.map((r) => r.id)
         const { rows: allocs } = await fastify.pg.query(
           `SELECT DISTINCT ON (stand_id)
-             stand_id, reference_no, purpose, allocated_at
+             stand_id, reference_no, purpose, allocated_at, allottee_name
            FROM stand_allocation
            WHERE stand_id = ANY($1::uuid[])
            ORDER BY stand_id, allocated_at DESC NULLS LAST`,
@@ -147,10 +147,13 @@ async function standsRoutes(fastify) {
           description: r.description,
           reservedUntil: r.reserved_until,
           allocatedAt: r.allocated_at || alloc?.allocated_at || null,
+          // Public identify: allottee display name only (no phone/email PII).
+          // Full owner dossier remains on staff /api/properties/:standNo/owners.
           allocation: alloc ? {
             referenceNo: alloc.reference_no,
             purpose: alloc.purpose || null,
             allocatedAt: alloc.allocated_at,
+            allotteeName: alloc.allottee_name || null,
           } : null,
           geometry: r.geometry,
           centroid: [r.centroid_lng, r.centroid_lat],

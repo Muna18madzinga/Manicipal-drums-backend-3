@@ -34,3 +34,34 @@ BEGIN
   END LOOP;
   EXECUTE 'GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA app TO vungu_app';
 END $$;
+
+-- Staff auth (jwtAuth) selects these tenancy columns; older dumps lack them.
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS authority_id integer;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_platform boolean NOT NULL DEFAULT false;
+
+-- Quiet email / GMS workers on thin restores (full schema comes from later migrations).
+CREATE TABLE IF NOT EXISTS public.admin_setting (
+  key text PRIMARY KEY,
+  value text,
+  value_type text NOT NULL DEFAULT 'string',
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE SCHEMA IF NOT EXISTS integration;
+CREATE TABLE IF NOT EXISTS integration.outbox_event (
+  event_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  type text,
+  version int NOT NULL DEFAULT 1,
+  source text,
+  idempotency_key text UNIQUE,
+  payload jsonb,
+  status text NOT NULL DEFAULT 'pending',
+  next_attempt_at timestamptz NOT NULL DEFAULT now(),
+  occurred_at timestamptz NOT NULL DEFAULT now(),
+  attempts int NOT NULL DEFAULT 0,
+  last_error text,
+  reply jsonb,
+  acknowledged_at timestamptz
+);
+GRANT USAGE ON SCHEMA integration TO vungu_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA integration TO vungu_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.admin_setting TO vungu_app;

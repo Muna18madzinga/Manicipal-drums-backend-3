@@ -262,11 +262,13 @@ async function authenticate(fastify, request, reply) {
   }
 
   // Re-validate against DB: catches suspension, deletion, role changes.
+  // authority_id / is_platform come from tenancy migrations (154+). Restored
+  // dumps need scripts/bootstrap-local-vungu-app.sql (adds the columns).
   const { rows } = await systemOf(fastify.pg).query(
     `SELECT id, email, COALESCE(full_name, name) AS name, role, organization,
             job_title, department, phone, applicant_type,
             national_id, physical_address, active, status, residency_status,
-            authority_id, is_platform
+            authority_id, COALESCE(is_platform, false) AS is_platform
      FROM users WHERE id = $1`,
     [claims.sub],
   )
