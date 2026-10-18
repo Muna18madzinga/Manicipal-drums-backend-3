@@ -225,10 +225,81 @@ async function main() {
     record('C8_public_notices', n.status < 500, `status=${n.status}`)
   } catch (e) { record('C8_public_notices', false, e.message) }
 
-  // ── Known not-built (must not pretend) ──────────────────────────────
-  for (const id of ['C15_section109', 'P10_annual_district_plan', 'F7_expense_recovery', 'G11_compulsory_acquisition', 'A5_bylaw_register']) {
-    record(id, true, 'documented not-built — excluded from deploy gate', 'skip')
+  // ── Newly built statutory registers (A5 / P10 / G11 / C15 / F7) ─────
+  const eo = tokens.eo || planner
+  if (eo) {
+    try {
+      const list = await req('GET', '/api/registers/bylaws', { token: eo, expect: 200 })
+      record('A5_bylaw_register', list.json?.success === true, `rows=${(list.json?.data || []).length}`)
+      const created = await req('POST', '/api/registers/bylaws', {
+        token: eo,
+        body: { kind: 'bylaw', title: `E2E bylaw ${Date.now()}`, status: 'draft' },
+        expect: 201,
+      })
+      record('A5_bylaw_create', !!created.json?.data?.id, `id=${created.json?.data?.id}`)
+    } catch (e) { record('A5_bylaw_register', false, e.message) }
+
+    try {
+      const year = 2090 + (Date.now() % 9)
+      const created = await req('POST', '/api/registers/annual-plans', {
+        token: eo,
+        body: { plan_year: year, title: `E2E district plan ${year}`, status: 'draft' },
+        expect: 201,
+      })
+      record('P10_annual_district_plan', !!created.json?.data?.id, `year=${year}`)
+    } catch (e) { record('P10_annual_district_plan', false, e.message) }
+
+    try {
+      const created = await req('POST', '/api/registers/acquisitions', {
+        token: eo,
+        body: { purpose: 'public_benefit', stand_number: 'HDR-105', purpose_detail: 'E2E acquisition' },
+        expect: 201,
+      })
+      record('G11_compulsory_acquisition', !!created.json?.data?.id, `id=${created.json?.data?.id}`)
+    } catch (e) { record('G11_compulsory_acquisition', false, e.message) }
+
+    try {
+      const created = await req('POST', '/api/registers/expense-recoveries', {
+        token: eo,
+        body: { description: 'E2E s151 recovery', amount_usd: 12.5, stand_number: 'HDR-105' },
+        expect: 201,
+      })
+      record('F7_expense_recovery', !!created.json?.data?.id, `id=${created.json?.data?.id}`)
+    } catch (e) { record('F7_expense_recovery', false, e.message) }
+  } else {
+    for (const id of ['A5_bylaw_register', 'P10_annual_district_plan', 'G11_compulsory_acquisition', 'F7_expense_recovery']) {
+      record(id, false, 'no eo/planner token')
+    }
   }
+
+  // C15: citizen request + staff decide (use clerk / planner)
+  try {
+    // Prefer a citizen/viewer; fall back to planner requesting as authenticated user.
+    let citizenTok = tokens.viewer
+    if (!citizenTok) {
+      try {
+        const { token } = await login('demo.viewer@vungu.test')
+        citizenTok = token
+        tokens.viewer = token
+      } catch { citizenTok = planner }
+    }
+    const reqClear = await req('POST', '/api/registers/rates-clearances', {
+      token: citizenTok,
+      body: { stand_number: 'HDR-105', applicant_name: 'E2E Applicant' },
+      expect: 201,
+    })
+    const clearId = reqClear.json?.data?.id
+    record('C15_section109_request', !!clearId, `id=${clearId}`)
+    if (clearId && (clerk || planner)) {
+      const decided = await req('POST', `/api/registers/rates-clearances/${clearId}/decide`, {
+        token: clerk || planner,
+        body: { decision: 'clear', charges_outstanding_usd: 0 },
+        expect: 200,
+      })
+      record('C15_section109_issue', decided.json?.data?.status === 'cleared' && !!decided.json?.data?.certificate_no,
+        `cert=${decided.json?.data?.certificate_no}`)
+    }
+  } catch (e) { record('C15_section109_request', false, e.message) }
 
   // ── Citizen registration smoke (create+cleanup not required) ────────
   try {

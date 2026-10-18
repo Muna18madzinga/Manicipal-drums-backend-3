@@ -108,6 +108,7 @@ const { surveyorComputeRoutes } = require('./src/routes/surveyorCompute')
 const { controlPointRoutes } = require('./src/routes/controlPoints')
 const { propertyRoutes } = require('./src/routes/properties')
 const { councilOpsRoutes } = require('./src/routes/council-ops')
+const { councilRegistersRoutes } = require('./src/routes/council-registers')
 const { serviceDeskRoutes } = require('./src/routes/service-desk')
 const { gmsRoutes } = require('./src/routes/gms')
 const { gmsIntegrationRoutes } = require('./src/routes/gms-integration')
@@ -688,6 +689,7 @@ async function build() {
     await server.register(gisStyleRoutes, { prefix: '/api' })
     await server.register(planningRoutes, { prefix: '/api' })
     await server.register(councilOpsRoutes, { prefix: '/api' })
+    await server.register(councilRegistersRoutes, { prefix: '/api' })
     await server.register(serviceDeskRoutes, { prefix: '/api' })
     // GIS Management System, phase 1: parcel register + ERP integration
     // (migration 132). The integration plugin owns the outbox worker.
