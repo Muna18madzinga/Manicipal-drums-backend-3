@@ -14,6 +14,7 @@
     "test:db": "node scripts/prepare-acceptance-db.js",
     "test:db:prepare": "node scripts/prepare-acceptance-db.js prepare",
     "test:live": "node scripts/run-live-server-tests.js",
+    "test:e2e-deploy": "node scripts/e2e-deploy-readiness.mjs",
     "migrate": "node scripts/migrate.js",
     "backup": "node scripts/backup-db.js",
     "migrate:060": "node scripts/run-migration-060.js",
