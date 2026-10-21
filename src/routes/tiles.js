@@ -526,7 +526,8 @@ async function tilesRoutes(fastify) {
   fastify.get('/map/public-notices', async (request, reply) => {
     try {
       const { rows } = await fastify.pg.query(
-        `SELECT COALESCE(pa.dev_register_no, pa.tpd_reference, pa.dev_app_id) AS reference,
+        `SELECT pa.id AS permit_app_id,
+                COALESCE(pa.dev_register_no, pa.tpd_reference, pa.dev_app_id) AS reference,
                 pa.stand_number, pa.suburb_ward, pa.development_type,
                 pn.objection_period_start::text AS objection_start,
                 pn.objection_period_end::text AS objection_end,

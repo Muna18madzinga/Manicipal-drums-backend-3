@@ -278,6 +278,82 @@ async function councilRegistersRoutes(fastify) {
     return reply.send({ success: true, data: rows[0] })
   })
 
+  // Paper hand-off of an issued certificate to the Deeds Registry (X6).
+  fastify.post('/registers/rates-clearances/:id/handoff', {
+    preHandler: requireRole(fastify, FINANCE_WRITERS),
+  }, async (request, reply) => {
+    await ensureSchema(pg)
+    const ref = request.body?.deeds_handoff_ref
+    if (!isStr(ref, 80)) {
+      return reply.code(400).send({ success: false, error: 'deeds_handoff_ref required' })
+    }
+    const { rows } = await pg.query(
+      `UPDATE council_ops.rates_clearance SET
+         deeds_handoff_at = now(),
+         deeds_handoff_ref = $2,
+         deeds_handed_by = $3,
+         updated_at = now()
+       WHERE id = $1 AND status = 'cleared'
+       RETURNING *`,
+      [request.params.id, ref.trim(), request.user.id],
+    )
+    if (!rows[0]) return reply.code(409).send({ success: false, error: 'clearance_not_issued' })
+    return reply.send({ success: true, data: rows[0] })
+  })
+
+  // G10 — Minister's approval of an estate layout (RDC Act s86).
+  fastify.get('/registers/estate-approvals', staff, async (_req, reply) => {
+    const { rows } = await pg.query(
+      `SELECT * FROM council_ops.estate_development_approval ORDER BY created_at DESC LIMIT 200`,
+    )
+    return reply.send({ success: true, data: rows })
+  })
+
+  fastify.post('/registers/estate-approvals', write, async (request, reply) => {
+    const b = request.body || {}
+    if (!isStr(b.title, 300)) return reply.code(400).send({ success: false, error: 'title required' })
+    const { rows } = await pg.query(
+      `INSERT INTO council_ops.estate_development_approval (title, area_scope, notes, created_by)
+       VALUES ($1,$2,$3,$4) RETURNING *`,
+      [b.title.trim(), b.area_scope || null, b.notes || null, request.user.id],
+    )
+    return reply.code(201).send({ success: true, data: rows[0] })
+  })
+
+  fastify.patch('/registers/estate-approvals/:id', write, async (request, reply) => {
+    const b = request.body || {}
+    const next = b.status
+    const allowed = new Set(['draft', 'advertised', 'awaiting_minister', 'approved', 'refused'])
+    if (next && !allowed.has(next)) return reply.code(400).send({ success: false, error: 'bad_status' })
+    if (next === 'approved' && !isStr(b.minister_ref, 80)) {
+      return reply.code(400).send({ success: false, error: 'minister_ref required' })
+    }
+    const { rows } = await pg.query(
+      `UPDATE council_ops.estate_development_approval SET
+         status = COALESCE($2, status),
+         advertised_at = CASE WHEN $2 = 'advertised' THEN COALESCE(advertised_at, CURRENT_DATE) ELSE advertised_at END,
+         objections_close_at = CASE
+           WHEN $2 = 'advertised' THEN COALESCE(objections_close_at, CURRENT_DATE + 21)
+           ELSE objections_close_at END,
+         minister_ref = COALESCE($3, minister_ref),
+         minister_approved_at = CASE WHEN $2 = 'approved' THEN COALESCE($4::date, CURRENT_DATE) ELSE minister_approved_at END,
+         notes = COALESCE($5, notes),
+         updated_at = now()
+       WHERE id = $1 RETURNING *`,
+      [request.params.id, next || null, b.minister_ref || null, b.minister_approved_at || null, b.notes || null],
+    )
+    if (!rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
+    if (rows[0].status === 'approved' && rows[0].objections_close_at
+        && new Date(rows[0].objections_close_at) > new Date()) {
+      return reply.send({
+        success: true,
+        data: rows[0],
+        warning: 'Objections are still open. Allocation waits until the advertised period has closed.',
+      })
+    }
+    return reply.send({ success: true, data: rows[0] })
+  })
+
   // ── F7 Expense recovery ─────────────────────────────────────────────
   fastify.get('/registers/expense-recoveries', staff, async (_request, reply) => {
     await ensureSchema(pg)

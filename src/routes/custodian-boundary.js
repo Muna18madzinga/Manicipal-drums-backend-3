@@ -84,16 +84,72 @@ async function custodianBoundaryRoutes(fastify) {
 
   fastify.patch('/custodian/deeds-notices/:id', write, async (request, reply) => {
     const b = request.body || {}
+    const client = await pg.connect()
+    try {
+      await client.query('BEGIN')
+      const { rows } = await client.query(
+        `UPDATE council_ops.deeds_transfer_notice SET
+           status = COALESCE($2, status),
+           notes = COALESCE($3, notes),
+           child_stand_number = COALESCE($4, child_stand_number),
+           cancelled_at = CASE WHEN $2 = 'cancelled' THEN COALESCE(cancelled_at, now()) ELSE cancelled_at END,
+           updated_at = now()
+         WHERE id = $1 RETURNING *`,
+        [request.params.id, b.status || null, b.notes || null, b.child_stand_number || null],
+      )
+      if (!rows[0]) {
+        await client.query('ROLLBACK')
+        return reply.code(404).send({ success: false, error: 'not_found' })
+      }
+      let lineage = null
+      const notice = rows[0]
+      const child = notice.child_stand_number
+      const kind = notice.notice_kind
+      if (notice.status === 'actioned' && child && notice.stand_number
+          && ['sale', 'subdivision_lease'].includes(kind)) {
+        const action = kind === 'sale' ? 'transfer' : 'subdivision'
+        const ins = await client.query(
+          `INSERT INTO council_ops.parcel_identity_lineage
+             (parent_stand, child_stand, action, deeds_notice_id, created_by)
+           VALUES ($1,$2,$3,$4,$5)
+           ON CONFLICT (parent_stand, child_stand, action) DO UPDATE
+             SET deeds_notice_id = EXCLUDED.deeds_notice_id
+           RETURNING *`,
+          [notice.stand_number, child, action, notice.id, request.user.id],
+        )
+        lineage = ins.rows[0]
+        await client.query('SAVEPOINT property_lineage')
+        try {
+          await client.query(
+            `INSERT INTO spatial_planning.parcel_lineage (parent_property_id, child_property_id, action)
+             SELECT p.id, c.id, $3
+               FROM spatial_planning.property p
+               JOIN spatial_planning.property c ON upper(c.stand_number) = upper($2)
+              WHERE upper(p.stand_number) = upper($1)
+             ON CONFLICT (parent_property_id, child_property_id) DO NOTHING`,
+            [notice.stand_number, child, action],
+          )
+          await client.query('RELEASE SAVEPOINT property_lineage')
+        } catch {
+          await client.query('ROLLBACK TO SAVEPOINT property_lineage')
+        }
+      }
+      await client.query('COMMIT')
+      return reply.send({ success: true, data: { ...notice, lineage } })
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {})
+      request.log.error({ err }, 'deeds notice update failed')
+      return reply.code(500).send({ success: false, error: 'internal' })
+    } finally {
+      client.release()
+    }
+  })
+
+  fastify.get('/custodian/lineage', staff, async (_req, reply) => {
     const { rows } = await pg.query(
-      `UPDATE council_ops.deeds_transfer_notice SET
-         status = COALESCE($2, status),
-         notes = COALESCE($3, notes),
-         updated_at = now()
-       WHERE id = $1 RETURNING *`,
-      [request.params.id, b.status || null, b.notes || null],
+      `SELECT * FROM council_ops.parcel_identity_lineage ORDER BY created_at DESC LIMIT 200`,
     )
-    if (!rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
-    return reply.send({ success: true, data: rows[0] })
+    return reply.send({ success: true, data: rows })
   })
 }
 

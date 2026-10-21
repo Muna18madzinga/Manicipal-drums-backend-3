@@ -796,6 +796,20 @@ async function standsRoutes(fastify) {
     }
   })
 
+  // Estate layouts (RDC Act s86) cannot be allocated until the Minister approves.
+  fastify.post('/stands/:id/estate-requirement', {
+    preHandler: requireRole(fastify, ALLOC_ROLES),
+  }, async (request, reply) => {
+    const required = request.body?.required === true
+    const { rows } = await fastify.pg.query(
+      `UPDATE stands SET requires_minister_approval = $2, updated_at = NOW()
+        WHERE id = $1 RETURNING id, stand_number, requires_minister_approval`,
+      [request.params.id, required],
+    )
+    if (!rows[0]) return reply.code(404).send({ success: false, error: 'not_found' })
+    return reply.send({ success: true, data: rows[0] })
+  })
+
   // ── Allocate a stand to an allottee ──────────────────────────────────────
   // Body: { allocatedTo?: uuid, allotteeName?: string, purpose?, conditions? }
   // Transactional: creates the register entry and flips the stand to allocated
@@ -828,6 +842,33 @@ async function standsRoutes(fastify) {
           success: false, error: 'not_allocatable',
           message: `Stand is '${stand.status}' and cannot be allocated.`,
         })
+      }
+
+      const flag = await client.query(
+        `SELECT requires_minister_approval FROM stands WHERE id = $1`, [id])
+      if (flag.rows[0]?.requires_minister_approval) {
+        const approvalId = isString(b.estateApprovalId, 64) ? b.estateApprovalId : null
+        if (!approvalId) {
+          await client.query('ROLLBACK')
+          return reply.code(409).send({
+            success: false, error: 'minister_approval_required',
+            message: 'This estate stand cannot be allocated until the Minister has approved the layout (RDC Act s86).',
+          })
+        }
+        const ap = await client.query(
+          `SELECT status = 'approved'
+              AND objections_close_at IS NOT NULL
+              AND objections_close_at < CURRENT_DATE AS ok
+             FROM council_ops.estate_development_approval WHERE id = $1`,
+          [approvalId],
+        )
+        if (!ap.rows[0]?.ok) {
+          await client.query('ROLLBACK')
+          return reply.code(409).send({
+            success: false, error: 'minister_approval_not_effective',
+            message: 'The layout needs the Minister’s approval, and the 21-day objection period must have closed.',
+          })
+        }
       }
 
       const referenceNo = await nextAllocationRef(client)
